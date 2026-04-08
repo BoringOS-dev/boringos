@@ -1,0 +1,16 @@
+{
+  "extends": "./tsconfig.base.json",
+  "include": [],
+  "references": [
+    { "path": "./packages/@boringos/shared" },
+    { "path": "./packages/@boringos/memory" },
+    { "path": "./packages/@boringos/runtime" },
+    { "path": "./packages/@boringos/drive" },
+    { "path": "./packages/@boringos/db" },
+    { "path": "./packages/@boringos/agent" },
+    { "path": "./packages/@boringos/pipeline" },
+    { "path": "./packages/@boringos/connector" },
+    { "path": "./packages/@boringos/workflow" },
+    { "path": "./packages/@boringos/core" }
+  ]
+}

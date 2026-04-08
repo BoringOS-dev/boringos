@@ -1,0 +1,14 @@
+import { BoringOS } from "@boringos/core";
+
+const app = new BoringOS({
+  // database: { url: "postgres://..." },  // uncomment for external Postgres
+  // auth: { secret: "your-secret" },      // set in production
+});
+
+// app.memory(createHebbsMemory({ endpoint: "...", apiKey: "..." }));
+// app.connector(slack({ signingSecret: "..." }));
+
+const server = await app.listen(3000);
+
+console.log(`{{name}} running at ${server.url}`);
+console.log(`Health: ${server.url}/health`);

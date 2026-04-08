@@ -1,0 +1,38 @@
+# {{name}}
+
+Built with [BoringOS](https://github.com/boringos/boringos).
+
+## Run
+
+```bash
+cp .env.example .env    # configure your environment
+npm run dev             # starts on http://localhost:3000
+```
+
+## What's included
+
+- Embedded PostgreSQL (zero setup)
+- 6 runtime adapters (Claude, ChatGPT, Gemini, Ollama, command, webhook)
+- 12 persona bundles
+- Workflow engine with branching
+- JWT-authenticated callback API
+- Slack connector (configure SLACK_SIGNING_SECRET)
+- Google Workspace connector (configure GOOGLE_CLIENT_ID)
+- Hebbs memory (configure HEBBS_ENDPOINT)
+- BullMQ queue (configure REDIS_URL)
+- Custom context provider example
+
+## Architecture
+
+```
+src/index.ts    — app configuration and startup
+.env            — environment variables (secrets, API keys)
+.data/          — embedded Postgres data + drive files (gitignored)
+```
+
+## Next steps
+
+1. Create agents and tasks via the callback API
+2. Configure connectors in `.env`
+3. Build custom workflow block handlers
+4. Add more context providers for domain-specific knowledge

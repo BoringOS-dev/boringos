@@ -1,0 +1,60 @@
+import { BoringOS, createHebbsMemory } from "@boringos/core";
+import { slack } from "@boringos/connector-slack";
+import { google } from "@boringos/connector-google";
+import { createBullMQQueue } from "@boringos/pipeline";
+import type { ContextProvider } from "@boringos/core";
+
+// ── Custom context provider example ─────────────────────────────────────────
+
+const companyKnowledge: ContextProvider = {
+  name: "company-knowledge",
+  phase: "system",
+  priority: 25,
+  async provide(event) {
+    return `## Company Knowledge\n\nWelcome to {{name}}. Our agents follow these principles:\n- Ship fast, iterate faster\n- Always write tests\n- Document decisions`;
+  },
+};
+
+// ── Build the app ───────────────────────────────────────────────────────────
+
+const app = new BoringOS({
+  // database: { url: process.env.DATABASE_URL! },  // uncomment for external Postgres
+  // auth: { secret: process.env.AUTH_SECRET! },
+});
+
+// Memory — cognitive recall for agents
+if (process.env.HEBBS_ENDPOINT) {
+  app.memory(createHebbsMemory({
+    endpoint: process.env.HEBBS_ENDPOINT,
+    apiKey: process.env.HEBBS_API_KEY!,
+    workspace: process.env.HEBBS_WORKSPACE,
+  }));
+}
+
+// Connectors — external service integrations
+if (process.env.SLACK_SIGNING_SECRET) {
+  app.connector(slack({ signingSecret: process.env.SLACK_SIGNING_SECRET }));
+}
+
+if (process.env.GOOGLE_CLIENT_ID) {
+  app.connector(google({
+    clientId: process.env.GOOGLE_CLIENT_ID,
+    clientSecret: process.env.GOOGLE_CLIENT_SECRET!,
+  }));
+}
+
+// Queue — opt-in BullMQ for production
+if (process.env.REDIS_URL) {
+  app.queue(createBullMQQueue({ redis: process.env.REDIS_URL }));
+}
+
+// Custom context
+app.contextProvider(companyKnowledge);
+
+// ── Start ───────────────────────────────────────────────────────────────────
+
+const server = await app.listen(Number(process.env.PORT) || 3000);
+
+console.log(`{{name}} running at ${server.url}`);
+console.log(`Health: ${server.url}/health`);
+console.log(`Connectors: ${server.url}/api/connectors/connectors`);

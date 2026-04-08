@@ -1,0 +1,36 @@
+{
+  "name": "@boringos/core",
+  "version": "0.0.1",
+  "private": true,
+  "type": "module",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "scripts": {
+    "build": "tsc",
+    "typecheck": "tsc --noEmit"
+  },
+  "license": "MIT",
+  "dependencies": {
+    "@boringos/shared": "workspace:*",
+    "@boringos/memory": "workspace:*",
+    "@boringos/runtime": "workspace:*",
+    "@boringos/drive": "workspace:*",
+    "@boringos/db": "workspace:*",
+    "@boringos/agent": "workspace:*",
+    "@boringos/pipeline": "workspace:*",
+    "@boringos/connector": "workspace:*",
+    "@boringos/workflow": "workspace:*",
+    "hono": "^4.7.0",
+    "@hono/node-server": "^1.13.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "typescript": "^5.7.3"
+  }
+}

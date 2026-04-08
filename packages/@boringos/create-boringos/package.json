@@ -1,0 +1,19 @@
+{
+  "name": "create-boringos",
+  "version": "0.0.1",
+  "private": true,
+  "type": "module",
+  "bin": {
+    "create-boringos": "dist/index.js"
+  },
+  "main": "dist/index.js",
+  "scripts": {
+    "build": "tsc && cp -r src/templates dist/templates",
+    "typecheck": "tsc --noEmit"
+  },
+  "license": "MIT",
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "typescript": "^5.7.3"
+  }
+}

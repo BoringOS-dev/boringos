@@ -1,0 +1,26 @@
+# {{name}}
+
+Built with [BoringOS](https://github.com/boringos/boringos).
+
+## Run
+
+```bash
+npm run dev
+```
+
+Server starts on http://localhost:3000 with embedded Postgres.
+
+## What's included
+
+- Embedded PostgreSQL (zero setup)
+- 6 runtime adapters (Claude, ChatGPT, Gemini, Ollama, command, webhook)
+- 12 persona bundles
+- JWT-authenticated callback API
+- Workflow engine
+
+## Next steps
+
+- Add agents and tasks via the callback API
+- Configure memory: `app.memory(createHebbsMemory({...}))`
+- Add connectors: `app.connector(slack({...}))`
+- Build custom workflows
