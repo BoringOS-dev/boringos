@@ -1343,7 +1343,27 @@ Then use relative URLs in the client: `createBoringOSClient({ url: "" })`.
 
 ## UI Implementation — Entity Pages (Add / Edit / Delete)
 
-Every entity needs a full CRUD page. Below are concrete implementation patterns for each.
+Every entity page MUST implement full CRUD unless explicitly marked read-only. This is not optional.
+
+### MANDATORY Checklist — Every Entity Page
+
+Before considering a page done, verify ALL of these are implemented:
+
+- [ ] **List view** with loading state and empty state (icon + message + CTA button)
+- [ ] **Create** — [+ Add] button in header that opens a modal with form fields, validation, submit, cancel
+- [ ] **Inline edit** — Click any text field (title, name) to edit in place. Status/priority via dropdown. Blur or Enter saves. Escape cancels.
+- [ ] **Delete** — Delete/Archive button on each item with inline confirmation ("Are you sure? [Yes] [No]")
+- [ ] **Filters** — At least one filter (status, type, label) where applicable
+- [ ] **Actions** — Entity-specific actions (Wake agent, Trigger routine, Approve/Reject, etc.)
+- [ ] **Error handling** — Show error message on failed operations, don't silently swallow errors
+- [ ] **Responsive** — Works on both wide and narrow screens
+
+**Entities that are read-only (no edit/delete needed):**
+- Activity Log — audit trail, read-only by design
+- Runs — read + cancel only
+- Connectors — read + connect/disconnect only
+
+**Everything else MUST have create + edit + delete.**
 
 ### Standard Page Template
 
