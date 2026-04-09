@@ -5,6 +5,36 @@
 
 ---
 
+## 5-Minute Quickstart
+
+```bash
+npx create-boringos my-app        # scaffolds a minimal project
+cd my-app
+cp .env.example .env              # fill in ADMIN_KEY
+npm install && npm run dev         # boots with embedded Postgres on :3000
+```
+
+That gives you: health endpoint, admin API, agent callback API, embedded Postgres, in-process queue. No Redis, no external DB, no config needed.
+
+To add agents, create them via the admin API:
+```bash
+curl -X POST http://localhost:3000/api/admin/agents \
+  -H "X-API-Key: your-admin-key" -H "X-Tenant-Id: your-tenant-id" \
+  -H "Content-Type: application/json" \
+  -d '{"name": "my-agent", "role": "engineer", "instructions": "You help with code."}'
+```
+
+Or use a team template to create a full team in one call:
+```bash
+curl -X POST http://localhost:3000/api/admin/teams/from-template \
+  -H "X-API-Key: your-admin-key" -H "X-Tenant-Id: your-tenant-id" \
+  -H "Content-Type: application/json" \
+  -d '{"template": "engineering"}'
+# Creates: CTO + 2 Engineers + QA, hierarchy wired automatically
+```
+
+---
+
 ## Architecture Overview
 
 ```
@@ -179,6 +209,722 @@ POST   /api/agent/tasks/:taskId/work-products — Record deliverable
 POST   /api/agent/runs/:runId/cost      — Report token usage
 POST   /api/agent/agents                — Create another agent
 ```
+
+---
+
+## Agent Templates & Teams (Pre-built Personas)
+
+Instead of writing agent instructions from scratch, use the framework's built-in personas. Each role has a full persona bundle (SOUL.md, AGENTS.md, HEARTBEAT.md) that defines how the agent thinks, communicates, and operates.
+
+### Available Roles (12 built-in)
+
+| Role | Aliases | Character |
+|------|---------|-----------|
+| `ceo` | — | Strategic, action-biased, owns P&L, direct communication |
+| `cto` | — | Technical direction, simplicity-focused, trade-off aware |
+| `engineer` | general, frontend, backend, full-stack | Pragmatic, test-driven, collaborative |
+| `pm` | product manager, product-manager | User-problem driven, scope ruthless, decisive |
+| `qa` | quality assurance | Adversarial thinking, edge-case focused |
+| `researcher` | data scientist, analyst | Fact-based, triangulation, flags uncertainties |
+| `designer` | ux designer | User-first, accessibility mandatory |
+| `devops` | sre, ops | Automation-first, IaC, monitoring before optimization |
+| `personal-assistant` | assistant, ea, chief of staff | Organized, proactive, concise, time-explicit |
+| `content-creator` | content, social media, marketing | Hook-driven, platform-aware, authentic |
+| `finance` | accountant, bookkeeper, finance agent | Precise, methodical, no approximations |
+| `default` | (fallback) | Generic worker, keeps work moving |
+
+### Create Agent from Template
+
+```typescript
+import { createAgentFromTemplate } from "@boringos/agent";
+
+const agent = await createAgentFromTemplate(db, "engineer", {
+  tenantId: "...",
+  name: "Backend Engineer",      // optional — auto-generated from role if omitted
+  runtimeId: "...",              // optional
+  reportsTo: ctoAgentId,        // optional — sets hierarchy
+});
+// Returns: { id, name, role, tenantId, reportsTo }
+```
+
+Or via admin API:
+```bash
+POST /api/admin/agents/from-template
+{ "role": "engineer", "name": "Backend Engineer", "reportsTo": "cto-agent-id" }
+```
+
+### Create a Full Team (One Call)
+
+```typescript
+import { createTeam } from "@boringos/agent";
+
+const agents = await createTeam(db, "engineering", {
+  tenantId: "...",
+  runtimeId: "...",
+});
+// Returns array: CTO, Senior Engineer, Engineer, QA Engineer
+// Hierarchy already wired (engineers report to CTO)
+```
+
+Or via admin API:
+```bash
+POST /api/admin/teams/from-template
+{ "template": "engineering" }
+```
+
+### 5 Built-in Team Templates
+
+| Template | Agents Created | Hierarchy |
+|----------|---------------|-----------|
+| **engineering** | CTO, Senior Engineer, Engineer, QA Engineer | All report to CTO |
+| **executive** | CEO, CTO, Product Manager, Executive Assistant | All report to CEO |
+| **content** | Content Lead, Research Analyst | Researcher reports to Lead |
+| **sales** | Sales Director, Lead Researcher, Sales Engineer, Sales Coordinator | All report to Director |
+| **support** | Support Manager, Tier 1 Support, Tier 2 Support | All report to Manager |
+
+```bash
+# List available templates
+GET /api/admin/teams/templates
+```
+
+### Custom Personas
+
+Register custom persona bundles for roles not covered by built-ins:
+
+```typescript
+app.persona("tax-specialist", {
+  soul: "You are a tax specialist. You know international tax law...",
+  agents: "When working with the finance agent, provide tax-specific guidance...",
+  heartbeat: "Review tax deadlines weekly. Flag upcoming filing dates...",
+});
+```
+
+---
+
+## Agent Hierarchy (Delegation & Escalation)
+
+Agents can have a boss (`reportsTo`) and direct reports. The framework provides automatic delegation, escalation, and org context injection.
+
+### Setting Up Hierarchy
+
+```typescript
+// When creating agents manually:
+const cto = await createAgent({ name: "CTO", role: "cto", ... });
+const engineer = await createAgent({ name: "Engineer", role: "engineer", reportsTo: cto.id, ... });
+
+// Or use team templates — hierarchy is wired automatically
+```
+
+### Org Tree
+
+```bash
+GET /api/admin/agents/org-tree
+# Returns:
+# [
+#   { id: "cto-id", name: "CTO", role: "cto", status: "idle", reports: [
+#     { id: "eng-id", name: "Engineer", role: "engineer", status: "idle", reports: [] }
+#   ]}
+# ]
+```
+
+```typescript
+import { buildOrgTree } from "@boringos/agent";
+const tree = await buildOrgTree(db, tenantId);
+```
+
+### Automatic Delegation
+
+When an agent gets a task it can't handle, the framework can find the best report to delegate to:
+
+```typescript
+import { findDelegateForTask } from "@boringos/agent";
+
+// CTO gets a "fix login bug" task — framework routes it to the engineer
+const delegateId = await findDelegateForTask(db, ctoAgentId, "Fix login bug");
+// Returns the engineer's ID (matched "fix" → engineer keywords)
+```
+
+**Keyword matching by role:**
+- `engineer`: code, build, fix, implement, test, bug, feature, deploy, refactor
+- `devops`: devops, infra, deploy, pipeline, docker, k8s
+- `researcher`: research, analyze, investigate, find, explore
+- `designer`: design, ux, ui, wireframe, mockup
+- `qa`: test, qa, quality, verify, validate, regression
+- `pm`: plan, roadmap, prioritize, spec, requirement
+- `content-creator`: write, content, blog, social, marketing
+- `finance`: budget, cost, invoice, financial, expense, revenue
+
+### Automatic Escalation
+
+When an agent is blocked, escalate to their manager:
+
+```typescript
+import { escalateToManager } from "@boringos/agent";
+
+// Engineer is stuck — creates an escalation task for the CTO
+const escalationTaskId = await escalateToManager(db, engineerAgentId, blockedTaskId, "Can't reproduce the bug");
+// Creates: "[Escalation] Engineer blocked on: Fix login bug" task assigned to CTO
+```
+
+### Hierarchy Context Provider
+
+The framework automatically injects org context into every agent's prompt:
+
+```
+You report to: CTO (idle)
+Your direct reports: Engineer 1 (running), Engineer 2 (idle)
+- Delegate tasks to your reports when appropriate
+- Escalate to your manager when blocked
+```
+
+This is injected at system phase, priority 15 — no configuration needed.
+
+---
+
+## SSE / Realtime Events
+
+BoringOS streams events via Server-Sent Events. Use this to build live-updating UIs.
+
+### Event Types
+
+| Event | When | Data |
+|-------|------|------|
+| `run:started` | Agent run begins | `{ runId, agentId }` |
+| `run:completed` | Agent run finishes | `{ runId, agentId, status }` |
+| `run:failed` | Agent run errors | `{ runId, agentId, error }` |
+| `task:created` | New task created | `{ taskId, title }` |
+| `task:updated` | Task status/field changed | `{ taskId, changes }` |
+| `task:comment_added` | Comment posted | `{ taskId, commentId }` |
+| `agent:created` | New agent registered | `{ agentId, name }` |
+| `approval:decided` | Approval approved/rejected | `{ approvalId, status }` |
+
+### Subscribe from Frontend
+
+```typescript
+// Using @boringos/ui client
+const unsubscribe = client.subscribe((event) => {
+  console.log(event.type, event.data);
+
+  // Invalidate React Query cache for live updates
+  switch (event.type) {
+    case "run:started":
+    case "run:completed":
+    case "run:failed":
+      queryClient.invalidateQueries({ queryKey: ["runs"] });
+      queryClient.invalidateQueries({ queryKey: ["agents"] });
+      break;
+    case "task:created":
+    case "task:updated":
+      queryClient.invalidateQueries({ queryKey: ["tasks"] });
+      break;
+    case "task:comment_added":
+      queryClient.invalidateQueries({ queryKey: ["task", event.data.taskId] });
+      break;
+  }
+});
+
+// Cleanup
+unsubscribe();
+```
+
+### SSE Endpoint
+
+```
+GET /api/events?apiKey=...&tenantId=...
+```
+
+30-second heartbeat keeps the connection alive. Reconnect on disconnect with exponential backoff.
+
+### Live Updates Provider Pattern (React)
+
+```tsx
+function LiveUpdatesProvider({ children }: { children: React.ReactNode }) {
+  const client = useClient();
+  const queryClient = useQueryClient();
+
+  useEffect(() => {
+    const unsub = client.subscribe((event) => {
+      // Invalidate relevant queries based on event type
+      handleLiveEvent(event, queryClient);
+    });
+    return unsub;
+  }, [client, queryClient]);
+
+  return <>{children}</>;
+}
+
+// Mount once at app root, above all pages
+<BoringOSProvider client={client}>
+  <LiveUpdatesProvider>
+    <App />
+  </LiveUpdatesProvider>
+</BoringOSProvider>
+```
+
+---
+
+## Notifications (Email Alerts)
+
+Send email notifications for important events via Resend.
+
+```typescript
+import { createNotificationService } from "@boringos/core";
+
+const notifications = createNotificationService({
+  resendApiKey: process.env.RESEND_API_KEY,
+  fromEmail: "notifications@myapp.com",
+});
+
+// Check if enabled (silently disabled without API key)
+notifications.isEnabled(); // true if RESEND_API_KEY is set
+
+// Pre-built templates:
+await notifications.taskCompleted(task, recipientEmail);
+await notifications.runFailed(run, agent, recipientEmail);
+await notifications.approvalNeeded(approval, recipientEmail);
+await notifications.budgetWarning(policy, spent, recipientEmail);
+```
+
+No configuration needed in BoringOS — just set `RESEND_API_KEY` and the framework sends notifications automatically for run failures and approval requests.
+
+---
+
+## Plugin System
+
+Plugins add cron jobs, webhook handlers, and persistent state to your app.
+
+### Plugin Interface
+
+```typescript
+import type { PluginDefinition } from "@boringos/core";
+
+const myPlugin: PluginDefinition = {
+  name: "my-plugin",
+  version: "1.0.0",
+
+  // Cron jobs — run on schedule with persistent state
+  jobs: [
+    {
+      name: "sync-data",
+      cron: "*/15 * * * *",          // Every 15 minutes
+      async execute(ctx) {
+        const lastSync = ctx.state.get("lastSyncAt");
+        // ... do work ...
+        ctx.state.set("lastSyncAt", new Date().toISOString());
+        return { synced: 42 };
+      },
+    },
+  ],
+
+  // Inbound webhooks — receive HTTP requests from external services
+  webhooks: [
+    {
+      event: "payment-received",
+      async handle(req) {
+        const body = req.body;
+        // ... process webhook ...
+        return { ok: true };
+      },
+    },
+  ],
+};
+
+// Register
+app.plugin(myPlugin);
+```
+
+### Webhook URL
+
+```
+POST /webhooks/plugins/:pluginName/:event
+```
+
+Example: `POST /webhooks/plugins/my-plugin/payment-received`
+
+### Admin API
+
+```bash
+GET /api/admin/plugins                              # List plugins
+GET /api/admin/plugins/:name/jobs                   # List jobs for plugin
+POST /api/admin/plugins/:name/jobs/:job/trigger     # Manual trigger
+```
+
+### Built-in GitHub Plugin
+
+The framework includes a GitHub plugin:
+- **sync-repos** job — runs every 15 minutes, syncs repository metadata
+- **issue-created** webhook — receives GitHub issue events
+- **pr-opened** webhook — receives GitHub PR events
+
+---
+
+## Execution Workspaces (Git Worktrees)
+
+Each agent task can run in an isolated git worktree — its own branch and working directory.
+
+```typescript
+import { provisionWorkspace, cleanupWorkspace } from "@boringos/agent";
+
+// Create isolated workspace for a task
+const workspace = await provisionWorkspace(
+  { gitRoot: "/path/to/repo", branchTemplate: "bos/{{identifier}}-{{slug}}", baseRef: "main" },
+  task,
+);
+// workspace.path = "/path/to/repo/.worktrees/bos-BOS-042-fix-login"
+// workspace.branch = "bos/BOS-042-fix-login"
+
+// Agent runs in workspace.path with workspace.branch checked out
+// ...
+
+// Cleanup when done
+await cleanupWorkspace("/path/to/repo", workspace.path);
+```
+
+The branch template supports tokens: `{{identifier}}` (task ID like BOS-042), `{{slug}}` (slugified title).
+
+---
+
+## Skill System
+
+Skills are markdown files + assets that teach agents domain-specific knowledge. They're synced into the agent's working directory before execution.
+
+### Skill Sources
+
+| Source | How it works |
+|--------|-------------|
+| `local_path` | Symlinks from a local directory |
+| `github` | Fetches from a GitHub repo via API |
+| `url` | Downloads from a URL |
+
+### Trust Levels
+
+| Level | Allowed files |
+|-------|--------------|
+| `markdown_only` | Only `.md` files |
+| `assets` | Markdown + images, data files |
+| `scripts_executables` | Everything including scripts (use carefully) |
+
+### Usage
+
+```bash
+# Create a skill
+POST /api/admin/skills
+{ "name": "sales-playbook", "source": "local_path", "path": "/skills/sales", "trustLevel": "markdown_only" }
+
+# Attach to an agent
+POST /api/admin/skills/:skillId/attach/:agentId
+
+# Detach
+DELETE /api/admin/skills/:skillId/attach/:agentId
+```
+
+Skills are injected into the agent's working directory via `injectSkills()` before each run.
+
+---
+
+## Drive — File Storage & Memory Sync
+
+### DriveManager
+
+The DriveManager wraps the storage backend + DB indexing + memory sync:
+
+```typescript
+import { createDriveManager } from "@boringos/drive";
+
+const drive = createDriveManager({ storage, db, memory, tenantId });
+
+// Write a file — auto-indexed in DB, text files auto-synced to memory
+await drive.write("/reports/monthly.md", "# Monthly Report\n...");
+
+// Read
+const content = await drive.read("/reports/monthly.md");
+
+// List
+const files = await drive.list("/reports/");
+
+// Delete
+await drive.remove("/reports/old.md");
+```
+
+### Memory Sync
+
+Text files (`.md`, `.txt`, `.json`, `.yaml`) are automatically synced to the memory provider when written via DriveManager. This means:
+- Agent writes a report to Drive → it's searchable in memory
+- Next agent run can `recall("monthly report")` and find it
+- Knowledge persists across sessions without explicit memory calls
+
+### Skill File Revisions
+
+Drive skills have version history:
+
+```bash
+GET /api/admin/drive/skill              # Get current skill file
+PATCH /api/admin/drive/skill            # Update (creates revision)
+GET /api/admin/drive/skill/revisions    # List all revisions
+```
+
+---
+
+## Budget Enforcement
+
+Set spending limits per tenant or per agent. The engine checks before each run.
+
+### Budget Policies
+
+```bash
+POST /api/admin/budgets
+{
+  "scope": "agent",              # "tenant" or "agent"
+  "agentId": "...",              # required if scope is "agent"
+  "period": "monthly",           # "daily", "weekly", or "monthly"
+  "limitCents": 10000,           # $100.00
+  "warnThresholdCents": 8000     # Warning at $80.00
+}
+```
+
+### How It Works
+
+1. Before each agent run, engine sums `costEvents` for the policy period
+2. If `spent >= limit` → **hard stop** — run is rejected, incident logged
+3. If `spent >= warnThreshold` → **warning** — run proceeds, incident logged, notification sent
+4. Agents report costs via `POST /api/agent/runs/:runId/cost` during execution
+
+### Admin API
+
+```bash
+GET /api/admin/budgets                  # List policies
+POST /api/admin/budgets                 # Create policy
+DELETE /api/admin/budgets/:id           # Remove policy
+GET /api/admin/budgets/incidents        # List incidents (hard_stop + warning)
+```
+
+---
+
+## Evaluations (Agent Quality Testing)
+
+A/B test agent quality with structured test cases.
+
+```bash
+# Create an eval
+POST /api/admin/evals
+{
+  "name": "Email classification accuracy",
+  "testCases": [
+    { "input": { "subject": "URGENT: Server down", "from": "client@co.com" }, "expected": "urgent" },
+    { "input": { "subject": "Newsletter #42", "from": "news@blog.com" }, "expected": "spam" }
+  ]
+}
+
+# Run the eval
+POST /api/admin/evals/:id/run
+
+# Check results
+GET /api/admin/evals/:id/runs
+# Returns: { passCount, failCount, results: [...] }
+```
+
+Use `useEvals()` hook in the UI to display eval results.
+
+---
+
+## Onboarding Wizard
+
+5-step guided setup for new tenants:
+
+```bash
+# Get current state (auto-creates if first request)
+GET /api/admin/onboarding
+
+# Complete a step
+POST /api/admin/onboarding/complete-step
+{ "step": 1, "metadata": { "runtimeConfigured": true } }
+```
+
+Steps are tracked per tenant. `completedAt` is set when all 5 steps are done. Use `useOnboarding()` hook in the UI.
+
+---
+
+## Device Auth (CLI Login)
+
+GitHub-style device login flow for CLI tools:
+
+```
+1. CLI calls:    POST /api/auth/device/code
+                 → { deviceCode, userCode: "A1B2C3D4", expiresIn: 900 }
+
+2. User opens:   http://your-app/auth/device
+                 → enters user code "A1B2C3D4"
+
+3. User approves: POST /api/auth/device/verify { userCode: "A1B2C3D4" }
+
+4. CLI polls:    POST /api/auth/device/poll { deviceCode: "..." }
+                 → { sessionToken: "..." } (once approved)
+```
+
+15-minute expiry on challenges. CLI polls every 5 seconds.
+
+---
+
+## Connector OAuth Flow
+
+### Setup
+
+1. Register connector: `app.connector(google({ clientId: "...", clientSecret: "..." }))`
+2. Add OAuth routes (not yet in core — add to your app):
+
+```typescript
+import { createOAuthManager } from "@boringos/connector";
+
+const oauth = createOAuthManager(oauthConfig, clientId, clientSecret);
+
+// GET /authorize — redirect to provider consent screen
+app.get("/authorize", (c) => c.redirect(oauth.getAuthorizationUrl(callbackUrl)));
+
+// GET /callback — provider redirects here after consent
+app.get("/callback", async (c) => {
+  const tokens = await oauth.exchangeCode(c.req.query("code"), callbackUrl);
+  // Store tokens in connectors table for the tenant
+  await db.insert(connectors).values({
+    tenantId, kind: "google", status: "active",
+    credentials: { accessToken: tokens.accessToken, refreshToken: tokens.refreshToken },
+  });
+  return c.redirect("/settings?connected=true");
+});
+```
+
+3. Configure callback URL in provider console (e.g., Google Cloud Console)
+
+### Checking Connection Status
+
+Query the `connectors` table for stored credentials:
+
+```typescript
+// Custom endpoint
+app.get("/api/connectors/:kind/status", async (c) => {
+  const rows = await db.select().from(connectors)
+    .where(and(eq(connectors.tenantId, tenantId), eq(connectors.kind, c.req.param("kind"))))
+    .limit(1);
+  return c.json({ connected: rows.length > 0 && !!rows[0].credentials });
+});
+```
+
+### Token Refresh
+
+The `OAuthManager` provides `refreshTokens(refreshToken)` for automatic token refresh when access tokens expire.
+
+---
+
+## Agent-to-Agent Communication
+
+Agents communicate through **tasks and comments**, not direct messages. The hierarchy system enables structured communication patterns.
+
+### Delegation Pattern
+
+```
+CTO receives "Build feature X" task
+  → CTO calls findDelegateForTask() → matches Engineer
+  → CTO creates subtask "Implement feature X" assigned to Engineer
+  → Engineer works, posts comments with progress
+  → CTO reads subtask status to track progress
+  → When subtask is done, CTO marks parent task as done
+```
+
+### Escalation Pattern
+
+```
+Engineer is stuck on "Fix bug Y" task
+  → Engineer calls escalateToManager()
+  → Framework creates "[Escalation] Engineer blocked on: Fix bug Y" task for CTO
+  → CTO wakes, sees escalation task, provides guidance as comment
+  → Engineer reads comment, unblocks, continues
+```
+
+### Review Pattern
+
+```
+Agent completes work → sets task status to "in_review"
+  → Manager agent wakes (routine or workflow trigger)
+  → Reads tasks in "in_review" status assigned to their reports
+  → Reviews work products, posts approval/feedback as comments
+  → Sets status to "done" or back to "in_progress" with feedback
+```
+
+---
+
+## Error Handling
+
+### Agent Run Failures
+
+When an agent run fails:
+1. Run status set to `failed` with error message
+2. SSE event `run:failed` emitted
+3. If notifications enabled, email sent to configured address
+4. Run can be retried via `POST /api/admin/agents/:id/wake`
+
+### Workflow Block Failures
+
+When a workflow block fails:
+1. Block status set to `failed` with error
+2. Downstream blocks are **skipped** (not executed)
+3. Workflow result status is `failed`
+4. Other branches (from prior condition blocks) still execute
+
+### Budget Hard Stops
+
+When budget is exceeded:
+1. Run is rejected before spawning
+2. Incident logged with `type: "hard_stop"`
+3. Agent status remains `idle`
+4. Notification sent if configured
+
+### Connector Action Failures
+
+The `connector-action` block handler returns `{ success: false, error: "..." }` on failure. Use a condition block after it to branch on success/failure.
+
+---
+
+## Deployment (Production)
+
+### External Postgres
+
+```env
+DATABASE_URL=postgres://user:pass@host:5432/boringos
+```
+
+Remove `{ embedded: true }` — just provide the URL.
+
+### Redis + BullMQ (Persistent Queue)
+
+```typescript
+import { createBullMQQueue } from "@boringos/pipeline";
+app.queue(createBullMQQueue({ redis: process.env.REDIS_URL }));
+```
+
+Benefits: persistent jobs, automatic retries, configurable concurrency.
+
+### Environment Variables (Production)
+
+```env
+NODE_ENV=production
+PORT=3000
+DATABASE_URL=postgres://...           # Required
+REDIS_URL=redis://...                 # Recommended
+AUTH_SECRET=strong-random-secret      # Required — use a real secret
+ADMIN_KEY=strong-random-key           # Required
+
+# Optional
+RESEND_API_KEY=...                    # Email notifications
+HEBBS_ENDPOINT=...                    # Agent memory
+HEBBS_API_KEY=...
+```
+
+### Health Check
+
+```
+GET /health → { "status": "ok", "timestamp": "..." }
+```
+
+Use this for load balancer health probes.
 
 ---
 
@@ -1440,15 +2186,30 @@ Test files live in `tests/` at the repo root. Use Vitest. Each test file covers 
 
 | I want to... | Create/modify... |
 |-------------|-----------------|
-| Add a new agent | `src/agents/my-agent.ts` + register in seed |
+| Add a new agent | `src/agents/my-agent.ts` + register in seed, OR use `createAgentFromTemplate(db, "role", config)` |
+| Use a pre-built persona | Just set `role: "engineer"` (or any of the 12 built-in roles + aliases) |
+| Create a full team | `createTeam(db, "engineering", config)` or `POST /api/admin/teams/from-template` |
+| Set up agent hierarchy | Set `reportsTo` on agent creation, or use team templates (auto-wired) |
+| Delegate tasks between agents | Use `findDelegateForTask(db, agentId, taskTitle)` — role-based matching |
+| Escalate blocked tasks | Use `escalateToManager(db, agentId, taskId, reason)` — auto-creates task for boss |
 | Add agent instructions | `instructions` field in agent definition |
 | Schedule an agent | Create a routine in seed (agent or workflow target) |
 | Add a workflow | `src/workflows/my-workflow.ts` + create via store in seed |
 | Add a workflow block type | `src/block-handlers/my-handler.ts` + `app.blockHandler()` |
 | Inject context into agents | `src/context-providers/my-provider.ts` + `app.contextProvider()` |
-| Connect an external service | `app.connector(...)` in index.ts |
+| Connect an external service | `app.connector(...)` + add OAuth routes for auth flow |
+| Check connector status | Query `connectors` table for stored credentials |
 | Route events to inbox | `app.routeToInbox(...)` in index.ts |
 | Add a custom API endpoint | `app.route("/path", honoApp)` in index.ts |
 | Add a UI page | `ui/src/app/my-page/page.tsx` + add to sidebar |
+| Add live updates to UI | `client.subscribe()` + invalidate React Query cache on events |
+| Send email notifications | Set `RESEND_API_KEY` — framework sends automatically for failures/approvals |
+| Add a plugin | Implement `PluginDefinition` + `app.plugin(myPlugin)` |
+| Set spending limits | `POST /api/admin/budgets` — engine enforces before each run |
+| Test agent quality | `POST /api/admin/evals` with test cases, then `/run` |
+| Add agent skills | `POST /api/admin/skills` + attach to agents |
+| Isolate agent work | `provisionWorkspace()` — creates git worktree per task |
+| Store files with memory sync | `DriveManager.write()` — auto-indexes + syncs text to memory |
 | Create seed data | `src/seed.ts` — call admin API |
 | Add custom DB tables | `app.schema("CREATE TABLE ...")` in index.ts |
+| Deploy to production | Set `DATABASE_URL` + `REDIS_URL` + `AUTH_SECRET`, use BullMQ queue |
