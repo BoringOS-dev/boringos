@@ -18,6 +18,7 @@ export interface BoringOSConfig {
 
 export interface AuthConfig {
   secret: string;
+  adminKey?: string;
   url?: string;
   tokenExpirySeconds?: number;
 }

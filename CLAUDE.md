@@ -221,10 +221,12 @@ Typed API client + React hooks for building dashboards on top of BoringOS. No ma
 **React Hooks:**
 | Hook | Returns | Mutations |
 |---|---|---|
-| `useAgents()` | agents list, loading | `createAgent` |
-| `useTasks()` | tasks list, loading | `createTask` |
-| `useTask(taskId)` | task + comments | `updateStatus`, `postComment`, `addWorkProduct` |
-| `useRuns()` | runs list (polls every 5s) | — |
+| `useAgents()` | agents list, loading | `createAgent`, `wakeAgent` |
+| `useTasks(filters?)` | tasks list, loading | `createTask` |
+| `useTask(taskId)` | task + comments | `updateTask`, `postComment`, `assignTask`, `addWorkProduct` |
+| `useRuns(filters?)` | runs list (polls every 5s) | `cancelRun` |
+| `useRuntimes()` | runtimes list | `createRuntime`, `setDefault` |
+| `useApprovals(status?)` | approvals list | `approve`, `reject` |
 | `useConnectors()` | connector list | `invokeAction` |
 | `useHealth()` | server status (polls every 30s) | — |
 
@@ -232,7 +234,7 @@ Typed API client + React hooks for building dashboards on top of BoringOS. No ma
 ```tsx
 import { BoringOSProvider, createBoringOSClient, useAgents } from "@boringos/ui";
 
-const client = createBoringOSClient({ url: "http://localhost:3000", token: "..." });
+const client = createBoringOSClient({ url: "http://localhost:3000", apiKey: "your-admin-key", tenantId: "your-tenant-id" });
 
 function App() {
   return (
@@ -272,6 +274,121 @@ Application host — the entry point.
   - `POST /runs/:runId/cost` — report token usage
   - `POST /agents` — create agent
 - **`GET /health`** — health check endpoint (unauthenticated)
+- **Admin API** (Hono routes at `/api/admin/*`, API key authenticated via `X-API-Key` header):
+  - Requires `X-Tenant-Id` header for tenant scoping
+  - **Agents:** `GET/POST /agents`, `GET/PATCH /agents/:id`, `POST /agents/:id/wake`, `GET /agents/:id/runs`
+  - **Tasks:** `GET/POST /tasks`, `GET/PATCH/DELETE /tasks/:id`, `POST /tasks/:id/comments`, `POST /tasks/:id/assign`
+  - **Runs:** `GET /runs`, `GET /runs/:id`, `POST /runs/:id/cancel`
+  - **Runtimes:** `GET/POST /runtimes`, `PATCH/DELETE /runtimes/:id`, `POST /runtimes/:id/default`
+  - **Approvals:** `GET /approvals`, `GET /approvals/:id`, `POST /approvals/:id/approve`, `POST /approvals/:id/reject`
+  - **Tenants:** `GET /tenants/current`, `POST /tenants`
+  - **Costs:** `GET /costs`
+  - Configure admin key: `new BoringOS({ auth: { adminKey: "..." } })`
+- **SSE / Realtime** (`GET /api/events`, API key + tenant ID authenticated):
+  - Streams events as Server-Sent Events: `run:started`, `run:completed`, `run:failed`, `task:created`, `task:updated`, `task:comment_added`, `agent:created`, `approval:decided`
+  - Subscribe via query params: `/api/events?apiKey=...&tenantId=...`
+  - Engine publishes run lifecycle events automatically
+  - Admin API publishes mutation events (create agent, create task, add comment, approve/reject)
+  - `@boringos/ui` client: `client.subscribe(onEvent)` returns unsubscribe function
+  - 30-second heartbeat keeps connection alive
+  - In-memory EventEmitter (upgradeable to Redis pub/sub)
+- **Auth API** (`/api/auth/*`, unauthenticated):
+  - `POST /signup` — create user (name, email, password, optional tenantId)
+  - `POST /login` — authenticate, returns session token
+  - `GET /me` — get current user from session (Bearer token)
+  - `POST /logout` — invalidate session
+  - Admin API accepts both API key (`X-API-Key`) and session token (`Authorization: Bearer`)
+  - User-tenant linking via `user_tenants` table (role: admin/member)
+- **Activity Log** — audit trail for all admin mutations:
+  - Logged: agent.created, task.created, comment.created, approval.approved, approval.rejected
+  - `GET /api/admin/activity` — paginated activity log
+- **Budget enforcement:**
+  - Budget policies: scope (tenant/agent), period (daily/weekly/monthly), limit in cents, warn threshold
+  - Engine checks budget before each run — hard-stop if exceeded, warning at threshold
+  - Admin API: `GET/POST/DELETE /api/admin/budgets`, `GET /api/admin/budgets/incidents`
+  - Budget incidents logged with type (hard_stop/warning), spent vs limit
+- **Routine scheduler:**
+  - Cron-based recurring agent wakeups with 5-field cron expressions + timezone
+  - Concurrency policies: `skip_if_active`, `coalesce_if_active`, `allow_concurrent`
+  - Admin API: `GET/POST/PATCH/DELETE /api/admin/routines`, `POST /api/admin/routines/:id/trigger`
+  - Scheduler starts on boot, checks every 60 seconds
+- **Notifications:**
+  - Email via Resend API (silently disabled if no `RESEND_API_KEY`)
+  - Pre-built templates: task completed, run failed, approval needed, budget warning
+  - `createNotificationService({ resendApiKey?, fromEmail? })`
+- **Execution workspaces:**
+  - `provisionWorkspace({ gitRoot, branchTemplate?, baseRef? }, task)` — creates git worktree
+  - Branch template: `bos/{{identifier}}-{{slug}}` with token replacement
+  - `cleanupWorkspace(gitRoot, worktreePath)` — removes worktree on task completion
+- **Skill system:**
+  - Sync skills from `local_path`, `github` (API), or `url` sources
+  - Trust levels: `markdown_only`, `assets`, `scripts_executables` — controls allowed file types
+  - `injectSkills(db, agentId, workDir, config)` — symlinks cached skills into agent working directory
+  - Admin API: `GET/POST /api/admin/skills`, `POST/DELETE /api/admin/skills/:id/attach/:agentId`
+- **Plugin system** (see [PLUGINS.md](PLUGINS.md) for full guide):
+  - `PluginDefinition` interface: name, version, jobs (cron-scheduled), webhooks (inbound HTTP), state store
+  - `createPluginRegistry()` — register/list/lookup plugins
+  - Plugin job runner with persistent state per tenant+plugin
+  - Webhook router: `POST /webhooks/plugins/:name/:event`
+  - Admin API: `GET /api/admin/plugins`, `GET /api/admin/plugins/:name/jobs`, `POST /api/admin/plugins/:name/jobs/:job/trigger`
+  - **Built-in GitHub plugin** — sync-repos job (every 15min), issue-created + pr-opened webhooks
+  - `.plugin(definition)` on builder registers plugins
+- **Projects:**
+  - Organize tasks into projects with repo config (URL, default branch, branch template)
+  - Per-project task prefix + auto-increment counter (`ALPHA-001`, `ALPHA-002`)
+  - Admin API: `GET/POST /api/admin/projects`, `GET/PATCH /api/admin/projects/:id`
+- **Goals:**
+  - High-level objectives (planned/active/done/dropped)
+  - Admin API: `GET/POST /api/admin/goals`, `PATCH /api/admin/goals/:id`
+- **Task features:**
+  - **Auto-identifiers** — `BOS-001` (tenant-level) or `ALPHA-001` (project-level), auto-incrementing
+  - **Labels** — tag tasks with labels (name + color). Admin API: `GET/POST /api/admin/labels`, `POST/DELETE /api/admin/tasks/:id/labels/:labelId`
+  - **Read states** — track which users have read each task. `POST /api/admin/tasks/:id/read`
+  - **Attachments** — file attachments per task (`task_attachments` table)
+  - **Checkout locks** — `checkout_run_id` column prevents concurrent agent work on same task
+- **Drive features:**
+  - **DriveManager** — wraps StorageBackend + DB. Writes file → indexes in `drive_files` → syncs text to memory
+  - **File indexing** — `drive_files` table tracks path, filename, format, size, hash, memory sync status
+  - **Memory sync** — text files (md, txt, json, yaml) auto-synced to memory provider on write
+  - **Drive skill revisions** — `drive_skill_revisions` table, version history with rollback
+  - Admin API: `GET /api/admin/drive/list`, `GET/PATCH /api/admin/drive/skill`, `GET /api/admin/drive/skill/revisions`
+  - `createDriveManager({ storage, db, memory?, tenantId })` from `@boringos/drive`
+- **Onboarding:**
+  - 5-step wizard tracked in `onboarding_state` table (per tenant)
+  - Admin API: `GET /api/admin/onboarding` (auto-creates state), `POST /api/admin/onboarding/complete-step`
+  - Step metadata stored as JSON, completion tracked, `completedAt` set when all 5 steps done
+  - `useOnboarding()` hook in `@boringos/ui`
+- **Device auth (CLI login):**
+  - GitHub-style device login flow for CLI tools
+  - `POST /api/auth/device/code` — generate device code + user code (8-char hex)
+  - `POST /api/auth/device/verify` — browser approves with user code
+  - `POST /api/auth/device/poll` — CLI polls until approved, gets session token
+  - 15-minute expiry on challenges
+- **Evaluations:**
+  - A/B test agent quality with structured test cases
+  - Admin API: `GET/POST /api/admin/evals`, `POST /api/admin/evals/:id/run`, `GET /api/admin/evals/:id/runs`
+  - `evals` table (name, test cases as JSON), `eval_runs` table (pass/fail counts, results)
+  - `useEvals()` hook in `@boringos/ui`
+- **Inbox:**
+  - Receive and triage external messages/events
+  - Admin API: `GET /api/admin/inbox`, `GET /api/admin/inbox/:id` (marks read), `POST /api/admin/inbox/:id/archive`, `POST /api/admin/inbox/:id/create-task`
+  - Items can be converted to tasks directly
+  - `useInbox()` hook in `@boringos/ui`
+- **Custom schema integration:**
+  - `.schema(ddl)` builder method — pass raw DDL strings, framework executes them after its own migrations
+  - User tables can reference framework tables (FK to `tenants.id`, etc.)
+  - User tables created automatically on boot
+- **Entity linking:**
+  - `entity_references` table links domain entities (contacts, deals) to framework entities (tasks, runs, inbox)
+  - Admin API: `POST /api/admin/entities/link`, `GET /api/admin/entities/:type/:id/refs`, `DELETE /api/admin/entities/link/:id`
+  - `useEntityRefs(type, id)` hook
+- **Event-to-inbox routing:**
+  - `.routeToInbox({ filter, transform })` — declaratively route connector events to inbox
+  - Filter decides which events become inbox items, transform maps event data to inbox fields
+- **Cross-entity search:**
+  - `GET /api/admin/search?q=query` — searches across tasks (title + description), agents (name), inbox items (subject + body)
+  - Returns grouped results: `{ tasks, agents, inboxItems }`
+  - `useSearch(query)` hook
 
 ---
 
@@ -389,7 +506,7 @@ new BoringOS({ database: { url: "postgres://..." } });
 Tests live in `tests/` at the repo root. Uses Vitest. Tests accumulate per phase.
 
 ```bash
-pnpm test:run    # single pass (80 tests)
+pnpm test:run    # single pass (111 tests)
 pnpm test        # watch mode
 ```
 
@@ -403,6 +520,15 @@ pnpm test        # watch mode
 | `phase6-connectors.test.ts` | Connector SDK, Slack, Google, integration | 15 |
 | `phase7-cli.test.ts` | CLI generator scaffolding | 4 |
 | `phase8-ui.test.ts` | API client + list endpoints | 2 |
+| `phase9-admin-api.test.ts` | Admin API CRUD + auth + approvals | 4 |
+| `phase10-sse.test.ts` | Realtime bus + SSE endpoint auth | 5 |
+| `phase11-auth-activity.test.ts` | User auth + activity logging | 4 |
+| `phase12-tier2.test.ts` | Budget, routines, notifications, skills | 4 |
+| `phase13-plugins.test.ts` | Plugin system + GitHub plugin | 3 |
+| `phase14-projects-tasks.test.ts` | Projects, goals, labels, auto-identifiers | 2 |
+| `phase15-drive.test.ts` | DriveManager, file indexing, skill revisions | 2 |
+| `phase16-final-tier3.test.ts` | Onboarding, device auth, evals, inbox | 4 |
+| `phase17-improvements.test.ts` | Custom schema, entity linking, search | 3 |
 
 ---
 

@@ -1,3 +1,4 @@
+import { generateId } from "@boringos/shared";
 import { Hono } from "hono";
 import { serve } from "@hono/node-server";
 import { nullMemory } from "@boringos/memory";
@@ -46,6 +47,18 @@ import type {
 } from "./types.js";
 import { createCallbackRoutes } from "./routes.js";
 import { createConnectorRoutes } from "./connector-routes.js";
+import { createAdminRoutes } from "./admin-routes.js";
+import { createRealtimeBus } from "./realtime.js";
+import type { RealtimeBus } from "./realtime.js";
+import { createSSERoutes } from "./sse-routes.js";
+import { bootstrapAuthTables } from "./auth.js";
+import { createAuthRoutes } from "./auth-routes.js";
+import { createDeviceAuthRoutes } from "./device-auth-routes.js";
+import { createRoutineScheduler } from "./scheduler.js";
+import { createPluginRegistry } from "./plugin-system.js";
+import type { PluginDefinition } from "./plugin-system.js";
+import { createPluginWebhookRoutes, createPluginAdminRoutes } from "./plugin-routes.js";
+import { githubPlugin } from "./plugins/github.js";
 
 export class BoringOS {
   private config: BoringOSConfig;
@@ -54,6 +67,7 @@ export class BoringOS {
   private contextProviders: ContextProvider[] = [];
   private personas: Map<string, PersonaBundle> = new Map();
   private plugins: PluginManifest[] = [];
+  private pluginDefs: PluginDefinition[] = [];
   private connectorDefs: ConnectorDef[] = [];
   private beforeStartHooks: LifecycleHook[] = [];
   private afterStartHooks: LifecycleHook[] = [];
@@ -61,6 +75,8 @@ export class BoringOS {
   private extraRoutes: Array<{ path: string; app: Hono }> = [];
   private blockHandlers: BlockHandler[] = [];
   private queueAdapter: QueueAdapter<AgentRunJob> | undefined;
+  private userSchemaStatements: string[] = [];
+  private inboxRoutes: Array<{ filter: (event: Record<string, unknown>) => boolean; transform: (event: Record<string, unknown>) => { source: string; subject: string; body?: string; from?: string } }> = [];
 
   constructor(config: BoringOSConfig = {}) {
     this.config = config;
@@ -91,13 +107,28 @@ export class BoringOS {
     return this;
   }
 
-  plugin(manifest: PluginManifest): this {
-    this.plugins.push(manifest);
+  plugin(manifest: PluginManifest | PluginDefinition): this {
+    if ("jobs" in manifest || "webhooks" in manifest) {
+      this.pluginDefs.push(manifest as PluginDefinition);
+    } else {
+      this.plugins.push(manifest as PluginManifest);
+    }
     return this;
   }
 
   queue(adapter: QueueAdapter<AgentRunJob>): this {
     this.queueAdapter = adapter;
+    return this;
+  }
+
+  schema(ddlStatements: string | string[]): this {
+    const stmts = Array.isArray(ddlStatements) ? ddlStatements : [ddlStatements];
+    this.userSchemaStatements.push(...stmts);
+    return this;
+  }
+
+  routeToInbox(config: { filter: (event: Record<string, unknown>) => boolean; transform: (event: Record<string, unknown>) => { source: string; subject: string; body?: string; from?: string } }): this {
+    this.inboxRoutes.push(config);
     return this;
   }
 
@@ -136,6 +167,17 @@ export class BoringOS {
     // 2. Run migrations
     const migrator = createMigrationManager(dbConn.db);
     await migrator.apply();
+
+    // 2b. Bootstrap auth tables
+    await bootstrapAuthTables(dbConn.db);
+
+    // 2c. Apply user schema DDL
+    if (this.userSchemaStatements.length > 0) {
+      const { sql: rawSql } = await import("drizzle-orm");
+      for (const stmt of this.userSchemaStatements) {
+        await dbConn.db.execute(rawSql.raw(stmt));
+      }
+    }
 
     // 3. Initialize drive
     const driveRoot = this.config.drive?.root ?? "./.data/drive";
@@ -218,6 +260,13 @@ export class BoringOS {
       await plugin.setup(context);
     }
 
+    // 9b. Setup plugin system
+    const pluginRegistry = createPluginRegistry();
+    pluginRegistry.register(githubPlugin); // built-in
+    for (const def of this.pluginDefs) {
+      pluginRegistry.register(def);
+    }
+
     // 10. Setup connectors
     const connectorRegistry = createConnectorRegistry();
     const eventBus = createEventBus();
@@ -226,10 +275,23 @@ export class BoringOS {
     }
     const actionRunner = createActionRunner(connectorRegistry);
 
-    // Wire connector events to agent wakeups
+    // Wire connector events to agent wakeups + inbox routing
     eventBus.onAny(async (event) => {
-      // Connector events can trigger agent wakeups via the "connector_event" reason
-      // Consumers can add custom routing via eventBus.on()
+      // Route events to inbox based on configured routes
+      for (const route of this.inboxRoutes) {
+        if (route.filter(event as unknown as Record<string, unknown>)) {
+          const item = route.transform(event as unknown as Record<string, unknown>);
+          const { inboxItems } = await import("@boringos/db");
+          await dbConn.db.insert(inboxItems).values({
+            id: generateId(),
+            tenantId: event.tenantId,
+            source: item.source,
+            subject: item.subject,
+            body: item.body ?? null,
+            from: item.from ?? null,
+          }).catch(() => {});
+        }
+      }
     });
 
     // 11. Build Hono app
@@ -238,6 +300,14 @@ export class BoringOS {
     // Health endpoint
     app.get("/health", (c) => c.json({ status: "ok", timestamp: new Date().toISOString() }));
 
+    // Auth routes (login, signup, session)
+    const authApp = createAuthRoutes(dbConn.db, jwtSecret);
+    app.route("/api/auth", authApp);
+
+    // Device auth routes (CLI login)
+    const deviceAuthApp = createDeviceAuthRoutes(dbConn.db);
+    app.route("/api/auth/device", deviceAuthApp);
+
     // Agent callback API
     const callbackApp = createCallbackRoutes(dbConn.db, agentEngine, jwtSecret);
     app.route("/api/agent", callbackApp);
@@ -245,6 +315,43 @@ export class BoringOS {
     // Connector routes
     const connectorApp = createConnectorRoutes(dbConn.db, connectorRegistry, eventBus, actionRunner, jwtSecret);
     app.route("/api/connectors", connectorApp);
+
+    // Admin API (for human management of the platform)
+    const adminKeyValue = this.config.auth?.adminKey ?? jwtSecret;
+    // Realtime SSE
+    const realtimeBus = createRealtimeBus();
+
+    const adminApp = createAdminRoutes(dbConn.db, agentEngine, adminKeyValue, realtimeBus);
+    app.route("/api/admin", adminApp);
+    const sseApp = createSSERoutes(realtimeBus, adminKeyValue);
+    app.route("/api", sseApp);
+
+    // Wire engine events to realtime bus
+    agentEngine.beforeRun.use((event) => {
+      realtimeBus.publish({
+        type: "run:started",
+        tenantId: event.tenantId,
+        data: { runId: event.runId, agentId: event.agentId, taskId: event.taskId },
+        timestamp: new Date().toISOString(),
+      });
+    });
+    agentEngine.afterRun.use((event) => {
+      const status = event.result.exitCode === 0 ? "run:completed" : "run:failed";
+      realtimeBus.publish({
+        type: status,
+        tenantId: event.tenantId,
+        data: { runId: event.runId, agentId: event.agentId, exitCode: event.result.exitCode },
+        timestamp: new Date().toISOString(),
+      });
+    });
+
+    // Plugin webhook routes
+    const pluginWebhookApp = createPluginWebhookRoutes(dbConn.db, pluginRegistry);
+    app.route("/webhooks/plugins", pluginWebhookApp);
+
+    // Plugin admin routes (under admin API auth)
+    const pluginAdminApp = createPluginAdminRoutes(dbConn.db, pluginRegistry);
+    app.route("/api/admin/plugins", pluginAdminApp);
 
     // Extra routes
     for (const { path, app: routeApp } of this.extraRoutes) {
@@ -258,7 +365,11 @@ export class BoringOS {
     const address = server.address();
     const actualPort = typeof address === "object" && address ? address.port : listenPort;
 
-    // 12. Run afterStart hooks
+    // 12. Start routine scheduler
+    const scheduler = createRoutineScheduler(dbConn.db, agentEngine);
+    scheduler.start();
+
+    // 13. Run afterStart hooks
     for (const hook of this.afterStartHooks) {
       await hook(context);
     }
@@ -270,6 +381,7 @@ export class BoringOS {
       port: actualPort,
       context,
       async close() {
+        scheduler.stop();
         server.close();
         await dbConn.close();
       },

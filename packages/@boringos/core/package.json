@@ -26,6 +26,7 @@
     "@boringos/pipeline": "workspace:*",
     "@boringos/connector": "workspace:*",
     "@boringos/workflow": "workspace:*",
+    "better-auth": "^1.6.0",
     "hono": "^4.7.0",
     "@hono/node-server": "^1.13.0"
   },

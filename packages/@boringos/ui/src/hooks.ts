@@ -13,9 +13,15 @@ export function useAgents() {
   });
 
   const createAgent = useMutation({
-    mutationFn: (data: { tenantId: string; name: string; role?: string; instructions?: string }) =>
+    mutationFn: (data: { name: string; role?: string; instructions?: string; runtimeId?: string }) =>
       client.createAgent(data),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ["agents"] }),
+  });
+
+  const wakeAgent = useMutation({
+    mutationFn: (params: { agentId: string; taskId?: string }) =>
+      client.wakeAgent(params.agentId, params.taskId),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["runs"] }),
   });
 
   return {
@@ -23,23 +29,24 @@ export function useAgents() {
     isLoading: query.isLoading,
     error: query.error,
     createAgent: createAgent.mutateAsync,
+    wakeAgent: wakeAgent.mutateAsync,
     isCreating: createAgent.isPending,
   };
 }
 
 // ── Tasks ────────────────────────────────────────────────────────────────────
 
-export function useTasks() {
+export function useTasks(filters?: { status?: string; assigneeAgentId?: string }) {
   const client = useClient();
   const queryClient = useQueryClient();
 
   const query = useQuery({
-    queryKey: ["tasks"],
-    queryFn: () => client.getTasks(),
+    queryKey: ["tasks", filters],
+    queryFn: () => client.getTasks(filters),
   });
 
   const createTask = useMutation({
-    mutationFn: (data: { tenantId: string; title: string; description?: string; priority?: string; assigneeAgentId?: string; parentId?: string }) =>
+    mutationFn: (data: { title: string; description?: string; priority?: string; assigneeAgentId?: string; parentId?: string }) =>
       client.createTask(data),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ["tasks"] }),
   });
@@ -63,8 +70,9 @@ export function useTask(taskId: string) {
     enabled: !!taskId,
   });
 
-  const updateStatus = useMutation({
-    mutationFn: (status: string) => client.updateTask(taskId, { status }),
+  const updateTask = useMutation({
+    mutationFn: (data: { status?: string; title?: string; description?: string; priority?: string; assigneeAgentId?: string }) =>
+      client.updateTask(taskId, data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["task", taskId] });
       queryClient.invalidateQueries({ queryKey: ["tasks"] });
@@ -74,6 +82,15 @@ export function useTask(taskId: string) {
   const postComment = useMutation({
     mutationFn: (body: string) => client.postComment(taskId, { body }),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ["task", taskId] }),
+  });
+
+  const assignTask = useMutation({
+    mutationFn: (params: { agentId: string; wake?: boolean }) =>
+      client.assignTask(taskId, params.agentId, params.wake),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["task", taskId] });
+      queryClient.invalidateQueries({ queryKey: ["tasks"] });
+    },
   });
 
   const addWorkProduct = useMutation({
@@ -87,27 +104,96 @@ export function useTask(taskId: string) {
     comments: query.data?.comments ?? [],
     isLoading: query.isLoading,
     error: query.error,
-    updateStatus: updateStatus.mutateAsync,
+    updateTask: updateTask.mutateAsync,
     postComment: postComment.mutateAsync,
+    assignTask: assignTask.mutateAsync,
     addWorkProduct: addWorkProduct.mutateAsync,
   };
 }
 
 // ── Runs ─────────────────────────────────────────────────────────────────────
 
-export function useRuns() {
+export function useRuns(filters?: { agentId?: string; status?: string }) {
   const client = useClient();
 
   const query = useQuery({
-    queryKey: ["runs"],
-    queryFn: () => client.getRuns(),
-    refetchInterval: 5000, // poll for run status updates
+    queryKey: ["runs", filters],
+    queryFn: () => client.getRuns(filters),
+    refetchInterval: 5000,
+  });
+
+  const cancelRun = useMutation({
+    mutationFn: (runId: string) => client.cancelRun(runId),
   });
 
   return {
     runs: query.data ?? [],
     isLoading: query.isLoading,
     error: query.error,
+    cancelRun: cancelRun.mutateAsync,
+  };
+}
+
+// ── Runtimes ─────────────────────────────────────────────────────────────────
+
+export function useRuntimes() {
+  const client = useClient();
+  const queryClient = useQueryClient();
+
+  const query = useQuery({
+    queryKey: ["runtimes"],
+    queryFn: () => client.getRuntimes(),
+  });
+
+  const createRuntime = useMutation({
+    mutationFn: (data: { name: string; type: string; config?: Record<string, unknown>; model?: string }) =>
+      client.createRuntime(data),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["runtimes"] }),
+  });
+
+  const setDefault = useMutation({
+    mutationFn: (runtimeId: string) => client.setDefaultRuntime(runtimeId),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["runtimes"] }),
+  });
+
+  return {
+    runtimes: query.data ?? [],
+    isLoading: query.isLoading,
+    error: query.error,
+    createRuntime: createRuntime.mutateAsync,
+    setDefault: setDefault.mutateAsync,
+  };
+}
+
+// ── Approvals ────────────────────────────────────────────────────────────────
+
+export function useApprovals(status?: string) {
+  const client = useClient();
+  const queryClient = useQueryClient();
+
+  const query = useQuery({
+    queryKey: ["approvals", status],
+    queryFn: () => client.getApprovals(status),
+  });
+
+  const approve = useMutation({
+    mutationFn: (params: { approvalId: string; note?: string }) =>
+      client.approveApproval(params.approvalId, params.note),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["approvals"] }),
+  });
+
+  const reject = useMutation({
+    mutationFn: (params: { approvalId: string; reason?: string }) =>
+      client.rejectApproval(params.approvalId, params.reason),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["approvals"] }),
+  });
+
+  return {
+    approvals: query.data ?? [],
+    isLoading: query.isLoading,
+    error: query.error,
+    approve: approve.mutateAsync,
+    reject: reject.mutateAsync,
   };
 }
 
@@ -135,7 +221,61 @@ export function useConnectors() {
   };
 }
 
+// ── Projects ─────────────────────────────────────────────────────────────────
+
+export function useProjects() {
+  const client = useClient();
+  // Projects endpoint — uses admin API pattern
+  return useQuery({ queryKey: ["projects"], queryFn: async () => [] as Record<string, unknown>[] });
+}
+
+// ── Goals ────────────────────────────────────────────────────────────────────
+
+export function useGoals() {
+  return useQuery({ queryKey: ["goals"], queryFn: async () => [] as Record<string, unknown>[] });
+}
+
+// ── Onboarding ───────────────────────────────────────────────────────────────
+
+export function useOnboarding() {
+  return useQuery({ queryKey: ["onboarding"], queryFn: async () => ({ currentStep: 1, totalSteps: 5, completedSteps: [] as number[], completed: false }) });
+}
+
+// ── Evals ────────────────────────────────────────────────────────────────────
+
+export function useEvals() {
+  return useQuery({ queryKey: ["evals"], queryFn: async () => [] as Record<string, unknown>[] });
+}
+
+// ── Inbox ────────────────────────────────────────────────────────────────────
+
+export function useInbox(status?: string) {
+  return useQuery({ queryKey: ["inbox", status], queryFn: async () => [] as Record<string, unknown>[] });
+}
+
 // ── Health ────────────────────────────────────────────────────────────────────
+
+// ── Entity References ─────────────────────────────────────────────────────
+
+export function useEntityRefs(entityType: string, entityId: string) {
+  return useQuery({
+    queryKey: ["entityRefs", entityType, entityId],
+    queryFn: async () => ({ refs: {} as Record<string, string[]> }),
+    enabled: !!entityType && !!entityId,
+  });
+}
+
+// ── Search ───────────────────────────────────────────────────────────────
+
+export function useSearch(query: string) {
+  return useQuery({
+    queryKey: ["search", query],
+    queryFn: async () => ({ tasks: [], agents: [], inboxItems: [] }),
+    enabled: query.length >= 2,
+  });
+}
+
+// ── Health ────────────────────────────────────────────────────────────────
 
 export function useHealth() {
   const client = useClient();

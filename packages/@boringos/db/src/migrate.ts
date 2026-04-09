@@ -284,6 +284,226 @@ async function ensureSchema(db: Db): Promise<void> {
       created_at TIMESTAMPTZ NOT NULL DEFAULT now()
     );
 
+    CREATE TABLE IF NOT EXISTS budget_policies (
+      id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+      tenant_id UUID NOT NULL REFERENCES tenants(id),
+      agent_id UUID REFERENCES agents(id) ON DELETE CASCADE,
+      scope TEXT NOT NULL DEFAULT 'tenant',
+      period TEXT NOT NULL DEFAULT 'monthly',
+      limit_cents INTEGER NOT NULL,
+      warn_threshold_pct INTEGER NOT NULL DEFAULT 80,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+      updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+    );
+
+    CREATE TABLE IF NOT EXISTS budget_incidents (
+      id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+      tenant_id UUID NOT NULL REFERENCES tenants(id),
+      policy_id UUID NOT NULL REFERENCES budget_policies(id),
+      agent_id UUID REFERENCES agents(id),
+      type TEXT NOT NULL,
+      spent_cents INTEGER NOT NULL,
+      limit_cents INTEGER NOT NULL,
+      run_id UUID,
+      dismissed TEXT DEFAULT 'false',
+      created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+    );
+
+    CREATE TABLE IF NOT EXISTS routines (
+      id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+      tenant_id UUID NOT NULL REFERENCES tenants(id),
+      title TEXT NOT NULL,
+      description TEXT,
+      assignee_agent_id UUID NOT NULL REFERENCES agents(id),
+      cron_expression TEXT NOT NULL,
+      timezone TEXT DEFAULT 'UTC',
+      status TEXT NOT NULL DEFAULT 'active',
+      concurrency_policy TEXT NOT NULL DEFAULT 'skip_if_active',
+      last_triggered_at TIMESTAMPTZ,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+      updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+    );
+
+    CREATE TABLE IF NOT EXISTS plugins (
+      id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+      tenant_id UUID NOT NULL REFERENCES tenants(id),
+      name TEXT NOT NULL,
+      version TEXT NOT NULL,
+      status TEXT NOT NULL DEFAULT 'active',
+      config JSONB NOT NULL DEFAULT '{}',
+      created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+      updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+    );
+
+    CREATE TABLE IF NOT EXISTS plugin_state (
+      id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+      tenant_id UUID NOT NULL REFERENCES tenants(id),
+      plugin_name TEXT NOT NULL,
+      key TEXT NOT NULL,
+      value JSONB,
+      updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+    );
+
+    CREATE TABLE IF NOT EXISTS plugin_job_runs (
+      id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+      tenant_id UUID NOT NULL REFERENCES tenants(id),
+      plugin_name TEXT NOT NULL,
+      job_name TEXT NOT NULL,
+      status TEXT NOT NULL DEFAULT 'running',
+      error TEXT,
+      started_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+      finished_at TIMESTAMPTZ
+    );
+
+    CREATE TABLE IF NOT EXISTS projects (
+      id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+      tenant_id UUID NOT NULL REFERENCES tenants(id),
+      name TEXT NOT NULL,
+      description TEXT,
+      status TEXT NOT NULL DEFAULT 'active',
+      prefix TEXT,
+      next_issue_number TEXT NOT NULL DEFAULT '1',
+      repo_url TEXT,
+      default_branch TEXT DEFAULT 'main',
+      branch_template TEXT DEFAULT 'bos/{{identifier}}-{{slug}}',
+      settings JSONB NOT NULL DEFAULT '{}',
+      created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+      updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+    );
+
+    CREATE TABLE IF NOT EXISTS goals (
+      id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+      tenant_id UUID NOT NULL REFERENCES tenants(id),
+      title TEXT NOT NULL,
+      description TEXT,
+      status TEXT NOT NULL DEFAULT 'planned',
+      created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+      updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+    );
+
+    CREATE TABLE IF NOT EXISTS labels (
+      id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+      tenant_id UUID NOT NULL REFERENCES tenants(id),
+      name TEXT NOT NULL,
+      color TEXT,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+    );
+
+    CREATE TABLE IF NOT EXISTS task_labels (
+      id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+      task_id UUID NOT NULL REFERENCES tasks(id) ON DELETE CASCADE,
+      label_id UUID NOT NULL REFERENCES labels(id) ON DELETE CASCADE,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+    );
+
+    CREATE TABLE IF NOT EXISTS task_attachments (
+      id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+      task_id UUID NOT NULL REFERENCES tasks(id) ON DELETE CASCADE,
+      tenant_id UUID NOT NULL REFERENCES tenants(id),
+      filename TEXT NOT NULL,
+      path TEXT NOT NULL,
+      size INTEGER NOT NULL DEFAULT 0,
+      mime_type TEXT,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+    );
+
+    CREATE TABLE IF NOT EXISTS task_read_states (
+      id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+      task_id UUID NOT NULL REFERENCES tasks(id) ON DELETE CASCADE,
+      user_id TEXT NOT NULL,
+      last_read_at TIMESTAMPTZ NOT NULL DEFAULT now()
+    );
+
+    CREATE TABLE IF NOT EXISTS drive_skill_revisions (
+      id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+      tenant_id UUID NOT NULL REFERENCES tenants(id),
+      content TEXT NOT NULL,
+      changed_by TEXT,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+    );
+
+    CREATE TABLE IF NOT EXISTS onboarding_state (
+      id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+      tenant_id UUID NOT NULL REFERENCES tenants(id) UNIQUE,
+      current_step INTEGER NOT NULL DEFAULT 1,
+      total_steps INTEGER NOT NULL DEFAULT 5,
+      completed_steps JSONB NOT NULL DEFAULT '[]',
+      metadata JSONB NOT NULL DEFAULT '{}',
+      completed_at TIMESTAMPTZ,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+      updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+    );
+
+    CREATE TABLE IF NOT EXISTS cli_auth_challenges (
+      id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+      device_code TEXT NOT NULL UNIQUE,
+      user_code TEXT NOT NULL UNIQUE,
+      status TEXT NOT NULL DEFAULT 'pending',
+      session_token TEXT,
+      user_id TEXT,
+      tenant_id UUID,
+      expires_at TIMESTAMPTZ NOT NULL,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+    );
+
+    CREATE TABLE IF NOT EXISTS evals (
+      id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+      tenant_id UUID NOT NULL REFERENCES tenants(id),
+      name TEXT NOT NULL,
+      description TEXT,
+      test_cases JSONB NOT NULL DEFAULT '[]',
+      created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+      updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+    );
+
+    CREATE TABLE IF NOT EXISTS eval_runs (
+      id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+      tenant_id UUID NOT NULL REFERENCES tenants(id),
+      eval_id UUID NOT NULL REFERENCES evals(id),
+      agent_id UUID NOT NULL REFERENCES agents(id),
+      status TEXT NOT NULL DEFAULT 'running',
+      total_cases INTEGER NOT NULL DEFAULT 0,
+      passed_cases INTEGER NOT NULL DEFAULT 0,
+      failed_cases INTEGER NOT NULL DEFAULT 0,
+      results JSONB,
+      started_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+      finished_at TIMESTAMPTZ
+    );
+
+    CREATE TABLE IF NOT EXISTS inbox_items (
+      id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+      tenant_id UUID NOT NULL REFERENCES tenants(id),
+      source TEXT NOT NULL,
+      source_id TEXT,
+      subject TEXT NOT NULL,
+      body TEXT,
+      "from" TEXT,
+      status TEXT NOT NULL DEFAULT 'unread',
+      metadata JSONB,
+      linked_task_id UUID,
+      archived_at TIMESTAMPTZ,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+      updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+    );
+
+    CREATE TABLE IF NOT EXISTS entity_references (
+      id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+      tenant_id UUID NOT NULL REFERENCES tenants(id),
+      entity_type TEXT NOT NULL,
+      entity_id TEXT NOT NULL,
+      ref_type TEXT NOT NULL,
+      ref_id UUID NOT NULL,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+    );
+
+    CREATE INDEX IF NOT EXISTS entity_refs_entity_idx ON entity_references(entity_type, entity_id);
+    CREATE INDEX IF NOT EXISTS entity_refs_ref_idx ON entity_references(ref_type, ref_id);
+
+    -- Add columns to tasks if they don't exist
+    ALTER TABLE tasks ADD COLUMN IF NOT EXISTS project_id UUID REFERENCES projects(id);
+    ALTER TABLE tasks ADD COLUMN IF NOT EXISTS goal_id UUID;
+    ALTER TABLE tasks ADD COLUMN IF NOT EXISTS checkout_run_id UUID;
+
     CREATE INDEX IF NOT EXISTS agents_tenant_status_idx ON agents(tenant_id, status);
     CREATE INDEX IF NOT EXISTS tasks_tenant_status_idx ON tasks(tenant_id, status);
     CREATE INDEX IF NOT EXISTS tasks_assignee_agent_idx ON tasks(assignee_agent_id);

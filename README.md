@@ -37,6 +37,27 @@ The framework handles:
 - **File storage** — local drive with organization rules agents understand
 - **Database** — embedded or external Postgres with Drizzle ORM
 - **JWT-authenticated callback API** — agents call back to update tasks, post comments, record work products
+- **Admin REST API** — manage agents, tasks, runs, runtimes, approvals via API key auth
+- **SSE realtime events** — live streaming of run status, task updates, approvals
+- **User auth** — signup, login, session tokens, user-tenant membership
+- **Activity logging** — audit trail for all admin mutations
+- **Budget enforcement** — cost limits per agent/tenant with hard-stop + warnings
+- **Routine scheduler** — cron-based recurring agent tasks
+- **Notifications** — email via Resend (task completion, failures, approvals)
+- **Execution workspaces** — git worktree provisioning for code tasks
+- **Skill system** — sync from GitHub/URL, per-agent attachment, trust levels
+- **Plugin system** — extensible jobs + webhooks, built-in GitHub plugin ([guide](PLUGINS.md))
+- **Projects & Goals** — organize tasks into projects with repo config, auto-identifiers (ALPHA-001)
+- **Task features** — labels, read states, attachments, checkout locks
+- **Drive features** — file indexing, memory sync, drive skill revisions
+- **Onboarding** — 5-step setup wizard per tenant
+- **Device auth** — CLI login flow (generate code → browser approve → poll for token)
+- **Evaluations** — A/B test agent quality with structured test cases
+- **Inbox** — receive and triage external messages, convert to tasks
+- **Custom schema** — `.schema(ddl)` to add your own tables that reference framework tables
+- **Entity linking** — link domain entities (contacts, deals) to tasks, runs, inbox items
+- **Event-to-inbox routing** — declaratively route connector events to inbox
+- **Cross-entity search** — `GET /api/admin/search?q=` across tasks, agents, inbox
 - **Convention over configuration** — everything works with zero config
 
 ## Packages
@@ -90,7 +111,7 @@ const server = await app.listen(3000);
 pnpm install           # Install dependencies
 pnpm -r build          # Build all packages
 pnpm -r typecheck      # Typecheck all packages
-pnpm test:run          # Run all tests (80 tests)
+pnpm test:run          # Run all tests (111 tests)
 ```
 
 ## Examples

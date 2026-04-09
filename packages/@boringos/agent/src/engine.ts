@@ -117,6 +117,14 @@ export function createAgentEngine(config: AgentEngineConfig): AgentEngine {
 
     await lifecycle.updateStatus(runId, "running");
 
+    // Budget check
+    const { checkBudget } = await import("./budget.js");
+    const budgetResult = await checkBudget(db, job.tenantId, job.agentId);
+    if (!budgetResult.allowed) {
+      await lifecycle.updateStatus(runId, "failed", { error: budgetResult.reason, errorCode: "budget_exceeded" });
+      return;
+    }
+
     // Fire beforeRun hooks
     await beforeRun.run({ agentId: job.agentId, tenantId: job.tenantId, runId, taskId: job.taskId });
 

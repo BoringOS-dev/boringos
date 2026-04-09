@@ -38,3 +38,12 @@ export {
 
 export { signCallbackToken, verifyCallbackToken } from "./jwt.js";
 export type { CallbackTokenClaims } from "./jwt.js";
+
+export { checkBudget } from "./budget.js";
+export type { BudgetCheckResult } from "./budget.js";
+
+export { provisionWorkspace, cleanupWorkspace } from "./workspace.js";
+export type { WorkspaceConfig, WorkspaceResult } from "./workspace.js";
+
+export { syncSkill, injectSkills } from "./skills.js";
+export type { SkillSyncConfig, InjectedSkill } from "./skills.js";
