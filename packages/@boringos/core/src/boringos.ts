@@ -28,6 +28,8 @@ import {
   conditionHandler,
   delayHandler,
   transformHandler,
+  wakeAgentHandler,
+  connectorActionHandler,
 } from "@boringos/workflow";
 import type { WorkflowEngine, BlockHandler } from "@boringos/workflow";
 import {
@@ -219,22 +221,26 @@ export class BoringOS {
     handlerRegistry.register(conditionHandler);
     handlerRegistry.register(delayHandler);
     handlerRegistry.register(transformHandler);
+    handlerRegistry.register(wakeAgentHandler);
+    handlerRegistry.register(connectorActionHandler);
     for (const handler of this.blockHandlers) {
       handlerRegistry.register(handler);
     }
 
     const workflowStore = createWorkflowStore(dbConn.db);
     const memoryRef = this.memoryProvider;
+    // Lazy service map — allows services registered after workflow engine creation
+    // (e.g., actionRunner, connectorRegistry) to be available to block handlers.
+    const serviceMap: Record<string, unknown> = { db: dbConn.db, memory: memoryRef, drive, agentEngine };
     const workflowEngine = createWorkflowEngine({
       store: workflowStore,
       handlers: handlerRegistry,
       services: {
         get<T>(key: string): T | undefined {
-          const map: Record<string, unknown> = { db: dbConn.db, memory: memoryRef, drive, agentEngine };
-          return map[key] as T | undefined;
+          return serviceMap[key] as T | undefined;
         },
         has(key: string): boolean {
-          return ["db", "memory", "drive", "agentEngine"].includes(key);
+          return key in serviceMap;
         },
       },
     });
@@ -274,6 +280,9 @@ export class BoringOS {
       connectorRegistry.register(def);
     }
     const actionRunner = createActionRunner(connectorRegistry);
+    // Make actionRunner available to workflow block handlers (connector-action)
+    serviceMap.actionRunner = actionRunner;
+    serviceMap.connectorRegistry = connectorRegistry;
 
     // Wire connector events to agent wakeups + inbox routing
     eventBus.onAny(async (event) => {
@@ -321,7 +330,7 @@ export class BoringOS {
     // Realtime SSE
     const realtimeBus = createRealtimeBus();
 
-    const adminApp = createAdminRoutes(dbConn.db, agentEngine, adminKeyValue, realtimeBus);
+    const adminApp = createAdminRoutes(dbConn.db, agentEngine, adminKeyValue, realtimeBus, workflowEngine);
     app.route("/api/admin", adminApp);
     const sseApp = createSSERoutes(realtimeBus, adminKeyValue);
     app.route("/api", sseApp);
@@ -366,7 +375,7 @@ export class BoringOS {
     const actualPort = typeof address === "object" && address ? address.port : listenPort;
 
     // 12. Start routine scheduler
-    const scheduler = createRoutineScheduler(dbConn.db, agentEngine);
+    const scheduler = createRoutineScheduler(dbConn.db, agentEngine, workflowEngine);
     scheduler.start();
 
     // 13. Run afterStart hooks

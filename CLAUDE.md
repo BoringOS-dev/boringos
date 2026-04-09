@@ -32,7 +32,7 @@ boringos/
 │   └── core/             # BoringOS class, Hono callback API, app bootstrap
 ├── examples/
 │   └── quickstart/       # Runnable quickstart example
-├── tests/                # Smoke tests (accumulated per phase, 80 tests)
+├── tests/                # Smoke tests (accumulated per phase, 118 tests)
 ├── plans/                # Architecture and implementation plans
 ├── LICENSE               # MIT
 └── vitest.config.ts      # Test configuration
@@ -141,7 +141,9 @@ DAG-based workflow engine with typed block handlers and condition branching.
 - **`createHandlerRegistry()`** — maps block types to handlers
 - **`createExecutionState()`** — tracks block status + outputs during execution
 - **`resolveTemplate(template, state, nameToId)`** — substitutes `{{blockName.field}}` references
-- **4 built-in handlers:** `trigger` (entry point), `condition` (true/false branching), `delay` (wait), `transform` (data mapping)
+- **6 built-in handlers:** `trigger` (entry point), `condition` (true/false branching), `delay` (wait), `transform` (data mapping), `wake-agent` (wake an agent from workflow), `connector-action` (call a connector action)
+- **`wake-agent` handler:** Wakes an agent from within a workflow. Config: `{ agentId, reason?, taskId? }`. Uses `agentEngine.wake()` + `enqueue()`. Enables "smart routines" — workflows that only spawn agents when needed.
+- **`connector-action` handler:** Calls a connector action (e.g., `list_emails`, `list_events`) from within a workflow. Config: `{ connectorKind, action, inputs? }`. Fetches credentials from DB automatically.
 - **Branching:** condition blocks return `selectedHandle` (e.g., `condition-true`/`condition-false`) that determines which downstream edges activate
 - **Trigger types:** `cron`, `webhook`, `event`
 
@@ -308,7 +310,10 @@ Application host — the entry point.
   - Admin API: `GET/POST/DELETE /api/admin/budgets`, `GET /api/admin/budgets/incidents`
   - Budget incidents logged with type (hard_stop/warning), spent vs limit
 - **Routine scheduler:**
-  - Cron-based recurring agent wakeups with 5-field cron expressions + timezone
+  - Cron-based recurring with 5-field cron expressions + timezone
+  - **Dual target:** routines can target an agent (`assigneeAgentId`) OR a workflow (`workflowId`)
+  - Agent-targeted: wakes the agent directly on schedule
+  - Workflow-targeted: executes the workflow, which may conditionally wake agents via `wake-agent` blocks — enables "smart routines" that check before spawning expensive agent runs
   - Concurrency policies: `skip_if_active`, `coalesce_if_active`, `allow_concurrent`
   - Admin API: `GET/POST/PATCH/DELETE /api/admin/routines`, `POST /api/admin/routines/:id/trigger`
   - Scheduler starts on boot, checks every 60 seconds
@@ -472,6 +477,40 @@ const app = new BoringOS({});
 app.blockHandler(myHandler);
 ```
 
+### Workflow-triggered routine (smart scheduling)
+
+Instead of waking an agent on every cron tick, use a workflow that checks first:
+
+```typescript
+// Create a workflow that fetches emails, checks if any are new, and only then wakes the agent
+const workflow = await admin.createWorkflow({
+  name: "Email sync check",
+  type: "system",
+  blocks: [
+    { id: "trigger", name: "trigger", type: "trigger", config: {} },
+    { id: "fetch", name: "fetch", type: "connector-action", config: {
+      connectorKind: "google", action: "list_emails", inputs: { query: "newer_than:15m" }
+    }},
+    { id: "check", name: "check", type: "condition", config: {
+      field: "{{fetch.success}}", operator: "equals", value: "true"
+    }},
+    { id: "wake", name: "wake", type: "wake-agent", config: { agentId: "email-triage-id" }},
+  ],
+  edges: [
+    { id: "e1", sourceBlockId: "trigger", targetBlockId: "fetch", sourceHandle: null, sortOrder: 0 },
+    { id: "e2", sourceBlockId: "fetch", targetBlockId: "check", sourceHandle: null, sortOrder: 0 },
+    { id: "e3", sourceBlockId: "check", targetBlockId: "wake", sourceHandle: "condition-true", sortOrder: 0 },
+  ],
+});
+
+// Create routine targeting the workflow instead of an agent
+await admin.createRoutine({
+  title: "Email sync",
+  workflowId: workflow.id,  // ← workflow, not agent
+  cronExpression: "*/15 * * * *",
+});
+```
+
 ### Using memory
 
 ```typescript
@@ -506,7 +545,7 @@ new BoringOS({ database: { url: "postgres://..." } });
 Tests live in `tests/` at the repo root. Uses Vitest. Tests accumulate per phase.
 
 ```bash
-pnpm test:run    # single pass (111 tests)
+pnpm test:run    # single pass (118 tests)
 pnpm test        # watch mode
 ```
 
@@ -529,6 +568,7 @@ pnpm test        # watch mode
 | `phase15-drive.test.ts` | DriveManager, file indexing, skill revisions | 2 |
 | `phase16-final-tier3.test.ts` | Onboarding, device auth, evals, inbox | 4 |
 | `phase17-improvements.test.ts` | Custom schema, entity linking, search | 3 |
+| `phase18-workflow-routines.test.ts` | wake-agent handler, connector-action handler, workflow-triggered routines | 7 |
 
 ---
 

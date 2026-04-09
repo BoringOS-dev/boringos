@@ -32,4 +32,4 @@ export { createWorkflowEngine } from "./engine.js";
 export type { WorkflowEngineConfig } from "./engine.js";
 export { createWorkflowStore } from "./store.js";
 
-export { triggerHandler, conditionHandler, delayHandler, transformHandler } from "./handlers/index.js";
+export { triggerHandler, conditionHandler, delayHandler, transformHandler, wakeAgentHandler, connectorActionHandler } from "./handlers/index.js";

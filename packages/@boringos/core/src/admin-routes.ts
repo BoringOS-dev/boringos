@@ -33,6 +33,7 @@ import {
   entityReferences,
 } from "@boringos/db";
 import type { AgentEngine } from "@boringos/agent";
+import type { WorkflowEngine } from "@boringos/workflow";
 import { generateId } from "@boringos/shared";
 import type { RealtimeBus } from "./realtime.js";
 
@@ -47,6 +48,7 @@ export function createAdminRoutes(
   engine: AgentEngine,
   adminKey: string,
   realtimeBus?: RealtimeBus,
+  workflowEngine?: WorkflowEngine,
 ): Hono<AdminEnv> {
 
   function emit(type: string, tenantId: string, data: Record<string, unknown>) {
@@ -649,7 +651,8 @@ export function createAdminRoutes(
       tenantId: c.get("tenantId"),
       title: body.title as string,
       description: body.description as string | undefined,
-      assigneeAgentId: body.assigneeAgentId as string,
+      assigneeAgentId: (body.assigneeAgentId as string) || null,
+      workflowId: (body.workflowId as string) || null,
       cronExpression: body.cronExpression as string,
       timezone: (body.timezone as string) ?? "UTC",
       concurrencyPolicy: (body.concurrencyPolicy as string) ?? "skip_if_active",
@@ -686,6 +689,18 @@ export function createAdminRoutes(
     ).limit(1);
     const routine = rows[0];
     if (!routine) return c.json({ error: "Routine not found" }, 404);
+
+    if (routine.workflowId && workflowEngine) {
+      const result = await workflowEngine.execute(routine.workflowId, {
+        type: "routine",
+        data: { routineId: routine.id, routineTitle: routine.title, tenantId: c.get("tenantId") },
+      });
+      return c.json({ kind: "workflow_executed", runId: result.runId, status: result.status });
+    }
+
+    if (!routine.assigneeAgentId) {
+      return c.json({ error: "Routine has no agent or workflow target" }, 400);
+    }
 
     const outcome = await engine.wake({
       agentId: routine.assigneeAgentId,

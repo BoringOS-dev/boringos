@@ -1,13 +1,15 @@
 import { pgTable, uuid, text, timestamp } from "drizzle-orm/pg-core";
 import { tenants } from "./tenants.js";
 import { agents } from "./agents.js";
+import { workflows } from "./workflows.js";
 
 export const routines = pgTable("routines", {
   id: uuid("id").primaryKey().defaultRandom(),
   tenantId: uuid("tenant_id").notNull().references(() => tenants.id),
   title: text("title").notNull(),
   description: text("description"),
-  assigneeAgentId: uuid("assignee_agent_id").notNull().references(() => agents.id),
+  assigneeAgentId: uuid("assignee_agent_id").references(() => agents.id),
+  workflowId: uuid("workflow_id").references(() => workflows.id),
   cronExpression: text("cron_expression").notNull(),
   timezone: text("timezone").default("UTC"),
   status: text("status").notNull().default("active"),

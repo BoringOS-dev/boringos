@@ -2,6 +2,7 @@ import { eq } from "drizzle-orm";
 import type { Db } from "@boringos/db";
 import { routines } from "@boringos/db";
 import type { AgentEngine } from "@boringos/agent";
+import type { WorkflowEngine } from "@boringos/workflow";
 
 export interface RoutineScheduler {
   start(): void;
@@ -11,9 +12,16 @@ export interface RoutineScheduler {
 /**
  * Simple interval-based routine scheduler.
  * Checks every 60 seconds for routines whose cron expression matches the current minute.
- * No external cron library — uses basic time matching.
+ *
+ * Routines can target either an agent (assigneeAgentId) or a workflow (workflowId).
+ * When targeting a workflow, the workflow executes and may decide to wake an agent
+ * via a wake-agent block — enabling "smart" routines that only spawn agents when needed.
  */
-export function createRoutineScheduler(db: Db, engine: AgentEngine): RoutineScheduler {
+export function createRoutineScheduler(
+  db: Db,
+  engine: AgentEngine,
+  workflowEngine?: WorkflowEngine,
+): RoutineScheduler {
   let interval: ReturnType<typeof setInterval> | null = null;
 
   async function tick(): Promise<void> {
@@ -22,14 +30,27 @@ export function createRoutineScheduler(db: Db, engine: AgentEngine): RoutineSche
     for (const routine of activeRoutines) {
       if (shouldRun(routine.cronExpression, routine.timezone ?? "UTC")) {
         try {
-          const outcome = await engine.wake({
-            agentId: routine.assigneeAgentId,
-            tenantId: routine.tenantId,
-            reason: "routine_triggered",
-          });
+          if (routine.workflowId && workflowEngine) {
+            // Workflow-triggered routine — execute the workflow
+            await workflowEngine.execute(routine.workflowId, {
+              type: "routine",
+              data: {
+                routineId: routine.id,
+                routineTitle: routine.title,
+                tenantId: routine.tenantId,
+              },
+            });
+          } else if (routine.assigneeAgentId) {
+            // Agent-triggered routine — wake the agent directly
+            const outcome = await engine.wake({
+              agentId: routine.assigneeAgentId,
+              tenantId: routine.tenantId,
+              reason: "routine_triggered",
+            });
 
-          if (outcome.kind === "created") {
-            await engine.enqueue(outcome.wakeupRequestId);
+            if (outcome.kind === "created") {
+              await engine.enqueue(outcome.wakeupRequestId);
+            }
           }
 
           await db.update(routines).set({
