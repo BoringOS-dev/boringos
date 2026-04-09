@@ -102,6 +102,17 @@ export function createAdminRoutes(
     return c.json({ agents: rows });
   });
 
+  // Must be before /agents/:id to avoid ":id" matching "org-tree"
+  app.get("/agents/org-tree", async (c) => {
+    try {
+      const { buildOrgTree } = await import("@boringos/agent");
+      const tree = await buildOrgTree(db, c.get("tenantId"));
+      return c.json({ tree });
+    } catch (err) {
+      return c.json({ error: String(err) }, 500);
+    }
+  });
+
   app.get("/agents/:id", async (c) => {
     const rows = await db.select().from(agents).where(
       and(eq(agents.id, c.req.param("id")), eq(agents.tenantId, c.get("tenantId"))),
@@ -165,6 +176,54 @@ export function createAdminRoutes(
       and(eq(agentRuns.agentId, c.req.param("id")), eq(agentRuns.tenantId, c.get("tenantId"))),
     ).orderBy(desc(agentRuns.createdAt)).limit(50);
     return c.json({ runs: rows });
+  });
+
+  // ── Agent Templates & Teams ──────────────────────────────────────────────
+
+  app.post("/agents/from-template", async (c) => {
+    const body = await c.req.json() as Record<string, unknown>;
+    const { createAgentFromTemplate } = await import("@boringos/agent");
+    const agent = await createAgentFromTemplate(db, body.role as string, {
+      tenantId: c.get("tenantId"),
+      name: body.name as string | undefined,
+      runtimeId: body.runtimeId as string | undefined,
+      reportsTo: body.reportsTo as string | undefined,
+    });
+    emit("agent:created", c.get("tenantId"), { agentId: agent.id, name: agent.name, role: agent.role });
+    await logActivity(c.get("tenantId"), "agent.created_from_template", "agent", agent.id, { role: agent.role });
+    return c.json(agent, 201);
+  });
+
+  app.post("/teams/from-template", async (c) => {
+    const body = await c.req.json() as Record<string, unknown>;
+    const { createTeam } = await import("@boringos/agent");
+    const agents = await createTeam(db, body.template as string, {
+      tenantId: c.get("tenantId"),
+      runtimeId: body.runtimeId as string | undefined,
+    });
+    for (const a of agents) {
+      emit("agent:created", c.get("tenantId"), { agentId: a.id, name: a.name, role: a.role });
+    }
+    await logActivity(c.get("tenantId"), "team.created_from_template", "team", agents[0]?.id ?? "", { template: body.template, count: agents.length });
+    return c.json({ agents }, 201);
+  });
+
+  app.get("/teams/templates", async (_c) => {
+    const { BUILT_IN_TEAMS } = await import("@boringos/agent");
+    const templates = Object.entries(BUILT_IN_TEAMS).map(([key, t]) => ({
+      key,
+      name: (t as any).name,
+      description: (t as any).description,
+      roles: (t as any).roles.map((r: any) => ({ role: r.role, name: r.name })),
+    }));
+    return _c.json({ templates });
+  });
+
+  app.get("/agents/:id/reports", async (c) => {
+    const rows = await db.select().from(agents).where(
+      and(eq(agents.reportsTo, c.req.param("id")), eq(agents.tenantId, c.get("tenantId"))),
+    );
+    return c.json({ reports: rows });
   });
 
   // ── Tasks ───────────────────────────────────────────────────────────────

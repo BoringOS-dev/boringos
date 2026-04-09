@@ -35,6 +35,7 @@ import {
   createTaskProvider,
   createCommentsProvider,
   createApprovalProvider,
+  createHierarchyProvider,
 } from "./providers/index.js";
 
 export interface AgentEngineConfig {
@@ -51,6 +52,7 @@ export interface AgentEngineConfig {
 function registerDefaultProviders(pipeline: ContextPipeline, config: AgentEngineConfig): void {
   // System instruction providers
   pipeline.add(headerProvider);
+  pipeline.add(createHierarchyProvider({ db: config.db }));
   pipeline.add(personaProvider);
   pipeline.add(createTenantGuidelinesProvider({ db: config.db }));
   pipeline.add(createDriveSkillProvider({ drive: config.drive }));

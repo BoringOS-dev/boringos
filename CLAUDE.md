@@ -379,6 +379,18 @@ Application host — the entry point.
   - Admin API: `GET /api/admin/inbox`, `GET /api/admin/inbox/:id` (marks read), `POST /api/admin/inbox/:id/archive`, `POST /api/admin/inbox/:id/create-task`
   - Items can be converted to tasks directly
   - `useInbox()` hook in `@boringos/ui`
+- **Agent templates & teams:**
+  - `createAgentFromTemplate(db, role, config)` — creates agent with built-in persona (resolves aliases: "sre" → "devops")
+  - `createTeam(db, templateName, config)` — creates multiple agents with hierarchy already wired
+  - **5 built-in team templates:** engineering (CTO + 2 engineers + QA), executive (CEO + CTO + PM + PA), content (lead + researcher), sales (director + researcher + engineer + coordinator), support (manager + tier 1 + tier 2)
+  - Admin API: `POST /api/admin/agents/from-template`, `POST /api/admin/teams/from-template`, `GET /api/admin/teams/templates`
+- **Agent hierarchy:**
+  - `reportsTo` field — agents have a boss
+  - `buildOrgTree(db, tenantId)` — recursive tree from flat agent list
+  - **Hierarchy context provider** — injects org context into agent instructions ("You report to: CTO. Your reports: Engineer 1, Engineer 2. Delegate to reports, escalate to boss.")
+  - `findDelegateForTask(db, agentId, taskTitle)` — role-based heuristic matching (code task → engineer, research task → researcher)
+  - `escalateToManager(db, agentId, taskId, reason?)` — auto-creates escalation task for agent's boss when blocked
+  - Admin API: `GET /api/admin/agents/org-tree`, `GET /api/admin/agents/:id/reports`
 - **Custom schema integration:**
   - `.schema(ddl)` builder method — pass raw DDL strings, framework executes them after its own migrations
   - User tables can reference framework tables (FK to `tenants.id`, etc.)
@@ -545,7 +557,7 @@ new BoringOS({ database: { url: "postgres://..." } });
 Tests live in `tests/` at the repo root. Uses Vitest. Tests accumulate per phase.
 
 ```bash
-pnpm test:run    # single pass (118 tests)
+pnpm test:run    # single pass (122 tests)
 pnpm test        # watch mode
 ```
 
@@ -569,6 +581,7 @@ pnpm test        # watch mode
 | `phase16-final-tier3.test.ts` | Onboarding, device auth, evals, inbox | 4 |
 | `phase17-improvements.test.ts` | Custom schema, entity linking, search | 3 |
 | `phase18-workflow-routines.test.ts` | wake-agent handler, connector-action handler, workflow-triggered routines | 7 |
+| `phase19-hierarchy.test.ts` | Agent templates, team templates, org tree, delegation | 4 |
 
 ---
 

@@ -10,3 +10,4 @@ export { createTaskProvider } from "./task.js";
 export { createCommentsProvider } from "./comments.js";
 export { memoryContextProvider } from "./memory-context.js";
 export { createApprovalProvider } from "./approval.js";
+export { createHierarchyProvider } from "./hierarchy.js";

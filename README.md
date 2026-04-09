@@ -58,6 +58,9 @@ The framework handles:
 - **Entity linking** — link domain entities (contacts, deals) to tasks, runs, inbox items
 - **Event-to-inbox routing** — declaratively route connector events to inbox
 - **Cross-entity search** — `GET /api/admin/search?q=` across tasks, agents, inbox
+- **Agent templates** — `createAgentFromTemplate(role)` with built-in personas
+- **Team templates** — `createTeam("engineering")` wires up CTO + engineers + QA with hierarchy
+- **Agent hierarchy** — org tree, delegation to reports, escalation to manager
 - **Convention over configuration** — everything works with zero config
 
 ## Packages
@@ -111,7 +114,7 @@ const server = await app.listen(3000);
 pnpm install           # Install dependencies
 pnpm -r build          # Build all packages
 pnpm -r typecheck      # Typecheck all packages
-pnpm test:run          # Run all tests (111 tests)
+pnpm test:run          # Run all tests (122 tests)
 ```
 
 ## Examples
