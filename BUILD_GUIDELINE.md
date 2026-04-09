@@ -595,6 +595,645 @@ Then use relative URLs in the client: `createBoringOSClient({ url: "" })`.
 
 ---
 
+## UI Implementation — Entity Pages (Add / Edit / Delete)
+
+Every entity needs a full CRUD page. Below are concrete implementation patterns for each.
+
+### Standard Page Template
+
+Every entity page has three parts: **list view**, **create modal**, **detail/edit view**.
+
+```
+┌──────────────────────────────────────────────────────────┐
+│  Entity Name                               [+ Add Button]│
+│  Description                                              │
+├──────────────────────────────────────────────────────────┤
+│  [Filters] [View Toggle: List | Board | Grid]             │
+├──────────────────────────────────────────────────────────┤
+│  ┌──────────────────────────────────────────────────────┐│
+│  │ Item Row                                             ││
+│  │  Name / Title        [Status Badge]  [Edit] [Delete] ││
+│  │  Subtitle / metadata                                 ││
+│  └──────────────────────────────────────────────────────┘│
+│  ┌──────────────────────────────────────────────────────┐│
+│  │ ...more items                                        ││
+│  └──────────────────────────────────────────────────────┘│
+│                                                           │
+│  [Empty State: icon + message + CTA when no items]        │
+└──────────────────────────────────────────────────────────┘
+```
+
+### Create Modal Pattern
+
+```tsx
+"use client";
+import { useState } from "react";
+import { useClient } from "@boringos/ui";
+
+function CreateEntityModal({ onClose, onCreated }: { onClose: () => void; onCreated: () => void }) {
+  const client = useClient();
+  const [name, setName] = useState("");
+  const [error, setError] = useState<string | null>(null);
+  const [saving, setSaving] = useState(false);
+
+  async function handleSubmit(e: React.FormEvent) {
+    e.preventDefault();
+    if (!name.trim()) { setError("Name is required"); return; }
+    setSaving(true);
+    try {
+      await client.createAgent({ name, role: "engineer" }); // or whatever entity
+      onCreated(); // parent refetches the list
+      onClose();
+    } catch (err) {
+      setError(String(err));
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center">
+      <div className="absolute inset-0 bg-black/40" onClick={onClose} />
+      <div className="relative w-full max-w-lg rounded-xl bg-[var(--bg)] border border-[var(--border)] shadow-xl">
+        <div className="flex items-center justify-between p-4 border-b border-[var(--border)]">
+          <h2 className="text-lg font-semibold">Create Entity</h2>
+          <button onClick={onClose} className="text-[var(--text-secondary)]">✕</button>
+        </div>
+        <form onSubmit={handleSubmit} className="p-4 space-y-4">
+          <div>
+            <label className="text-sm font-medium block mb-1">Name</label>
+            <input value={name} onChange={(e) => setName(e.target.value)}
+              className="w-full px-3 py-2 rounded-lg border border-[var(--border)] bg-[var(--bg)] text-sm" />
+          </div>
+          {/* More fields... */}
+          {error && <p className="text-xs text-red-600">{error}</p>}
+          <div className="flex justify-end gap-2">
+            <button type="button" onClick={onClose} className="px-4 py-2 text-sm">Cancel</button>
+            <button type="submit" disabled={saving}
+              className="px-4 py-2 text-sm bg-[var(--accent)] text-white rounded-lg disabled:opacity-50">
+              {saving ? "Creating..." : "Create"}
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+  );
+}
+```
+
+### Inline Edit Pattern
+
+For status changes, titles, and other quick edits — use inline editing, not a modal:
+
+```tsx
+function EditableField({ value, onSave }: { value: string; onSave: (v: string) => void }) {
+  const [editing, setEditing] = useState(false);
+  const [draft, setDraft] = useState(value);
+
+  if (!editing) {
+    return <span onClick={() => { setEditing(true); setDraft(value); }}
+      className="cursor-pointer hover:bg-[var(--bg-secondary)] px-1 rounded">{value}</span>;
+  }
+
+  return (
+    <input autoFocus value={draft} onChange={(e) => setDraft(e.target.value)}
+      onBlur={() => { onSave(draft); setEditing(false); }}
+      onKeyDown={(e) => { if (e.key === "Enter") { onSave(draft); setEditing(false); }
+        if (e.key === "Escape") setEditing(false); }}
+      className="px-1 border-b border-[var(--accent)] outline-none bg-transparent" />
+  );
+}
+```
+
+### Delete with Confirmation Pattern
+
+```tsx
+function DeleteButton({ onDelete, label = "Delete" }: { onDelete: () => void; label?: string }) {
+  const [confirming, setConfirming] = useState(false);
+
+  if (!confirming) {
+    return <button onClick={() => setConfirming(true)}
+      className="text-xs text-red-500 hover:text-red-700">{label}</button>;
+  }
+
+  return (
+    <div className="flex items-center gap-2">
+      <span className="text-xs text-red-600">Are you sure?</span>
+      <button onClick={() => { onDelete(); setConfirming(false); }}
+        className="text-xs px-2 py-0.5 bg-red-500 text-white rounded">Yes</button>
+      <button onClick={() => setConfirming(false)}
+        className="text-xs text-[var(--text-secondary)]">No</button>
+    </div>
+  );
+}
+```
+
+---
+
+### Entity: Agents — Full CRUD
+
+**List** (`/agents`):
+- Grid of agent cards showing: name, role, status, last run time, run count
+- Filter by status (idle / running / paused / error)
+- [+ New Agent] button opens create modal
+- Each card has: [Wake] button, [Edit] link, status badge
+
+**Create Modal** — fields:
+- `name` (required) — agent identifier
+- `role` — dropdown: operations, engineer, researcher, writer, or custom
+- `title` — display name
+- `instructions` — textarea (markdown, expandable)
+- `runtimeId` — dropdown of available runtimes
+
+**Detail/Edit** (`/agents/:id`):
+- Editable inline: name, title, instructions (click to edit)
+- Status dropdown: idle → paused → archived
+- Runtime picker
+- Run history table with status badges
+- [Wake Agent] button — calls `POST /api/admin/agents/:id/wake`
+- [Pause] / [Archive] buttons with confirmation
+
+**API calls:**
+```typescript
+// List
+const agents = await client.getAgents();
+// Create
+await client.createAgent({ name, role, instructions, runtimeId });
+// Update
+await client.updateAgent(agentId, { name, instructions, status });
+// Wake
+await client.wakeAgent(agentId);
+// Delete (archive)
+await client.updateAgent(agentId, { status: "archived" });
+```
+
+---
+
+### Entity: Tasks — Full CRUD
+
+**List** (`/tasks`):
+- View toggle: List | Board (kanban by status)
+- Filter by: status, label, assignee, priority
+- [+ New Task] button
+- Each row shows: identifier (BOS-001), title, priority badge, status badge, assignee
+
+**Board view** — 3 columns:
+- To Do (backlog + todo)
+- In Progress (in_progress + in_review)
+- Done (done)
+
+**Create Modal** — fields:
+- `title` (required)
+- `description` — textarea
+- `priority` — dropdown: urgent / high / medium / low
+- `status` — dropdown: backlog / todo
+- `assigneeAgentId` — dropdown of agents
+- `parentId` — optional, for subtasks
+- `labels` — multi-select
+
+**Detail** (`/tasks/:id`):
+- Editable inline: title, description, status, priority
+- Tabs: Comments | Work Products | Subtasks
+- Comment thread with add comment form
+- [Assign to Agent] dropdown + [Wake Agent] button
+- [Delete] with confirmation
+
+**API calls:**
+```typescript
+const tasks = await client.getTasks({ status: "todo" });
+await client.createTask({ title, description, priority, assigneeAgentId, parentId });
+await client.updateTask(taskId, { status: "done", title: "Updated" });
+await client.postComment(taskId, { body: "Done!" });
+await client.addWorkProduct(taskId, { kind: "document", title: "Report", url: "/drive/report.md" });
+await client.deleteTask(taskId);
+```
+
+---
+
+### Entity: Workflows — Visual Builder
+
+Workflows need a richer UI than simple CRUD. They need a **visual DAG editor**.
+
+**List** (`/workflows`):
+- Card per workflow showing: name, status, block count, block flow preview
+- Block flow preview: horizontal chain of colored pills (trigger → action → condition → ...)
+- [+ New Workflow] button
+- Each card: [Edit] opens visual editor, [Pause/Archive] status toggle, [Delete]
+
+**Visual Block Flow** — show blocks as a pipeline:
+```tsx
+function BlockFlow({ blocks }: { blocks: BlockDefinition[] }) {
+  const colorMap: Record<string, string> = {
+    trigger: "bg-green-50 border-green-200 text-green-700",
+    condition: "bg-yellow-50 border-yellow-200 text-yellow-700",
+    "wake-agent": "bg-purple-50 border-purple-200 text-purple-700",
+    "connector-action": "bg-blue-50 border-blue-200 text-blue-700",
+    transform: "bg-gray-50 border-gray-200 text-gray-700",
+    delay: "bg-orange-50 border-orange-200 text-orange-700",
+  };
+
+  return (
+    <div className="flex items-center gap-2 flex-wrap">
+      {blocks.map((block, i) => (
+        <div key={block.id} className="flex items-center gap-2">
+          <div className={`px-3 py-1.5 rounded-lg text-xs font-medium border ${colorMap[block.type] || colorMap.transform}`}>
+            {block.type}: {block.name}
+          </div>
+          {i < blocks.length - 1 && <span className="text-gray-400">→</span>}
+        </div>
+      ))}
+    </div>
+  );
+}
+```
+
+**Visual Editor** (advanced — for full builder):
+- Use `@xyflow/react` (React Flow) for drag-and-drop DAG editing
+- Left panel: block palette (draggable block types)
+- Center: canvas with nodes and edges
+- Right panel: block config form (changes based on selected block type)
+- Each node shows: block type icon, name, config summary
+- Edges show: handle labels for branching (condition-true / condition-false)
+
+**Block Palette:**
+```tsx
+const BLOCK_TYPES = [
+  { type: "trigger", label: "Trigger", icon: Play, color: "green", description: "Entry point" },
+  { type: "connector-action", label: "Connector Action", icon: Plug, color: "blue", description: "Call external API" },
+  { type: "condition", label: "Condition", icon: GitBranch, color: "yellow", description: "Branch on condition" },
+  { type: "wake-agent", label: "Wake Agent", icon: Bot, color: "purple", description: "Spawn an agent" },
+  { type: "transform", label: "Transform", icon: ArrowRight, color: "gray", description: "Map data" },
+  { type: "delay", label: "Delay", icon: Clock, color: "orange", description: "Wait" },
+];
+```
+
+**Block Config Panel** — changes based on type:
+```tsx
+function BlockConfigPanel({ block, onUpdate }: { block: BlockDefinition; onUpdate: (config: Record<string, unknown>) => void }) {
+  switch (block.type) {
+    case "connector-action":
+      return (
+        <div className="space-y-3">
+          <SelectField label="Connector" value={block.config.connectorKind}
+            options={["google", "slack"]} onChange={(v) => onUpdate({ ...block.config, connectorKind: v })} />
+          <SelectField label="Action" value={block.config.action}
+            options={getActionsForConnector(block.config.connectorKind)}
+            onChange={(v) => onUpdate({ ...block.config, action: v })} />
+          <JsonField label="Inputs" value={block.config.inputs}
+            onChange={(v) => onUpdate({ ...block.config, inputs: v })} />
+        </div>
+      );
+    case "condition":
+      return (
+        <div className="space-y-3">
+          <TextField label="Field" value={block.config.field} placeholder="{{blockName.field}}"
+            onChange={(v) => onUpdate({ ...block.config, field: v })} />
+          <SelectField label="Operator" value={block.config.operator}
+            options={["equals", "not_equals", "contains", "truthy"]}
+            onChange={(v) => onUpdate({ ...block.config, operator: v })} />
+          <TextField label="Value" value={block.config.value}
+            onChange={(v) => onUpdate({ ...block.config, value: v })} />
+        </div>
+      );
+    case "wake-agent":
+      return (
+        <div className="space-y-3">
+          <AgentPicker label="Agent" value={block.config.agentId}
+            onChange={(v) => onUpdate({ ...block.config, agentId: v })} />
+          <TextField label="Reason" value={block.config.reason} placeholder="workflow_triggered"
+            onChange={(v) => onUpdate({ ...block.config, reason: v })} />
+        </div>
+      );
+    // ... other block types
+  }
+}
+```
+
+**Connector "Connected" Status** — show which connectors have stored credentials:
+
+```tsx
+function ConnectorStatus({ kind }: { kind: string }) {
+  const [connected, setConnected] = useState(false);
+
+  useEffect(() => {
+    // Check if connector has stored credentials by querying the connectors table
+    // The /api/connectors/connectors endpoint shows hasOAuth but not credential status.
+    // Add a custom endpoint or check localStorage after OAuth callback.
+    fetch(`/api/connectors/${kind}/status`)
+      .then(r => r.json())
+      .then(data => setConnected(data.hasCredentials))
+      .catch(() => {});
+  }, [kind]);
+
+  return connected
+    ? <span className="text-xs text-green-600 flex items-center gap-1"><Check size={12} /> Connected</span>
+    : <a href={`/api/connectors/${kind}/oauth/authorize`}
+        className="text-xs px-2 py-1 bg-blue-500 text-white rounded">Connect</a>;
+}
+```
+
+---
+
+### Entity: Routines — CRUD with Schedule Preview
+
+**List** (`/routines`):
+- Table showing: title, schedule (cron expression in human-readable), target (agent name or workflow name), status, last triggered
+- [+ New Routine] button
+- Each row: [Edit] opens modal, [Trigger Now] button, [Pause/Delete]
+- Badge showing "workflow" or "agent" to distinguish target type
+
+**Create/Edit Modal** — fields:
+- `title` (required)
+- `description`
+- Target type toggle: **Agent** | **Workflow**
+  - If Agent: `assigneeAgentId` — agent dropdown
+  - If Workflow: `workflowId` — workflow dropdown
+- `cronExpression` — input with live preview ("Every 15 minutes", "Daily at 9 AM")
+- `timezone` — timezone picker
+- `concurrencyPolicy` — dropdown: skip_if_active / coalesce_if_active / allow_concurrent
+
+**Cron Preview Helper:**
+```tsx
+function CronPreview({ expression }: { expression: string }) {
+  const descriptions: Record<string, string> = {
+    "*/15 * * * *": "Every 15 minutes",
+    "0 * * * *": "Every hour",
+    "0 9 * * *": "Daily at 9:00 AM",
+    "0 20 * * 0": "Every Sunday at 8:00 PM",
+    "0 10 1 * *": "1st of every month at 10:00 AM",
+  };
+  const desc = descriptions[expression] || expression;
+  return <span className="text-xs text-[var(--text-secondary)] font-mono">{desc}</span>;
+}
+```
+
+**API calls:**
+```bash
+# List
+GET /api/admin/routines
+
+# Create (agent-targeted)
+POST /api/admin/routines
+{ "title": "...", "assigneeAgentId": "...", "cronExpression": "*/15 * * * *" }
+
+# Create (workflow-triggered)
+POST /api/admin/routines
+{ "title": "...", "workflowId": "...", "cronExpression": "*/15 * * * *" }
+
+# Update
+PATCH /api/admin/routines/:id
+{ "status": "paused", "cronExpression": "0 * * * *" }
+
+# Manual trigger
+POST /api/admin/routines/:id/trigger
+
+# Delete
+DELETE /api/admin/routines/:id
+```
+
+---
+
+### Entity: Goals — Hierarchical View
+
+**List** (`/goals`):
+- Cards showing: title, status (planned/active/done/dropped), description
+- Progress indicator (% of linked monthly tasks completed)
+- [+ New Goal] button
+- Each card: [Edit] inline, [Mark Done/Drop] status buttons
+
+**Hierarchy drill-down:**
+```
+Quarterly Goal (Goals API)
+  └── Monthly Objectives (Tasks, label: monthly) — show as nested list
+       └── Weekly Objectives (Tasks, label: weekly)
+            └── Daily Tasks (Tasks, label: daily)
+```
+
+**API calls:**
+```bash
+GET /api/admin/goals
+POST /api/admin/goals { "title": "Q2: Grow revenue", "status": "active" }
+PATCH /api/admin/goals/:id { "status": "done" }
+```
+
+---
+
+### Entity: Inbox — Triage View
+
+**List** (`/inbox`):
+- Filter tabs: All | Unread | Archived
+- Each item shows: source badge (gmail, slack), subject, body preview, timestamp
+- Unread items have a left border accent
+- Actions per item: [Create Task] [Archive] [Mark Read]
+- [Create Task] converts inbox item to a task with pre-filled fields
+
+**API calls:**
+```bash
+GET /api/admin/inbox
+GET /api/admin/inbox/:id           # marks as read
+POST /api/admin/inbox/:id/archive
+POST /api/admin/inbox/:id/create-task
+```
+
+---
+
+### Entity: Connectors — Connection Status
+
+**List** (`/settings` or `/connectors`):
+- Card per registered connector
+- Shows: name, description, available actions, available events
+- **Connection status:**
+  - No credentials → [Connect] button (links to OAuth authorize)
+  - Has credentials → "Connected" badge + [Reconnect] button
+  - OAuth error → "Error" badge + [Reconnect]
+- Show available actions as chips: `list_emails`, `send_email`, `list_events`, ...
+
+**How to check connection status:**
+
+The `/api/connectors/connectors` endpoint returns `hasOAuth: true` but doesn't say if credentials are stored. Options:
+
+1. **After OAuth callback** — redirect to `?connected=true`, save flag in localStorage
+2. **Custom endpoint** — query the `connectors` DB table for the tenant
+3. **Try an action** — call a lightweight action and check if it succeeds
+
+Recommended: option 2 — add a custom endpoint:
+```typescript
+// In your app's beforeStart hook:
+app.route("/api/connectors/:kind/status", new Hono().get("/", async (c) => {
+  const kind = c.req.param("kind");
+  const rows = await ctx.db.select().from(connectors)
+    .where(and(eq(connectors.tenantId, tenantId), eq(connectors.kind, kind))).limit(1);
+  return c.json({ hasCredentials: rows.length > 0 && !!rows[0].credentials });
+}));
+```
+
+---
+
+### Entity: Runtimes — Configuration
+
+**List** (in `/settings` or `/runtimes`):
+- Table: name, type (claude/gemini/ollama/command), model, default badge
+- [+ Add Runtime] button
+- Each row: [Set Default] button, [Edit] modal, [Delete] with confirmation
+
+**Create/Edit Modal** — fields:
+- `name` — display name
+- `type` — dropdown: claude, chatgpt, gemini, ollama, command, webhook
+- `config` — JSON editor (runtime-specific: model, args, environment vars)
+- `model` — text input (e.g., "claude-sonnet-4-5", "gpt-4o")
+
+**API calls:**
+```bash
+GET /api/admin/runtimes
+POST /api/admin/runtimes { "name": "Claude", "type": "claude", "config": {} }
+PATCH /api/admin/runtimes/:id { "name": "Claude Fast", "config": { "model": "claude-sonnet-4-5" } }
+POST /api/admin/runtimes/:id/default   # Set as default
+DELETE /api/admin/runtimes/:id
+```
+
+---
+
+### Entity: Labels — Simple CRUD
+
+**List** (in `/settings` or inline on tasks page):
+- Color dot + name for each label
+- [+ Add Label] inline form
+- Each label: [Edit] (name + color picker), [Delete]
+
+**API calls:**
+```bash
+GET /api/admin/labels
+POST /api/admin/labels { "name": "urgent", "color": "#DC2626" }
+# Attach/detach from tasks:
+POST /api/admin/tasks/:taskId/labels/:labelId
+DELETE /api/admin/tasks/:taskId/labels/:labelId
+```
+
+---
+
+### Entity: Projects — Task Organization
+
+**List** (`/projects`):
+- Card per project: name, task prefix (e.g., "ALPHA"), task count, repo URL
+- [+ New Project] modal
+- Each card links to filtered task list
+
+**Create/Edit Modal** — fields:
+- `name` — project name
+- `repoUrl` — optional git repository URL
+- `defaultBranch` — e.g., "main"
+- `branchTemplate` — e.g., "feat/{{identifier}}-{{slug}}"
+
+**API calls:**
+```bash
+GET /api/admin/projects
+POST /api/admin/projects { "name": "Alpha", "repoUrl": "https://github.com/..." }
+PATCH /api/admin/projects/:id { "name": "Alpha v2" }
+```
+
+---
+
+### Entity: Approvals — Decision Queue
+
+**List** (`/approvals`):
+- Filter tabs: Pending | Approved | Rejected
+- Each item: type, requester (agent), payload summary, timestamp
+- Pending items have: [Approve] and [Reject] buttons with optional note field
+
+**API calls:**
+```bash
+GET /api/admin/approvals?status=pending
+POST /api/admin/approvals/:id/approve { "note": "Looks good" }
+POST /api/admin/approvals/:id/reject { "reason": "Too expensive" }
+```
+
+---
+
+### Entity: Budgets — Policy Management
+
+**List** (in `/settings` or `/budgets`):
+- Table: scope (tenant/agent), period (daily/weekly/monthly), limit, warn threshold, current spend
+- Progress bar showing spend vs limit (yellow at warn, red at limit)
+- [+ Add Budget Policy] modal
+- [Delete] per policy
+- Incidents section: list of hard_stop and warning events
+
+**API calls:**
+```bash
+GET /api/admin/budgets
+POST /api/admin/budgets { "scope": "agent", "agentId": "...", "period": "monthly", "limitCents": 10000, "warnThresholdCents": 8000 }
+DELETE /api/admin/budgets/:id
+GET /api/admin/budgets/incidents
+```
+
+---
+
+### Entity: Drive — File Browser
+
+**View** (`/drive`):
+- Tree/list view of files in the drive
+- Breadcrumb navigation
+- Upload zone (drag & drop)
+- File preview for markdown/text
+- Skill file editor with revision history
+
+**API calls:**
+```bash
+GET /api/admin/drive/list?prefix=/finance/2026/
+GET /api/admin/drive/skill
+PATCH /api/admin/drive/skill { "content": "..." }
+GET /api/admin/drive/skill/revisions
+```
+
+---
+
+### Entity: Activity Log — Audit Trail
+
+**View** (`/activity` or in settings):
+- Reverse-chronological list of all admin mutations
+- Each entry: action, entity type, entity ID, timestamp, actor
+- Filter by action type or entity type
+
+**API calls:**
+```bash
+GET /api/admin/activity?limit=50&offset=0
+```
+
+---
+
+## Sidebar Navigation Order
+
+Recommended sidebar structure:
+
+```tsx
+const nav = [
+  // Core
+  { href: "/", label: "Dashboard", icon: LayoutDashboard },
+  { href: "/inbox", label: "Inbox", icon: Inbox },
+  { href: "/tasks", label: "Tasks", icon: CheckSquare },
+
+  // Planning
+  { href: "/goals", label: "Goals", icon: Target },
+  { href: "/projects", label: "Projects", icon: FolderKanban },
+
+  // Automation
+  { href: "/agents", label: "Agents", icon: Bot },
+  { href: "/workflows", label: "Workflows", icon: GitBranch },
+  { href: "/routines", label: "Routines", icon: Clock },
+
+  // Data
+  { href: "/drive", label: "Drive", icon: HardDrive },
+  { href: "/connectors", label: "Connectors", icon: Plug },
+
+  // System
+  { href: "/approvals", label: "Approvals", icon: ShieldCheck },
+  { href: "/activity", label: "Activity", icon: History },
+  { href: "/settings", label: "Settings", icon: Settings },
+];
+```
+
+---
+
 ## How to Seed Data
 
 The seed script creates initial entities via the Admin API after the server boots.
