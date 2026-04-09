@@ -12,3 +12,4 @@ coverage/
 .cursor/
 .claude/
 plans/
+.npmrc
