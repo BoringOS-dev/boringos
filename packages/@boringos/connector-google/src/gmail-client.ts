@@ -28,7 +28,42 @@ export class GmailClient {
     if (!res.ok) return { success: false, error: `Gmail API error: ${res.status}` };
 
     const data = await res.json() as Record<string, unknown>;
-    return { success: true, data: { messages: data.messages ?? [], resultSizeEstimate: data.resultSizeEstimate } };
+    const rawMessages = (data.messages ?? []) as Array<{ id: string; threadId: string }>;
+
+    // Enrich each message with metadata (subject, from, snippet, date)
+    const enriched = await Promise.all(
+      rawMessages.map(async (msg) => {
+        try {
+          const metaRes = await this.api(
+            `${GMAIL_API}/messages/${msg.id}?format=metadata&metadataHeaders=Subject&metadataHeaders=From&metadataHeaders=Date`,
+          );
+          if (!metaRes.ok) return { id: msg.id, threadId: msg.threadId, subject: null, from: null, snippet: null, date: null };
+
+          const metaData = await metaRes.json() as {
+            id: string;
+            threadId: string;
+            snippet?: string;
+            payload?: { headers?: Array<{ name: string; value: string }> };
+          };
+
+          const headers = metaData.payload?.headers ?? [];
+          const getHeader = (name: string) => headers.find((h) => h.name.toLowerCase() === name.toLowerCase())?.value ?? null;
+
+          return {
+            id: msg.id,
+            threadId: msg.threadId,
+            subject: getHeader("Subject"),
+            from: getHeader("From"),
+            date: getHeader("Date"),
+            snippet: metaData.snippet ?? null,
+          };
+        } catch {
+          return { id: msg.id, threadId: msg.threadId, subject: null, from: null, snippet: null, date: null };
+        }
+      }),
+    );
+
+    return { success: true, data: { messages: enriched, resultSizeEstimate: data.resultSizeEstimate } };
   }
 
   private async readEmail(messageId: string): Promise<ActionResult> {

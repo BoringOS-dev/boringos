@@ -192,7 +192,7 @@ Slack reference implementation. Usage: `app.connector(slack({ signingSecret: "..
 
 Google Workspace reference implementation. Usage: `app.connector(google({ clientId: "...", clientSecret: "..." }))`
 
-- **Gmail actions:** `list_emails`, `read_email`, `send_email`, `search_emails`
+- **Gmail actions:** `list_emails` (auto-enriched: returns subject, from, snippet, date — not just IDs), `read_email`, `send_email`, `search_emails`
 - **Calendar actions:** `list_events`, `create_event`, `update_event`, `find_free_slots`
 - **Events:** `email_received`, `calendar_event_created`, `calendar_event_updated`
 - **Skill files** covering Gmail query syntax and Calendar scheduling guidelines

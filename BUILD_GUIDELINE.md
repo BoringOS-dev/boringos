@@ -631,9 +631,9 @@ The framework provides 9 workflow block handlers that compose into any sync patt
 ```
 Routine (every 15min)
   → Workflow:
-    1. connector-action  — fetch emails from Gmail
+    1. connector-action  — fetch emails from Gmail (auto-enriched: subject, from, snippet, date)
     2. for-each          — iterate the results
-    3. create-inbox-item — store each email in inbox (DB)
+    3. create-inbox-item — store each email in inbox with full metadata
     4. condition          — any new emails?
     5. wake-agent        — wake the triage agent (only if there's work)
 ```
@@ -742,6 +742,12 @@ connector-action(list_issues) → for-each → create-inbox-item → wake-agent
 - **Agent works from inbox**, not from external API — no re-fetching, no rate limits
 - **Deduplication** via `sourceId` — same email won't be stored twice
 - **Cost savings** — agent only wakes when there's actual work (the `condition` check is free)
+
+### Connector enrichment
+
+The `list_emails` action in `@boringos/connector-google` **automatically enriches** results — it fetches subject, from, snippet, and date for each message via Gmail's metadata API. You don't need a separate `read_email` step for basic sync. The `create-inbox-item` handler maps these fields automatically.
+
+Other connectors should follow the same pattern: list actions return **displayable data**, not just IDs.
 
 ---
 
