@@ -1613,13 +1613,88 @@ function BlockFlow({ blocks }: { blocks: BlockDefinition[] }) {
 }
 ```
 
-**Visual Editor** (advanced — for full builder):
-- Use `@xyflow/react` (React Flow) for drag-and-drop DAG editing
-- Left panel: block palette (draggable block types)
-- Center: canvas with nodes and edges
-- Right panel: block config form (changes based on selected block type)
-- Each node shows: block type icon, name, config summary
-- Edges show: handle labels for branching (condition-true / condition-false)
+**Visual Editor** — use `@xyflow/react` v12+ (React Flow). This is the standard library for workflow editing in BoringOS apps.
+
+```bash
+npm install @xyflow/react
+```
+
+**Architecture: 3-panel layout**
+
+```
+┌──────────┬──────────────────────────────┬──────────────┐
+│  Block   │                              │   Config     │
+│  Palette │      React Flow Canvas       │   Panel      │
+│  (left)  │      (center, drag/drop)     │   (right)    │
+│          │                              │              │
+│  Drag    │   [Trigger] → [Condition]    │  Block Name  │
+│  blocks  │              ↙        ↘      │  Block Type  │
+│  here    │   [Agent]        [Done]      │  Config Form │
+│          │                              │              │
+│          │              [Save]          │              │
+└──────────┴──────────────────────────────┴──────────────┘
+```
+
+**4 components needed:**
+
+1. **WorkflowCanvas** — wraps ReactFlow with `useNodesState`, `useEdgesState`, `onConnect`, `onDrop`. Converts DB blocks/edges to React Flow nodes/edges. Save button converts back.
+
+2. **BlockPalette** — left sidebar with draggable block types in sections (Triggers, Logic, Agent, Actions). Uses `onDragStart` with `dataTransfer.setData("application/workflow-block", JSON.stringify({type, label}))`.
+
+3. **BlockNode** — custom React Flow node. Different colors/icons per type. Condition nodes have two output handles (green=true, red=false). Shows config preview text.
+
+4. **BlockConfigPanel** — right sidebar for selected node. Form fields change based on block type (connector-action needs kind+action+inputs, condition needs field+operator+value, wake-agent needs agentId).
+
+**React Flow node type registration:**
+```tsx
+import { ReactFlow, Background, Controls, useNodesState, useEdgesState } from "@xyflow/react";
+import "@xyflow/react/dist/style.css";
+
+const nodeTypes = { block: BlockNode };
+
+<ReactFlow
+  nodes={nodes} edges={edges}
+  onNodesChange={onNodesChange} onEdgesChange={onEdgesChange}
+  onConnect={onConnect} onDrop={onDrop} onDragOver={onDragOver}
+  onNodeClick={onNodeClick} onPaneClick={onPaneClick}
+  nodeTypes={nodeTypes} fitView
+>
+  <Background color="#e2e8f0" gap={20} />
+  <Controls />
+</ReactFlow>
+```
+
+**BlockNode handles for branching:**
+```tsx
+// Condition node: two output handles
+{isCondition && (
+  <>
+    <Handle type="source" position={Position.Bottom} id="condition-true"
+      className="!bg-green-500" style={{ left: "30%" }} />
+    <Handle type="source" position={Position.Bottom} id="condition-false"
+      className="!bg-red-500" style={{ left: "70%" }} />
+  </>
+)}
+
+// Normal node: single output handle
+{!isCondition && (
+  <Handle type="source" position={Position.Bottom} className="!bg-gray-400" />
+)}
+```
+
+**Block type colors (consistent across list view and editor):**
+```tsx
+const TYPE_COLORS = {
+  trigger:           { bg: "bg-amber-50",  border: "border-amber-200",  text: "text-amber-700" },
+  condition:         { bg: "bg-purple-50", border: "border-purple-200", text: "text-purple-700" },
+  "wake-agent":      { bg: "bg-blue-50",   border: "border-blue-200",  text: "text-blue-700" },
+  "connector-action":{ bg: "bg-green-50",  border: "border-green-200", text: "text-green-700" },
+  transform:         { bg: "bg-gray-50",   border: "border-gray-200",  text: "text-gray-700" },
+  delay:             { bg: "bg-orange-50", border: "border-orange-200", text: "text-orange-700" },
+};
+```
+
+**Reference implementation:** See `boringos/apps/web/src/components/workflows/` for the full working editor (WorkflowCanvas, BlockPalette, BlockNode, BlockConfigPanel).
 
 **Block Palette:**
 ```tsx
