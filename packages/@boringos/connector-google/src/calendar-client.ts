@@ -20,12 +20,14 @@ export class CalendarClient {
   }
 
   private async listEvents(timeMin?: string, timeMax?: string, maxResults?: number): Promise<ActionResult> {
+    // Default to today if no time range specified
+    const effectiveTimeMin = timeMin ?? new Date().toISOString();
     const params = new URLSearchParams({
       singleEvents: "true",
       orderBy: "startTime",
       maxResults: String(maxResults ?? 10),
+      timeMin: effectiveTimeMin,
     });
-    if (timeMin) params.set("timeMin", timeMin);
     if (timeMax) params.set("timeMax", timeMax);
 
     const res = await this.api(`${CALENDAR_API}/calendars/primary/events?${params}`);
