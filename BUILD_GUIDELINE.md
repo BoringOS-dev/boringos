@@ -622,6 +622,129 @@ Skills are injected into the agent's working directory via `injectSkills()` befo
 
 ---
 
+## How to Sync External Data (Email, Calendar, Slack, etc.)
+
+The framework provides 9 workflow block handlers that compose into any sync pattern. The recommended approach is **Pattern A: Workflow stores data in inbox → Agent processes from inbox.**
+
+### The email sync pattern (Pattern A)
+
+```
+Routine (every 15min)
+  → Workflow:
+    1. connector-action  — fetch emails from Gmail
+    2. for-each          — iterate the results
+    3. create-inbox-item — store each email in inbox (DB)
+    4. condition          — any new emails?
+    5. wake-agent        — wake the triage agent (only if there's work)
+```
+
+### Step-by-step: set up Gmail sync
+
+**1. Create the workflow:**
+
+```typescript
+const workflow = await store.create({
+  tenantId,
+  name: "Gmail sync",
+  type: "system",
+  blocks: [
+    { id: "trigger", name: "trigger", type: "trigger", config: {} },
+    { id: "fetch", name: "fetch", type: "connector-action", config: {
+      connectorKind: "google",
+      action: "list_emails",
+      inputs: { query: "is:unread", maxResults: 20 },
+    }},
+    { id: "loop", name: "loop", type: "for-each", config: {
+      items: "{{fetch.messages}}",
+    }},
+    { id: "store", name: "store", type: "create-inbox-item", config: {
+      source: "gmail",
+      items: "{{loop.items}}",
+    }},
+    { id: "check", name: "check", type: "condition", config: {
+      field: "{{loop.count}}",
+      operator: "not_equals",
+      value: "0",
+    }},
+    { id: "wake", name: "wake", type: "wake-agent", config: {
+      agentId: "email-triage-agent-id",
+    }},
+  ],
+  edges: [
+    { id: "e1", sourceBlockId: "trigger", targetBlockId: "fetch", sourceHandle: null, sortOrder: 0 },
+    { id: "e2", sourceBlockId: "fetch", targetBlockId: "loop", sourceHandle: null, sortOrder: 0 },
+    { id: "e3", sourceBlockId: "loop", targetBlockId: "store", sourceHandle: null, sortOrder: 0 },
+    { id: "e4", sourceBlockId: "store", targetBlockId: "check", sourceHandle: null, sortOrder: 0 },
+    { id: "e5", sourceBlockId: "check", targetBlockId: "wake", sourceHandle: "condition-true", sortOrder: 0 },
+  ],
+});
+```
+
+**2. Create the routine:**
+
+```typescript
+await db.insert(routines).values({
+  tenantId,
+  title: "Gmail sync",
+  workflowId: workflow.id,   // targets workflow, not agent
+  cronExpression: "*/15 * * * *",
+  concurrencyPolicy: "skip_if_active",
+});
+```
+
+**3. What happens:**
+
+Every 15 minutes:
+1. Workflow calls Gmail API → gets unread emails
+2. `for-each` iterates the list
+3. `create-inbox-item` stores each email in the inbox (persisted in DB)
+4. `condition` checks if there were any
+5. If yes → `wake-agent` wakes the triage agent
+6. Agent reads from inbox (not Gmail), classifies, creates tasks
+
+Emails are **stored in inbox before the agent runs**. Users see them in the dashboard immediately. Agent works from the inbox, not from Gmail directly. If the agent fails, emails are still saved.
+
+### The same pattern works for any connector
+
+**Slack sync:**
+```
+connector-action(list_messages) → for-each → create-inbox-item → wake-agent
+```
+
+**Calendar sync:**
+```
+connector-action(list_events) → for-each → create-inbox-item → condition → wake-agent
+```
+
+**GitHub sync:**
+```
+connector-action(list_issues) → for-each → create-inbox-item → wake-agent
+```
+
+### Available block handlers (9 total)
+
+| Handler | What it does | Config |
+|---|---|---|
+| `trigger` | Entry point | — |
+| `condition` | Branch true/false | `{ field, operator, value }` |
+| `delay` | Wait N ms | `{ durationMs }` |
+| `transform` | Map data | `{ mappings: {...} }` |
+| `wake-agent` | Wake an agent | `{ agentId, taskId? }` |
+| `connector-action` | Call connector API | `{ connectorKind, action, inputs? }` |
+| `for-each` | Iterate array | `{ items }` |
+| `create-inbox-item` | Store to inbox | `{ source, items }` or `{ source, subject, body, from }` |
+| `emit-event` | Emit connector event | `{ connectorKind, eventType, data? }` or `{ items }` |
+
+### Why Pattern A (store first, then agent)?
+
+- **Emails persist** even if agent fails or is slow
+- **Users see data immediately** in the inbox dashboard
+- **Agent works from inbox**, not from external API — no re-fetching, no rate limits
+- **Deduplication** via `sourceId` — same email won't be stored twice
+- **Cost savings** — agent only wakes when there's actual work (the `condition` check is free)
+
+---
+
 ## Drive — File Storage & Memory Sync
 
 ### DriveManager
