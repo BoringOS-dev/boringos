@@ -79,6 +79,13 @@ export const connectorActionHandler: BlockHandler = {
       credentials,
     );
 
-    return { output: result };
+    // Flatten: merge result.data into output so {{blockName.field}} works for data fields
+    const output: Record<string, unknown> = { success: result.success, error: result.error };
+    if (result.data) {
+      for (const [k, v] of Object.entries(result.data)) {
+        output[k] = v;
+      }
+    }
+    return { output };
   },
 };

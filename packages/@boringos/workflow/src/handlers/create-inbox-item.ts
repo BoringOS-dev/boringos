@@ -30,8 +30,11 @@ export const createInboxItemHandler: BlockHandler = {
     const tenantId = ctx.tenantId;
     let created = 0;
 
-    // Batch mode — create from array
-    const items = ctx.config.items;
+    // Batch mode — create from array (may arrive as JSON string from template resolution)
+    let items: unknown = ctx.config.items;
+    if (typeof items === "string") {
+      try { items = JSON.parse(items); } catch { /* not JSON, treat as single */ }
+    }
     if (Array.isArray(items) && items.length > 0) {
       for (const item of items) {
         const entry = item as Record<string, unknown>;

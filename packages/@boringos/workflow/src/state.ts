@@ -35,6 +35,9 @@ export function resolveTemplate(
     if (!blockState?.output) return `{{${blockName}.${field}}}`;
 
     const value = blockState.output[field];
-    return value !== undefined ? String(value) : `{{${blockName}.${field}}}`;
+    if (value === undefined) return `{{${blockName}.${field}}}`;
+    // Preserve arrays and objects as JSON strings so downstream handlers can parse them
+    if (typeof value === "object" && value !== null) return JSON.stringify(value);
+    return String(value);
   });
 }
