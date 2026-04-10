@@ -342,15 +342,38 @@ export function createAdminRoutes(
   app.post("/tasks/:id/comments", async (c) => {
     const body = await c.req.json() as Record<string, unknown>;
     const id = generateId();
+    const taskId = c.req.param("id");
+    const tenantId = c.get("tenantId");
+
     await db.insert(taskComments).values({
       id,
-      taskId: c.req.param("id"),
-      tenantId: c.get("tenantId"),
+      taskId,
+      tenantId,
       body: body.body as string,
       authorUserId: body.authorUserId as string | undefined,
     });
-    emit("task:comment_added", c.get("tenantId"), { taskId: c.req.param("id"), commentId: id });
-    await logActivity(c.get("tenantId"), "comment.created", "task_comment", id, { taskId: c.req.param("id") });
+    emit("task:comment_added", tenantId, { taskId, commentId: id });
+    await logActivity(tenantId, "comment.created", "task_comment", id, { taskId });
+
+    // Auto-wake assigned agent when a user posts a comment
+    // Agent gets this specific task + comments in its context
+    if (!body.authorAgentId) {
+      const taskRows = await db.select().from(tasks).where(eq(tasks.id, taskId)).limit(1);
+      const task = taskRows[0];
+      if (task?.assigneeAgentId) {
+        const outcome = await engine.wake({
+          agentId: task.assigneeAgentId,
+          tenantId,
+          reason: "comment_posted",
+          taskId,
+        });
+        if (outcome.kind === "created") {
+          await engine.enqueue(outcome.wakeupRequestId);
+        }
+        return c.json({ id, agentWoken: true, wakeup: outcome.kind }, 201);
+      }
+    }
+
     return c.json({ id }, 201);
   });
 
