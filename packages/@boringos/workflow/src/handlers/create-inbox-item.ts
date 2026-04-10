@@ -36,8 +36,19 @@ export const createInboxItemHandler: BlockHandler = {
       try { items = JSON.parse(items); } catch { /* not JSON, treat as single */ }
     }
     if (Array.isArray(items) && items.length > 0) {
+      const { eq, and } = await import("drizzle-orm");
       for (const item of items) {
         const entry = item as Record<string, unknown>;
+        const sourceId = (entry.id as string) ?? (entry.messageId as string) ?? null;
+
+        // Dedup: skip if sourceId already exists for this tenant+source
+        if (sourceId) {
+          const existing = await db.select({ id: inboxItems.id }).from(inboxItems)
+            .where(and(eq(inboxItems.tenantId, tenantId), eq(inboxItems.source, source), eq(inboxItems.sourceId, sourceId)))
+            .limit(1);
+          if (existing.length > 0) continue;
+        }
+
         await db.insert(inboxItems).values({
           id: generateId(),
           tenantId,
@@ -45,7 +56,7 @@ export const createInboxItemHandler: BlockHandler = {
           subject: (entry.subject as string) ?? (entry.title as string) ?? "No subject",
           body: (entry.body as string) ?? (entry.snippet as string) ?? null,
           from: (entry.from as string) ?? null,
-          sourceId: (entry.id as string) ?? (entry.messageId as string) ?? null,
+          sourceId,
           metadata: entry,
         });
         created++;
