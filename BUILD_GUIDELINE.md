@@ -212,6 +212,97 @@ POST   /api/agent/agents                — Create another agent
 
 ---
 
+## How Agents Get Work
+
+Agents receive work through 3 mechanisms. Understanding these is critical for building the right UI and automation patterns.
+
+### 1. Scheduled Routines (automatic, recurring)
+
+A routine fires on a cron schedule and wakes the agent. The agent does its predefined job — no task assignment needed.
+
+```
+Routine (*/15 * * * *) → wake email-triage agent → agent checks inbox, classifies, creates tasks
+Routine (0 9 * * *)   → wake social-writer     → agent researches and drafts posts
+```
+
+**When to use:** Recurring background work that always needs doing (email sync, daily briefings, weekly planning).
+
+### 2. Task Assignment + Wake (user-initiated or agent-initiated)
+
+A user (or another agent) creates a task, assigns it to an agent, and wakes the agent. The agent sees the assigned task in its context and works on it.
+
+```
+User creates "Write Q2 proposal for Acme Corp"
+  → Assigns to Content & Social Writer
+  → Clicks "Assign & Run" (or Wake button)
+  → Agent wakes, sees the task, drafts the proposal, saves to Drive
+```
+
+**API flow:**
+```bash
+# Create task
+POST /api/admin/tasks
+{ "title": "Write Q2 proposal", "assigneeAgentId": "content-writer-id" }
+
+# Wake the agent (assigns + runs)
+POST /api/admin/agents/:id/wake
+# OR use the combined assign endpoint:
+POST /api/admin/tasks/:id/assign
+{ "agentId": "content-writer-id", "wake": true }
+```
+
+**UI pattern (Assign & Run):**
+```tsx
+// On the task detail page — agent picker dropdown + run button
+<select value={assignee} onChange={(e) => setAssignee(e.target.value)}>
+  <option value="">Unassigned</option>
+  {agents.map(a => <option key={a.id} value={a.id}>{a.name}</option>)}
+</select>
+<button onClick={async () => {
+  await client.assignTask(taskId, assignee, true); // true = also wake
+}}>
+  Assign & Run
+</button>
+```
+
+**When to use:** On-demand work — proposals, investigations, document drafting, any task that needs human initiation.
+
+### 3. Delegation (agent-to-agent)
+
+A manager agent creates a task and assigns it to a report. The framework can auto-wake the report.
+
+```
+Goal Planner (CEO) creates "Implement auth module"
+  → findDelegateForTask() matches → Engineer
+  → Task assigned to Engineer, engineer wakes
+  → Engineer works, posts progress as comments
+  → When done, CEO reviews
+```
+
+**When to use:** Hierarchical teams where work flows from managers to ICs.
+
+### Key Principle: Agents only work when woken
+
+Agents are **not running continuously**. They're CLI processes that start, do work, and exit. An agent has no work unless:
+- A routine wakes it (scheduled)
+- A user wakes it (manual, via Wake button or Assign & Run)
+- Another agent delegates to it (programmatic)
+
+Between runs, agents are just rows in the database with `status: "idle"`.
+
+### What the agent sees when it wakes
+
+The context pipeline injects:
+1. **System instructions** — persona, guidelines, protocol
+2. **Assigned task** — if any task is assigned with status todo/in_progress
+3. **Task comments** — conversation history
+4. **Memory** — recalled context from prior sessions
+5. **Hierarchy** — who they report to, who reports to them
+
+The agent then uses the callback API to read more tasks, create subtasks, post comments, etc.
+
+---
+
 ## Agent Templates & Teams (Pre-built Personas)
 
 Instead of writing agent instructions from scratch, use the framework's built-in personas. Each role has a full persona bundle (SOUL.md, AGENTS.md, HEARTBEAT.md) that defines how the agent thinks, communicates, and operates.
@@ -1690,14 +1781,34 @@ await client.updateAgent(agentId, { status: "archived" });
 - Editable inline: title, description, status, priority
 - Tabs: Comments | Work Products | Subtasks
 - Comment thread with add comment form
-- [Assign to Agent] dropdown + [Wake Agent] button
+- **Assign & Run** — agent picker dropdown + "Assign & Run" button (MUST have this)
 - [Delete] with confirmation
+
+**Assign & Run pattern** (MUST be on every task detail view):
+```tsx
+// Agent picker + run button
+<div className="flex items-center gap-2">
+  <select value={assignee} onChange={(e) => setAssignee(e.target.value)}>
+    <option value="">Unassigned</option>
+    {agents.map(a => <option key={a.id} value={a.id}>{a.name} ({a.role})</option>)}
+  </select>
+  <button onClick={() => client.assignTask(taskId, assignee, true)}>
+    Assign & Run
+  </button>
+</div>
+// assignTask(taskId, agentId, wake=true) assigns the task AND wakes the agent
+```
+
+**Also on task list view:**
+- Each task row shows the assignee name (or "Unassigned")
+- Clicking the assignee shows a dropdown to reassign
 
 **API calls:**
 ```typescript
 const tasks = await client.getTasks({ status: "todo" });
 await client.createTask({ title, description, priority, assigneeAgentId, parentId });
 await client.updateTask(taskId, { status: "done", title: "Updated" });
+await client.assignTask(taskId, agentId, true);  // assign + wake in one call
 await client.postComment(taskId, { body: "Done!" });
 await client.addWorkProduct(taskId, { kind: "document", title: "Report", url: "/drive/report.md" });
 await client.deleteTask(taskId);
