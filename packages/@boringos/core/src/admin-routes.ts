@@ -31,6 +31,7 @@ import {
   evalRuns,
   inboxItems,
   entityReferences,
+  workflows,
 } from "@boringos/db";
 import type { AgentEngine } from "@boringos/agent";
 import type { WorkflowEngine } from "@boringos/workflow";
@@ -771,6 +772,52 @@ export function createAdminRoutes(
     }
 
     return c.json(outcome);
+  });
+
+  // ── Workflows ──────────────────────────────────────────────────────────
+
+  app.get("/workflows", async (c) => {
+    const rows = await db.select().from(workflows).where(eq(workflows.tenantId, c.get("tenantId")));
+    return c.json({ workflows: rows });
+  });
+
+  app.post("/workflows", async (c) => {
+    const body = await c.req.json() as Record<string, unknown>;
+    const id = generateId();
+    await db.insert(workflows).values({
+      id,
+      tenantId: c.get("tenantId"),
+      name: body.name as string,
+      type: (body.type as string) ?? "user",
+      governingAgentId: (body.governingAgentId as string) || null,
+      blocks: (body.blocks ?? []) as Record<string, unknown>[],
+      edges: (body.edges ?? []) as Record<string, unknown>[],
+    });
+    const rows = await db.select().from(workflows).where(eq(workflows.id, id)).limit(1);
+    return c.json(rows[0], 201);
+  });
+
+  app.patch("/workflows/:id", async (c) => {
+    const body = await c.req.json() as Record<string, unknown>;
+    const values: Record<string, unknown> = { updatedAt: new Date() };
+    if (body.name !== undefined) values.name = body.name;
+    if (body.status !== undefined) values.status = body.status;
+    if (body.blocks !== undefined) values.blocks = body.blocks;
+    if (body.edges !== undefined) values.edges = body.edges;
+    if (body.governingAgentId !== undefined) values.governingAgentId = body.governingAgentId;
+
+    await db.update(workflows).set(values).where(
+      and(eq(workflows.id, c.req.param("id")), eq(workflows.tenantId, c.get("tenantId"))),
+    );
+    const rows = await db.select().from(workflows).where(eq(workflows.id, c.req.param("id"))).limit(1);
+    return c.json(rows[0]);
+  });
+
+  app.delete("/workflows/:id", async (c) => {
+    await db.delete(workflows).where(
+      and(eq(workflows.id, c.req.param("id")), eq(workflows.tenantId, c.get("tenantId"))),
+    );
+    return c.json({ ok: true });
   });
 
   // ── Budgets ──────────────────────────────────────────────────────────────
