@@ -1,0 +1,67 @@
+import type { BlockHandler, BlockHandlerContext, BlockHandlerResult } from "../types.js";
+
+/**
+ * create-inbox-item block handler — stores data in the inbox.
+ * Used in sync workflows to persist fetched data before agent processing.
+ *
+ * Config:
+ *   - source: string — where the item came from (e.g., "gmail", "slack")
+ *   - subject: string — item subject/title (supports templates)
+ *   - body: string — item body/content (supports templates)
+ *   - from: string — sender (supports templates)
+ *   - items: array — if provided, creates one inbox item per array element
+ *     Each element should have { subject, body?, from? }
+ *
+ * Requires "db" service.
+ */
+export const createInboxItemHandler: BlockHandler = {
+  types: ["create-inbox-item"],
+
+  async execute(ctx: BlockHandlerContext): Promise<BlockHandlerResult> {
+    const db = ctx.services.get("db") as import("@boringos/db").Db | undefined;
+    if (!db) {
+      return { output: { error: "db service not available", created: 0 } };
+    }
+
+    const { inboxItems } = await import("@boringos/db");
+    const { generateId } = await import("@boringos/shared");
+
+    const source = (ctx.config.source as string) ?? "workflow";
+    const tenantId = ctx.tenantId;
+    let created = 0;
+
+    // Batch mode — create from array
+    const items = ctx.config.items;
+    if (Array.isArray(items) && items.length > 0) {
+      for (const item of items) {
+        const entry = item as Record<string, unknown>;
+        await db.insert(inboxItems).values({
+          id: generateId(),
+          tenantId,
+          source,
+          subject: (entry.subject as string) ?? (entry.title as string) ?? "No subject",
+          body: (entry.body as string) ?? (entry.snippet as string) ?? null,
+          from: (entry.from as string) ?? null,
+          sourceId: (entry.id as string) ?? (entry.messageId as string) ?? null,
+          metadata: entry,
+        });
+        created++;
+      }
+    } else {
+      // Single item mode
+      await db.insert(inboxItems).values({
+        id: generateId(),
+        tenantId,
+        source,
+        subject: (ctx.config.subject as string) ?? "No subject",
+        body: (ctx.config.body as string) ?? null,
+        from: (ctx.config.from as string) ?? null,
+      });
+      created = 1;
+    }
+
+    return {
+      output: { created, source },
+    };
+  },
+};

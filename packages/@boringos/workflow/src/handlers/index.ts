@@ -4,3 +4,6 @@ export { delayHandler } from "./delay.js";
 export { transformHandler } from "./transform.js";
 export { wakeAgentHandler } from "./wake-agent.js";
 export { connectorActionHandler } from "./connector-action.js";
+export { forEachHandler } from "./for-each.js";
+export { createInboxItemHandler } from "./create-inbox-item.js";
+export { emitEventHandler } from "./emit-event.js";

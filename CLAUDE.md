@@ -141,9 +141,12 @@ DAG-based workflow engine with typed block handlers and condition branching.
 - **`createHandlerRegistry()`** — maps block types to handlers
 - **`createExecutionState()`** — tracks block status + outputs during execution
 - **`resolveTemplate(template, state, nameToId)`** — substitutes `{{blockName.field}}` references
-- **6 built-in handlers:** `trigger` (entry point), `condition` (true/false branching), `delay` (wait), `transform` (data mapping), `wake-agent` (wake an agent from workflow), `connector-action` (call a connector action)
+- **9 built-in handlers:** `trigger` (entry point), `condition` (true/false branching), `delay` (wait), `transform` (data mapping), `wake-agent` (wake an agent from workflow), `connector-action` (call a connector action), `for-each` (iterate arrays), `create-inbox-item` (store to inbox), `emit-event` (emit connector events)
 - **`wake-agent` handler:** Wakes an agent from within a workflow. Config: `{ agentId, reason?, taskId? }`. Uses `agentEngine.wake()` + `enqueue()`. Enables "smart routines" — workflows that only spawn agents when needed.
 - **`connector-action` handler:** Calls a connector action (e.g., `list_emails`, `list_events`) from within a workflow. Config: `{ connectorKind, action, inputs? }`. Fetches credentials from DB automatically.
+- **`for-each` handler:** Iterates over an array from a previous block. Config: `{ items: "{{fetch.messages}}" }`. Returns `{ items, count, processed }`.
+- **`create-inbox-item` handler:** Stores data in inbox. Single item: `{ source, subject, body, from }`. Batch: `{ source, items: [...] }`. Used in sync workflows to persist fetched data before agent processing (Pattern A).
+- **`emit-event` handler:** Emits connector events from workflow. Config: `{ connectorKind, eventType, data? }` or batch `{ items: [...] }`. Enables `routeToInbox()` to catch workflow-generated events.
 - **Branching:** condition blocks return `selectedHandle` (e.g., `condition-true`/`condition-false`) that determines which downstream edges activate
 - **Trigger types:** `cron`, `webhook`, `event`
 
@@ -557,7 +560,7 @@ new BoringOS({ database: { url: "postgres://..." } });
 Tests live in `tests/` at the repo root. Uses Vitest. Tests accumulate per phase.
 
 ```bash
-pnpm test:run    # single pass (122 tests)
+pnpm test:run    # single pass (126 tests)
 pnpm test        # watch mode
 ```
 
@@ -582,6 +585,7 @@ pnpm test        # watch mode
 | `phase17-improvements.test.ts` | Custom schema, entity linking, search | 3 |
 | `phase18-workflow-routines.test.ts` | wake-agent handler, connector-action handler, workflow-triggered routines | 7 |
 | `phase19-hierarchy.test.ts` | Agent templates, team templates, org tree, delegation | 4 |
+| `phase20-sync-handlers.test.ts` | for-each, create-inbox-item, emit-event handlers | 4 |
 
 ---
 

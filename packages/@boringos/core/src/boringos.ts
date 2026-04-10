@@ -30,6 +30,9 @@ import {
   transformHandler,
   wakeAgentHandler,
   connectorActionHandler,
+  forEachHandler,
+  createInboxItemHandler,
+  emitEventHandler,
 } from "@boringos/workflow";
 import type { WorkflowEngine, BlockHandler } from "@boringos/workflow";
 import {
@@ -223,6 +226,9 @@ export class BoringOS {
     handlerRegistry.register(transformHandler);
     handlerRegistry.register(wakeAgentHandler);
     handlerRegistry.register(connectorActionHandler);
+    handlerRegistry.register(forEachHandler);
+    handlerRegistry.register(createInboxItemHandler);
+    handlerRegistry.register(emitEventHandler);
     for (const handler of this.blockHandlers) {
       handlerRegistry.register(handler);
     }
@@ -283,6 +289,7 @@ export class BoringOS {
     // Make actionRunner available to workflow block handlers (connector-action)
     serviceMap.actionRunner = actionRunner;
     serviceMap.connectorRegistry = connectorRegistry;
+    serviceMap.eventBus = eventBus;
 
     // Wire connector events to agent wakeups + inbox routing
     eventBus.onAny(async (event) => {
