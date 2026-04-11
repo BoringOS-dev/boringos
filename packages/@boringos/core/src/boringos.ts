@@ -60,6 +60,7 @@ import { bootstrapAuthTables } from "./auth.js";
 import { createAuthRoutes } from "./auth-routes.js";
 import { createDeviceAuthRoutes } from "./device-auth-routes.js";
 import { createRoutineScheduler } from "./scheduler.js";
+import { createCopilotRoutes } from "./copilot-routes.js";
 import { createPluginRegistry } from "./plugin-system.js";
 import type { PluginDefinition } from "./plugin-system.js";
 import { createPluginWebhookRoutes, createPluginAdminRoutes } from "./plugin-routes.js";
@@ -373,6 +374,46 @@ export class BoringOS {
     // Extra routes
     for (const { path, app: routeApp } of this.extraRoutes) {
       app.route(path, routeApp);
+    }
+
+    // 10b. Copilot — auto-create copilot agent + register session routes
+    {
+      const { createAgentFromTemplate } = await import("@boringos/agent");
+      // Find first tenant (for copilot agent creation)
+      const { tenants: tenantsTable } = await import("@boringos/db");
+      const tenantRows = await dbConn.db.select().from(tenantsTable).limit(1);
+      const firstTenantId = tenantRows[0]?.id;
+
+      if (firstTenantId) {
+        // Create copilot agent if it doesn't exist
+        const existingCopilot = await dbConn.db.select().from(
+          (await import("@boringos/db")).agents
+        ).where(
+          (await import("drizzle-orm")).and(
+            (await import("drizzle-orm")).eq((await import("@boringos/db")).agents.tenantId, firstTenantId),
+            (await import("drizzle-orm")).eq((await import("@boringos/db")).agents.role, "copilot"),
+          ),
+        ).limit(1);
+
+        if (existingCopilot.length === 0) {
+          // Find default runtime
+          const rtRows = await dbConn.db.select().from(
+            (await import("@boringos/db")).runtimes
+          ).where(
+            (await import("drizzle-orm")).eq((await import("@boringos/db")).runtimes.tenantId, firstTenantId),
+          ).limit(1);
+
+          await createAgentFromTemplate(dbConn.db, "copilot", {
+            tenantId: firstTenantId,
+            name: "Copilot",
+            runtimeId: rtRows[0]?.id,
+          });
+        }
+
+        // Register copilot routes
+        const copilotApp = createCopilotRoutes(dbConn.db, agentEngine, firstTenantId);
+        app.route("/api/copilot", copilotApp);
+      }
     }
 
     // 11. Start HTTP server

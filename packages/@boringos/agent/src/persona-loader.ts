@@ -7,7 +7,7 @@ const PERSONAS_DIR = join(__dirname, "personas");
 
 const PERSONA_ROLES = [
   "ceo", "cto", "engineer", "researcher", "pm", "qa",
-  "devops", "designer", "personal-assistant", "content-creator", "finance",
+  "devops", "designer", "personal-assistant", "content-creator", "finance", "copilot",
 ] as const;
 
 const ALIASES: Record<string, string> = {
