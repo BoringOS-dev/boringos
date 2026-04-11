@@ -23,7 +23,7 @@ export const claudeRuntime: RuntimeModule = {
     const model = config.model as string | undefined;
     const cwd = ctx.workspaceCwd ?? process.cwd();
 
-    const args = ["--print", "-", "--output-format", "stream-json", "--verbose"];
+    const args = ["--print", "-", "--output-format", "stream-json", "--verbose", "--dangerously-skip-permissions"];
     if (model) args.push("--model", model);
     if (ctx.previousSessionId) args.push("--resume", ctx.previousSessionId);
 

@@ -353,7 +353,7 @@ export class BoringOS {
         timestamp: new Date().toISOString(),
       });
     });
-    agentEngine.afterRun.use((event) => {
+    agentEngine.afterRun.use(async (event) => {
       const status = event.result.exitCode === 0 ? "run:completed" : "run:failed";
       realtimeBus.publish({
         type: status,
@@ -361,6 +361,45 @@ export class BoringOS {
         data: { runId: event.runId, agentId: event.agentId, exitCode: event.result.exitCode },
         timestamp: new Date().toISOString(),
       });
+
+      // Auto-post agent's result as a comment on the task (for copilot sessions + any task-based run)
+      if (event.taskId && event.result.exitCode === 0) {
+        try {
+          const { agentRuns, taskComments: tc } = await import("@boringos/db");
+          const runRows = await dbConn.db.select({ excerpt: agentRuns.stdoutExcerpt }).from(agentRuns)
+            .where((await import("drizzle-orm")).eq(agentRuns.id, event.runId)).limit(1);
+          const excerpt = runRows[0]?.excerpt;
+          if (excerpt) {
+            // Extract the result text from stream-json output
+            let replyText = excerpt;
+            try {
+              // Try to parse the last JSON line for the result text
+              const lines = excerpt.split("\n").filter(Boolean);
+              for (let i = lines.length - 1; i >= 0; i--) {
+                const parsed = JSON.parse(lines[i]);
+                if (parsed.type === "result" && parsed.result) {
+                  replyText = parsed.result;
+                  break;
+                }
+              }
+            } catch {
+              // Use excerpt as-is if not parseable
+            }
+
+            if (replyText && replyText.length > 10) {
+              await dbConn.db.insert(tc).values({
+                id: generateId(),
+                taskId: event.taskId,
+                tenantId: event.tenantId,
+                body: replyText,
+                authorAgentId: event.agentId,
+              });
+            }
+          }
+        } catch {
+          // Silently skip if posting fails
+        }
+      }
     });
 
     // Plugin webhook routes
