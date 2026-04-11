@@ -32,10 +32,15 @@ export function createCopilotManager(config: CopilotConfig): CopilotManager {
   let exitHandler: ((code: number) => void) | null = null;
   let usePty = false;
 
-  // Try to load node-pty for full TTY support
+  // Try to load node-pty for full TTY support.
+  // node-pty is a native module — use createRequire pointed at the app's
+  // working directory so it resolves from the app's node_modules, not the framework's.
   let ptyModule: any = null;
   try {
-    ptyModule = require("node-pty");
+    const { createRequire } = require("node:module");
+    const cwd = config.workingDir ?? process.cwd();
+    const appRequire = createRequire(cwd + "/package.json");
+    ptyModule = appRequire("node-pty");
     usePty = true;
   } catch {
     // node-pty not available — fall back to child_process.spawn
