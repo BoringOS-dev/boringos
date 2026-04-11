@@ -60,8 +60,6 @@ import { bootstrapAuthTables } from "./auth.js";
 import { createAuthRoutes } from "./auth-routes.js";
 import { createDeviceAuthRoutes } from "./device-auth-routes.js";
 import { createRoutineScheduler } from "./scheduler.js";
-import { createCopilotManager, type CopilotConfig } from "./copilot.js";
-import { createCopilotRoutes, attachCopilotWebSocket } from "./copilot-routes.js";
 import { createPluginRegistry } from "./plugin-system.js";
 import type { PluginDefinition } from "./plugin-system.js";
 import { createPluginWebhookRoutes, createPluginAdminRoutes } from "./plugin-routes.js";
@@ -84,7 +82,6 @@ export class BoringOS {
   private queueAdapter: QueueAdapter<AgentRunJob> | undefined;
   private userSchemaStatements: string[] = [];
   private inboxRoutes: Array<{ filter: (event: Record<string, unknown>) => boolean; transform: (event: Record<string, unknown>) => { source: string; subject: string; body?: string; from?: string } }> = [];
-  private copilotConfig: CopilotConfig | null = null;
 
   constructor(config: BoringOSConfig = {}) {
     this.config = config;
@@ -145,10 +142,6 @@ export class BoringOS {
     return this;
   }
 
-  copilot(config: CopilotConfig = {}): this {
-    this.copilotConfig = config;
-    return this;
-  }
 
   beforeStart(fn: LifecycleHook): this {
     this.beforeStartHooks.push(fn);
@@ -382,35 +375,8 @@ export class BoringOS {
       app.route(path, routeApp);
     }
 
-    // 11. Copilot (optional — web terminal for CLI agents)
-    if (this.copilotConfig) {
-      const copilotManager = createCopilotManager({
-        runtime: this.copilotConfig.runtime ?? "claude",
-        workingDir: this.copilotConfig.workingDir ?? globalThis.process.cwd(),
-        env: {
-          ...this.copilotConfig.env,
-          BORINGOS_URL: `http://localhost:${listenPort}`,
-          BORINGOS_CALLBACK_TOKEN: jwtSecret,
-          ADMIN_KEY: adminKeyValue,
-        },
-      });
-      const copilotApp = createCopilotRoutes(copilotManager);
-      app.route("/api/copilot", copilotApp);
-
-      // Attach WebSocket after server starts (below)
-      this.beforeShutdownHooks.push(async () => { copilotManager.stop(); });
-
-      // Store for WebSocket attachment
-      (this as any)._copilotManager = copilotManager;
-    }
-
-    // 12. Start HTTP server
+    // 11. Start HTTP server
     const server = serve({ fetch: app.fetch, port: listenPort });
-
-    // Attach copilot WebSocket to the raw HTTP server
-    if ((this as any)._copilotManager) {
-      attachCopilotWebSocket(server, (this as any)._copilotManager);
-    }
 
     // Get the actual port (important when listenPort is 0)
     const address = server.address();
