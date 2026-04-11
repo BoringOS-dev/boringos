@@ -1,6 +1,5 @@
-import * as pty from "node-pty";
-import type { IPty } from "node-pty";
-import { execSync } from "node:child_process";
+import { spawn, execSync } from "node:child_process";
+import type { ChildProcess } from "node:child_process";
 
 export interface CopilotConfig {
   /** CLI command to run (default: "claude") */
@@ -22,68 +21,89 @@ export interface CopilotManager {
 }
 
 /**
- * Creates a copilot session manager that spawns a CLI in a PTY.
- * The CLI runs interactively — stdin/stdout piped via handlers.
+ * Creates a copilot session manager that spawns a CLI subprocess.
+ * Uses child_process.spawn with piped stdio.
+ * Falls back to node-pty if available for full TTY support.
  */
 export function createCopilotManager(config: CopilotConfig): CopilotManager {
-  let process: IPty | null = null;
+  let proc: ChildProcess | null = null;
+  let ptyProc: any = null; // node-pty IPty if available
   let dataHandler: ((data: string) => void) | null = null;
   let exitHandler: ((code: number) => void) | null = null;
+  let usePty = false;
+
+  // Try to load node-pty for full TTY support
+  let ptyModule: any = null;
+  try {
+    ptyModule = require("node-pty");
+    usePty = true;
+  } catch {
+    // node-pty not available — fall back to child_process.spawn
+  }
 
   return {
     start(cols = 120, rows = 40) {
-      if (process) return;
+      if (proc || ptyProc) return;
 
       const runtimeName = config.runtime ?? "claude";
-      const cwd = config.workingDir ?? globalThis.process.cwd();
+      const cwd = config.workingDir ?? process.cwd();
 
-      // Resolve full path — PTY doesn't inherit shell profile so ~/.local/bin etc may be missing
+      // Resolve full path
       let command = runtimeName;
       try {
         command = execSync(`which ${runtimeName}`, { encoding: "utf8" }).trim() || runtimeName;
-      } catch {
-        // Fall back to the name and hope PATH has it
+      } catch {}
+
+      const env = {
+        ...process.env,
+        ...config.env,
+        TERM: "xterm-256color",
+        COLUMNS: String(cols),
+        LINES: String(rows),
+      } as Record<string, string>;
+
+      if (usePty && ptyModule) {
+        try {
+          ptyProc = ptyModule.spawn(command, [], { name: "xterm-256color", cols, rows, cwd, env });
+          ptyProc.onData((data: string) => dataHandler?.(data));
+          ptyProc.onExit(({ exitCode }: { exitCode: number }) => { ptyProc = null; exitHandler?.(exitCode); });
+          return;
+        } catch {
+          // PTY failed, fall back
+          ptyProc = null;
+        }
       }
 
-      process = pty.spawn(command, [], {
-        name: "xterm-256color",
-        cols,
-        rows,
+      // Fallback: plain subprocess
+      proc = spawn(command, [], {
         cwd,
-        env: {
-          ...globalThis.process.env,
-          ...config.env,
-          TERM: "xterm-256color",
-        } as Record<string, string>,
+        env,
+        stdio: ["pipe", "pipe", "pipe"],
+        shell: true,
       });
 
-      process.onData((data) => {
-        dataHandler?.(data);
-      });
-
-      process.onExit(({ exitCode }) => {
-        process = null;
-        exitHandler?.(exitCode);
-      });
+      proc.stdout?.on("data", (data: Buffer) => dataHandler?.(data.toString()));
+      proc.stderr?.on("data", (data: Buffer) => dataHandler?.(data.toString()));
+      proc.on("exit", (code) => { proc = null; exitHandler?.(code ?? 1); });
     },
 
     stop() {
-      if (process) {
-        process.kill();
-        process = null;
-      }
+      if (ptyProc) { ptyProc.kill(); ptyProc = null; }
+      if (proc) { proc.kill(); proc = null; }
     },
 
     isRunning() {
-      return process !== null;
+      return proc !== null || ptyProc !== null;
     },
 
     write(data: string) {
-      process?.write(data);
+      if (ptyProc) { ptyProc.write(data); return; }
+      proc?.stdin?.write(data);
     },
 
     resize(cols: number, rows: number) {
-      process?.resize(cols, rows);
+      if (ptyProc) { ptyProc.resize(cols, rows); }
+      // Can't resize a plain subprocess
     },
 
     onData(handler: (data: string) => void) {
