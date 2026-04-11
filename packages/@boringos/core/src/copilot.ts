@@ -1,5 +1,6 @@
 import * as pty from "node-pty";
 import type { IPty } from "node-pty";
+import { execSync } from "node:child_process";
 
 export interface CopilotConfig {
   /** CLI command to run (default: "claude") */
@@ -33,8 +34,16 @@ export function createCopilotManager(config: CopilotConfig): CopilotManager {
     start(cols = 120, rows = 40) {
       if (process) return;
 
-      const command = config.runtime ?? "claude";
+      const runtimeName = config.runtime ?? "claude";
       const cwd = config.workingDir ?? globalThis.process.cwd();
+
+      // Resolve full path — PTY doesn't inherit shell profile so ~/.local/bin etc may be missing
+      let command = runtimeName;
+      try {
+        command = execSync(`which ${runtimeName}`, { encoding: "utf8" }).trim() || runtimeName;
+      } catch {
+        // Fall back to the name and hope PATH has it
+      }
 
       process = pty.spawn(command, [], {
         name: "xterm-256color",

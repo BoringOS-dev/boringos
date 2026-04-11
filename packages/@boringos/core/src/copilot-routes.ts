@@ -25,8 +25,12 @@ export function createCopilotRoutes(manager: CopilotManager): Hono {
     const body = c.req.query();
     const cols = parseInt(body.cols ?? "120");
     const rows = parseInt(body.rows ?? "40");
-    manager.start(cols, rows);
-    return c.json({ status: "started" });
+    try {
+      manager.start(cols, rows);
+      return c.json({ status: "started" });
+    } catch (err) {
+      return c.json({ status: "error", error: String(err) }, 500);
+    }
   });
 
   app.delete("/stop", (c) => {
@@ -55,7 +59,7 @@ export function attachCopilotWebSocket(server: HttpServer, manager: CopilotManag
     wss.handleUpgrade(request, socket, head, (ws) => {
       // If not running, start with default size
       if (!manager.isRunning()) {
-        manager.start();
+        try { manager.start(); } catch { ws.close(); return; }
       }
 
       // PTY → WebSocket
