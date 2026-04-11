@@ -2435,6 +2435,107 @@ app.listen(5001);
 
 ---
 
+## Copilot (Built-in AI Assistant)
+
+Every BoringOS app ships with a built-in copilot — a conversational AI agent that can both **operate** your system and **build** new features. Zero configuration needed.
+
+### How it works
+
+```
+User types "Show me all blocked tasks" in the copilot chat
+  → Message saved as comment on a copilot session (task with originKind="copilot")
+  → Copilot agent auto-wakes (same pattern as comment → wake on any task)
+  → Agent reads the conversation, calls GET /api/admin/tasks, filters blocked
+  → Agent posts reply as comment: "Found 1 blocked task: BOS-005..."
+  → UI polls for new comments, renders the reply
+```
+
+### What the copilot can do
+
+| Ask | What it does |
+|-----|-------------|
+| "Show me all tasks" | Calls admin API, formats results |
+| "Create a task to review Q2 goals" | Calls POST /api/admin/tasks |
+| "Pause the finance agent" | Calls PATCH /api/admin/agents/:id |
+| "Why did the last run fail?" | Reads run logs via API |
+| "Add a chart to the dashboard" | Reads code, edits page.tsx |
+| "Change email sync to every 5 min" | Edits workflow or routine config |
+| "What does the email triage agent do?" | Reads agent instructions from code |
+
+### Architecture
+
+```
+Copilot session = Task (originKind: "copilot")
+User message    = Comment (authorUserId)
+Agent reply     = Comment (authorAgentId)
+Chat UI         = renders comments as conversation bubbles
+```
+
+No new primitives. Reuses: tasks, comments, auto-wake on comment, agent execution pipeline.
+
+### API
+
+```bash
+# Create a session
+POST /api/copilot/sessions
+→ { id: "session-uuid", title: "Copilot — Apr 11" }
+
+# List sessions
+GET /api/copilot/sessions
+→ { sessions: [...] }
+
+# Get session with messages
+GET /api/copilot/sessions/:id
+→ { session: {...}, messages: [{ id, body, role: "user"|"assistant", createdAt }] }
+
+# Send a message (auto-wakes the copilot agent)
+POST /api/copilot/sessions/:id/message
+{ "message": "Show me all blocked tasks" }
+→ { id: "comment-id", agentWoken: true }
+
+# Archive session
+DELETE /api/copilot/sessions/:id
+```
+
+### For app developers
+
+**Zero config — it just works:**
+```typescript
+const app = new BoringOS({ auth: { adminKey: "..." } });
+app.listen(3000);
+// /api/copilot/* routes are available
+// Copilot agent is auto-created on boot
+```
+
+**Optional customization:**
+```typescript
+// Add app-specific knowledge to the copilot's context
+app.copilotContext("Our app uses Stripe for billing. The billing table is...");
+```
+
+**UI — use the built-in chat component or build your own:**
+```tsx
+// Drop-in chat panel
+import { CopilotPanel } from "@boringos/ui";
+<CopilotPanel />
+
+// Or build your own using the API
+const res = await fetch("/api/copilot/sessions/:id/message", {
+  method: "POST",
+  body: JSON.stringify({ message: "Show me all tasks" }),
+});
+```
+
+### The copilot agent
+
+- **Role:** `copilot` (new built-in persona alongside ceo, engineer, etc.)
+- **Auto-created:** On first boot, for the first tenant
+- **Not in org tree:** System agent, doesn't report to anyone
+- **Instructions:** Knows BUILD_GUIDELINE.md, CLAUDE.md, admin API, how to read/edit code
+- **Runtime:** Uses the default runtime (Claude CLI, Codex, etc.)
+
+---
+
 ## Common Patterns
 
 ### Pattern: Workflow-Triggered Routine (Smart Scheduling)
@@ -2548,3 +2649,6 @@ Test files live in `tests/` at the repo root. Use Vitest. Each test file covers 
 | Create seed data | `src/seed.ts` — call admin API |
 | Add custom DB tables | `app.schema("CREATE TABLE ...")` in index.ts |
 | Deploy to production | Set `DATABASE_URL` + `REDIS_URL` + `AUTH_SECRET`, use BullMQ queue |
+| Use the copilot | It's automatic — `/api/copilot/*` routes available on boot, agent auto-created |
+| Add copilot chat to UI | Use `<CopilotPanel />` from `@boringos/ui`, or build custom UI with the copilot API |
+| Teach copilot app-specific knowledge | `app.copilotContext("Our app uses Stripe...")` |

@@ -409,6 +409,14 @@ Application host — the entry point.
   - `GET /api/admin/search?q=query` — searches across tasks (title + description), agents (name), inbox items (subject + body)
   - Returns grouped results: `{ tasks, agents, inboxItems }`
   - `useSearch(query)` hook
+- **Copilot:**
+  - Built-in system agent (role: `copilot`) — auto-created on boot for the first tenant
+  - Conversational AI assistant that can both **operate** (manage entities via admin API) and **build** (read/edit code)
+  - Sessions are tasks with `originKind: "copilot"`, messages are comments — reuses the existing agent execution pipeline
+  - User posts a message → auto-wakes copilot agent → agent reads codebase + admin API → replies as comment
+  - Persona: knows BUILD_GUIDELINE.md, CLAUDE.md, admin API schema, how to read/edit source files
+  - API: `POST /api/copilot/sessions` (create), `GET /api/copilot/sessions` (list), `GET /api/copilot/sessions/:id` (messages), `POST /api/copilot/sessions/:id/message` (send + auto-wake)
+  - Zero configuration — every BoringOS app gets a copilot automatically
 
 ---
 
