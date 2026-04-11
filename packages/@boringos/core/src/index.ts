@@ -35,3 +35,6 @@ export type { NotificationService, NotificationConfig } from "./notifications.js
 
 export { nullMemory } from "@boringos/memory";
 export { createHebbsMemory } from "@boringos/memory";
+
+export type { CopilotConfig, CopilotManager } from "./copilot.js";
+export { createCopilotManager } from "./copilot.js";
