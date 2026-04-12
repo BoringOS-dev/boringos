@@ -416,7 +416,14 @@ Application host — the entry point.
   - User posts a message → auto-wakes copilot agent → agent reads codebase + admin API → replies as comment
   - Persona: knows BUILD_GUIDELINE.md, CLAUDE.md, admin API schema, how to read/edit source files
   - API: `POST /api/copilot/sessions` (create), `GET /api/copilot/sessions` (list), `GET /api/copilot/sessions/:id` (messages), `POST /api/copilot/sessions/:id/message` (send + auto-wake)
+  - Agent result auto-posted as comment after each run — replies appear in chat UI
   - Zero configuration — every BoringOS app gets a copilot automatically
+- **Agent permissions:**
+  - All agents run with `--dangerously-skip-permissions` — full file read/write access for autonomous operation
+  - No interactive approval needed — agents edit code, create files, run commands in background
+- **Auto-post agent results:**
+  - After every agent run on a task, the framework extracts the result text and posts it as a comment with `authorAgentId`
+  - Enables conversational workflows: user comments → agent wakes → agent replies as comment → user sees reply
 
 ---
 
