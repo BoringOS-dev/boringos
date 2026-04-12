@@ -2534,6 +2534,28 @@ const res = await fetch("/api/copilot/sessions/:id/message", {
 - **Instructions:** Knows BUILD_GUIDELINE.md, CLAUDE.md, admin API, how to read/edit code
 - **Runtime:** Uses the default runtime (Claude CLI, Codex, etc.)
 
+### Agent Permissions
+
+All agents (including copilot) run with `--dangerously-skip-permissions`:
+- Full file read/write access — agents can edit source code, create files, run commands
+- Required for autonomous operation — no human available to approve interactively in background runs
+- This flag is set in the Claude runtime (`packages/@boringos/runtime/src/runtimes/claude.ts`)
+
+### Auto-Post Agent Results
+
+After every agent run on a task, the framework automatically:
+1. Reads the run's `stdoutExcerpt` from the DB
+2. Parses the stream-json output to extract the `result` text
+3. Posts it as a comment on the task with `authorAgentId` set
+
+This enables conversational workflows without agents explicitly calling the comment API:
+```
+User posts comment → agent wakes → agent works → agent output saved to run
+→ framework extracts result → posts as comment → user sees reply
+```
+
+This is what powers the copilot chat — but it works for ALL task-based agent runs. Any agent that runs on a task will have its result posted as a comment automatically.
+
 ---
 
 ## Common Patterns
