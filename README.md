@@ -61,6 +61,10 @@ The framework handles:
 - **Agent templates** — `createAgentFromTemplate(role)` with built-in personas
 - **Team templates** — `createTeam("engineering")` wires up CTO + engineers + QA with hierarchy
 - **Agent hierarchy** — org tree, delegation to reports, escalation to manager
+- **Data sync** — workflow-triggered sync for email, calendar, Slack (connector-action → for-each → create-inbox-item → wake-agent)
+- **Auto-wake on comment** — posting a comment on an assigned task auto-wakes the agent
+- **Auto-post results** — agent run output auto-posted as comment on the task
+- **Built-in copilot** — conversational AI assistant that can operate the system AND build features, ships with every app, zero config
 - **Convention over configuration** — everything works with zero config
 
 ## Packages
@@ -114,16 +118,19 @@ const server = await app.listen(3000);
 pnpm install           # Install dependencies
 pnpm -r build          # Build all packages
 pnpm -r typecheck      # Typecheck all packages
-pnpm test:run          # Run all tests (122 tests)
+pnpm test:run          # Run all tests (126 tests)
 ```
 
 ## Examples
 
 - [`examples/quickstart/`](examples/quickstart/) — Boot, create an agent, assign a task, watch it execute
+- [Personal OS demo](https://github.com/BoringOS-dev/boringos-demos) — Full personal automation system (email triage, calendar, social media, finance, copilot)
 
 ## Detailed Docs
 
-See [CLAUDE.md](CLAUDE.md) for the full agent orientation guide — package details, execution pipeline, all interfaces, environment variables.
+- [CLAUDE.md](CLAUDE.md) — Full framework reference (package details, execution pipeline, all interfaces)
+- [BUILD_GUIDELINE.md](BUILD_GUIDELINE.md) — How to build on BoringOS (agents, workflows, UI, copilot, patterns)
+- [boringos.dev](https://boringos.dev) — Website + docs
 
 ## License
 
