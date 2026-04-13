@@ -67,6 +67,49 @@ The framework handles:
 - **Built-in copilot (multi-tenant)** — conversational AI assistant that can operate the system AND build features, resolves tenant from session token, auto-created per tenant on signup
 - **Convention over configuration** — everything works with zero config
 
+## Agent Hierarchy
+
+Create an entire AI org in one API call. Agents delegate down, escalate up, and share memory across the tree.
+
+```
+                                 ┌─────────┐
+                                 │   CEO   │
+                                 │Strategy │
+                                 └────┬────┘
+                    ┌─────────────┬───┴────┬──────────────┐
+                    │             │        │              │
+              ┌─────┴─────┐ ┌────┴────┐ ┌─┴───────┐ ┌────┴─────┐
+              │    CTO    │ │   CMO   │ │VP Sales │ │ Copilot  │
+              │  Tech Lead│ │Marketing│ │ Revenue │ │AI Assist │
+              └─────┬─────┘ └────┬────┘ └────┬────┘ └──────────┘
+           ┌────────┼────────┐   │  ┌────┐   │  ┌─────┐
+           │        │        │   │  │    │   │  │     │
+       ┌───┴───┐┌───┴───┐┌──┴──┐│  │    │   │  │     │
+       │Frontend││Backend││ QA  ││  │    │   │  │     │
+       │  Eng   ││  Eng  ││     ││  │    │   │  │     │
+       └───────┘└───────┘└─────┘│  │    │   │  │     │
+                          ┌─────┴──┴┐┌──┴───┴┐┌┴─────┴┐
+                          │Researcher││ SDR   ││  AE   │
+                          │& Writer  ││Outbnd ││Closer │
+                          └─────────┘└───────┘└───────┘
+```
+
+```typescript
+// One call creates the full engineering team
+await createTeam(db, "engineering", { tenantId });
+// → CTO (reports to: none)
+// → Senior Engineer (reports to: CTO)
+// → Engineer (reports to: CTO)
+// → QA Engineer (reports to: CTO)
+
+// CEO delegates "Build the MVP" → CTO breaks it down →
+// Engineers execute → QA validates → tasks complete.
+```
+
+**Delegation flows down.** CEO assigns a goal to CTO. CTO creates subtasks, assigns to engineers. Engineers spawn CLI runtimes (Claude, Codex, Gemini), write code, run tests, post updates.
+
+**Escalation flows up.** Stuck? Agent escalates to its manager. Need approval? Humans approve via dashboard. Done? Tasks close, memory persists, next goal begins.
+
 ## Packages
 
 | Package | Purpose |
