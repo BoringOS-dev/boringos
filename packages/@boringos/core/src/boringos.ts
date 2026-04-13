@@ -82,7 +82,7 @@ export class BoringOS {
   private blockHandlers: BlockHandler[] = [];
   private queueAdapter: QueueAdapter<AgentRunJob> | undefined;
   private userSchemaStatements: string[] = [];
-  private inboxRoutes: Array<{ filter: (event: Record<string, unknown>) => boolean; transform: (event: Record<string, unknown>) => { source: string; subject: string; body?: string; from?: string } }> = [];
+  private inboxRoutes: Array<{ filter: (event: Record<string, unknown>) => boolean; transform: (event: Record<string, unknown>) => { source: string; subject: string; body?: string; from?: string; assigneeUserId?: string } }> = [];
 
   constructor(config: BoringOSConfig = {}) {
     this.config = config;
@@ -133,7 +133,7 @@ export class BoringOS {
     return this;
   }
 
-  routeToInbox(config: { filter: (event: Record<string, unknown>) => boolean; transform: (event: Record<string, unknown>) => { source: string; subject: string; body?: string; from?: string } }): this {
+  routeToInbox(config: { filter: (event: Record<string, unknown>) => boolean; transform: (event: Record<string, unknown>) => { source: string; subject: string; body?: string; from?: string; assigneeUserId?: string } }): this {
     this.inboxRoutes.push(config);
     return this;
   }
@@ -307,6 +307,7 @@ export class BoringOS {
             subject: item.subject,
             body: item.body ?? null,
             from: item.from ?? null,
+            assigneeUserId: item.assigneeUserId ?? null,
           }).catch(() => {});
         }
       }

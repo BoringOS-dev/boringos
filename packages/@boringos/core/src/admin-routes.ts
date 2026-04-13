@@ -41,6 +41,8 @@ import type { RealtimeBus } from "./realtime.js";
 type AdminEnv = {
   Variables: {
     tenantId: string;
+    userId: string;
+    role: string;
   };
 };
 
@@ -89,6 +91,8 @@ export function createAdminRoutes(
       const session = await validateSession(db, bearer);
       if (session) {
         c.set("tenantId", session.tenantId);
+        c.set("userId", session.userId);
+        c.set("role", session.role);
         return next();
       }
     }
@@ -232,6 +236,8 @@ export function createAdminRoutes(
   app.get("/tasks", async (c) => {
     const status = c.req.query("status");
     const assignee = c.req.query("assigneeAgentId");
+    const assigneeUser = c.req.query("assigneeUserId");
+    const resolvedAssigneeUser = assigneeUser === "me" ? c.get("userId") : assigneeUser;
 
     let query = db.select().from(tasks).where(eq(tasks.tenantId, c.get("tenantId")));
     // Note: drizzle doesn't chain .where easily, so we filter in-memory for optional params
@@ -240,6 +246,7 @@ export function createAdminRoutes(
     let filtered = rows;
     if (status) filtered = filtered.filter((t) => t.status === status);
     if (assignee) filtered = filtered.filter((t) => t.assigneeAgentId === assignee);
+    if (resolvedAssigneeUser) filtered = filtered.filter((t) => t.assigneeUserId === resolvedAssigneeUser);
 
     return c.json({ tasks: filtered });
   });
@@ -306,6 +313,7 @@ export function createAdminRoutes(
       status: (body.status as string) ?? "todo",
       priority: (body.priority as string) ?? "medium",
       assigneeAgentId: body.assigneeAgentId as string | undefined,
+      assigneeUserId: (body.assigneeUserId as string) ?? c.get("userId") ?? undefined,
       parentId: body.parentId as string | undefined,
       identifier,
       originKind: "manual",
@@ -324,6 +332,7 @@ export function createAdminRoutes(
     if (body.status !== undefined) values.status = body.status;
     if (body.priority !== undefined) values.priority = body.priority;
     if (body.assigneeAgentId !== undefined) values.assigneeAgentId = body.assigneeAgentId;
+    if (body.assigneeUserId !== undefined) values.assigneeUserId = body.assigneeUserId;
 
     await db.update(tasks).set(values).where(
       and(eq(tasks.id, c.req.param("id")), eq(tasks.tenantId, c.get("tenantId"))),
@@ -1047,8 +1056,14 @@ export function createAdminRoutes(
 
   app.get("/inbox", async (c) => {
     const status = c.req.query("status") ?? "unread";
+    const assigneeUser = c.req.query("assigneeUserId");
+    const resolvedAssigneeUser = assigneeUser === "me" ? c.get("userId") : assigneeUser;
+
+    const conditions = [eq(inboxItems.tenantId, c.get("tenantId")), eq(inboxItems.status, status)];
+    if (resolvedAssigneeUser) conditions.push(eq(inboxItems.assigneeUserId, resolvedAssigneeUser));
+
     const rows = await db.select().from(inboxItems)
-      .where(and(eq(inboxItems.tenantId, c.get("tenantId")), eq(inboxItems.status, status)))
+      .where(and(...conditions))
       .orderBy(desc(inboxItems.createdAt))
       .limit(100);
     return c.json({ items: rows });
@@ -1082,6 +1097,7 @@ export function createAdminRoutes(
     if (!itemRows[0]) return c.json({ error: "Inbox item not found" }, 404);
 
     const item = itemRows[0];
+    const body = await c.req.json().catch(() => ({})) as Record<string, unknown>;
     const taskId = generateId();
     await db.insert(tasks).values({
       id: taskId,
@@ -1090,6 +1106,7 @@ export function createAdminRoutes(
       description: item.body ?? undefined,
       status: "todo",
       priority: "medium",
+      assigneeUserId: (body.assigneeUserId as string) ?? c.get("userId") ?? undefined,
       originKind: "inbox",
       originId: item.id,
     });

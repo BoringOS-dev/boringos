@@ -56,6 +56,7 @@ export const createInboxItemHandler: BlockHandler = {
           subject: (entry.subject as string) ?? (entry.summary as string) ?? (entry.title as string) ?? "No subject",
           body: (entry.body as string) ?? (entry.snippet as string) ?? (entry.description as string) ?? null,
           from: (entry.from as string) ?? null,
+          assigneeUserId: (entry.assigneeUserId as string) ?? (ctx.config.assigneeUserId as string) ?? null,
           sourceId,
           metadata: entry,
         });
@@ -70,6 +71,7 @@ export const createInboxItemHandler: BlockHandler = {
         subject: (ctx.config.subject as string) ?? "No subject",
         body: (ctx.config.body as string) ?? null,
         from: (ctx.config.from as string) ?? null,
+        assigneeUserId: (ctx.config.assigneeUserId as string) ?? null,
       });
       created = 1;
     }

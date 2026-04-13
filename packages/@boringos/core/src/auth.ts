@@ -97,12 +97,12 @@ export function createAuth(config: AuthSetupConfig) {
 export async function validateSession(
   db: Db,
   sessionToken: string,
-): Promise<{ userId: string; tenantId: string } | null> {
+): Promise<{ userId: string; tenantId: string; role: string } | null> {
   const now = new Date();
 
   // Query session directly from our bootstrapped tables
   const result = await db.execute(sql`
-    SELECT s.user_id, ut.tenant_id
+    SELECT s.user_id, ut.tenant_id, ut.role
     FROM auth_sessions s
     JOIN user_tenants ut ON ut.user_id = s.user_id
     WHERE s.token = ${sessionToken}
@@ -110,8 +110,8 @@ export async function validateSession(
     LIMIT 1
   `);
 
-  const rows = result as unknown as Array<{ user_id: string; tenant_id: string }>;
+  const rows = result as unknown as Array<{ user_id: string; tenant_id: string; role: string }>;
   if (!rows[0]) return null;
 
-  return { userId: rows[0].user_id, tenantId: rows[0].tenant_id };
+  return { userId: rows[0].user_id, tenantId: rows[0].tenant_id, role: rows[0].role };
 }

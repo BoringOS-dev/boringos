@@ -145,7 +145,7 @@ DAG-based workflow engine with typed block handlers and condition branching.
 - **`wake-agent` handler:** Wakes an agent from within a workflow. Config: `{ agentId, reason?, taskId? }`. Uses `agentEngine.wake()` + `enqueue()`. Enables "smart routines" — workflows that only spawn agents when needed.
 - **`connector-action` handler:** Calls a connector action (e.g., `list_emails`, `list_events`) from within a workflow. Config: `{ connectorKind, action, inputs? }`. Fetches credentials from DB automatically.
 - **`for-each` handler:** Iterates over an array from a previous block. Config: `{ items: "{{fetch.messages}}" }`. Returns `{ items, count, processed }`.
-- **`create-inbox-item` handler:** Stores data in inbox. Single item: `{ source, subject, body, from }`. Batch: `{ source, items: [...] }`. Used in sync workflows to persist fetched data before agent processing (Pattern A).
+- **`create-inbox-item` handler:** Stores data in inbox. Single item: `{ source, subject, body, from, assigneeUserId? }`. Batch: `{ source, assigneeUserId?, items: [...] }`. Per-item `assigneeUserId` overrides block-level. Used in sync workflows to persist fetched data before agent processing (Pattern A).
 - **`emit-event` handler:** Emits connector events from workflow. Config: `{ connectorKind, eventType, data? }` or batch `{ items: [...] }`. Enables `routeToInbox()` to catch workflow-generated events.
 - **Branching:** condition blocks return `selectedHandle` (e.g., `condition-true`/`condition-false`) that determines which downstream edges activate
 - **Trigger types:** `cron`, `webhook`, `event`
@@ -300,9 +300,10 @@ Application host — the entry point.
 - **Auth API** (`/api/auth/*`, unauthenticated):
   - `POST /signup` — create user (name, email, password, optional tenantId)
   - `POST /login` — authenticate, returns session token
-  - `GET /me` — get current user from session (Bearer token)
+  - `GET /me` — get current user from session (Bearer token), returns `{ id, name, email, tenantId, role }`
   - `POST /logout` — invalidate session
   - Admin API accepts both API key (`X-API-Key`) and session token (`Authorization: Bearer`)
+  - Session auth sets `userId`, `tenantId`, and `role` on request context — apps use these for authorization
   - User-tenant linking via `user_tenants` table (role: admin/member)
 - **Activity Log** — audit trail for all admin mutations:
   - Logged: agent.created, task.created, comment.created, approval.approved, approval.rejected
@@ -378,8 +379,8 @@ Application host — the entry point.
   - `evals` table (name, test cases as JSON), `eval_runs` table (pass/fail counts, results)
   - `useEvals()` hook in `@boringos/ui`
 - **Inbox:**
-  - Receive and triage external messages/events
-  - Admin API: `GET /api/admin/inbox`, `GET /api/admin/inbox/:id` (marks read), `POST /api/admin/inbox/:id/archive`, `POST /api/admin/inbox/:id/create-task`
+  - Receive and triage external messages/events, with optional `assigneeUserId` for user-level routing
+  - Admin API: `GET /api/admin/inbox` (filter by `?assigneeUserId=me`), `GET /api/admin/inbox/:id` (marks read), `POST /api/admin/inbox/:id/archive`, `POST /api/admin/inbox/:id/create-task` (defaults `assigneeUserId` to current user)
   - Items can be converted to tasks directly
   - `useInbox()` hook in `@boringos/ui`
 - **Agent templates & teams:**
@@ -404,7 +405,7 @@ Application host — the entry point.
   - `useEntityRefs(type, id)` hook
 - **Event-to-inbox routing:**
   - `.routeToInbox({ filter, transform })` — declaratively route connector events to inbox
-  - Filter decides which events become inbox items, transform maps event data to inbox fields
+  - Filter decides which events become inbox items, transform maps event data to inbox fields (`source`, `subject`, `body?`, `from?`, `assigneeUserId?`)
 - **Cross-entity search:**
   - `GET /api/admin/search?q=query` — searches across tasks (title + description), agents (name), inbox items (subject + body)
   - Returns grouped results: `{ tasks, agents, inboxItems }`

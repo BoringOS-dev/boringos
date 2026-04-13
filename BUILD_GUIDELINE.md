@@ -35,6 +35,102 @@ curl -X POST http://localhost:3000/api/admin/teams/from-template \
 
 ---
 
+## Build Thesis: The Framework Orchestrates, The CLI Thinks
+
+**BoringOS never calls an LLM API.** It spawns CLI agents that think for themselves.
+
+Most "AI products" work like this:
+```
+User action → Your backend → anthropic.messages.create() → Parse JSON → Show result
+```
+
+You write prompt engineering code, manage tool schemas, parse structured output, handle retries. The intelligence is scattered across your codebase.
+
+BoringOS works like this:
+```
+User action → Create task → Wake agent → CLI spawns with full context
+                                          → CLI reasons autonomously
+                                          → CLI calls back with results
+                                          → Framework persists → UI updates
+```
+
+The difference is fundamental:
+
+| | Traditional AI App | BoringOS App |
+|---|---|---|
+| **Intelligence lives in** | Your backend code (prompts, parsers, chains) | CLI subprocess (Claude Code, Codex, Gemini CLI) |
+| **Your code does** | Prompt engineering, response parsing, tool schemas | Task creation, agent wake, context assembly |
+| **LLM interaction** | API calls you manage | CLI handles it — you never see it |
+| **Tool use** | You define tool schemas, handle calls | CLI has native tool use (file access, code execution, web) |
+| **Complexity scales with** | Every new feature needs new prompts + parsers | Every new feature needs a context provider + agent config |
+
+### What This Means for App Developers
+
+**You never write AI code.** You write:
+
+1. **Context providers** — teach agents about your domain (CRM schema, user role, page context)
+2. **Agent definitions** — name, role, instructions, trigger conditions
+3. **Task creation logic** — when to wake an agent (new inbox item, daily routine, user request)
+
+The agent CLI handles reasoning, tool use, multi-step planning, error recovery, and code execution. Your app just creates the task and reads the result.
+
+### The Runtime Model
+
+An agent "run" works like this:
+
+```
+1. WAKE       — Something triggers the agent (comment, routine, event, manual)
+2. QUEUE      — Request coalesced + queued (prevents duplicate runs)
+3. CONTEXT    — Context pipeline assembles: system instructions + task + comments
+                + memory + domain knowledge from your context providers
+4. SPAWN      — Runtime spawns CLI subprocess (e.g., Claude Code)
+                CLI receives: system prompt, callback URL + JWT token, workspace path
+5. EXECUTE    — CLI runs autonomously — reads files, writes code, calls tools
+                CLI calls back to framework via JWT-authenticated HTTP:
+                  POST /tasks/:id/comments  (post updates)
+                  POST /work-products       (record deliverables)
+                  POST /costs               (report token usage)
+6. COMPLETE   — Framework records result, updates task status, emits events
+```
+
+The CLI is a real process with real file access. It's not a chat completion — it's an autonomous agent that can read your codebase, run tests, make HTTP calls, and report back.
+
+### Runtimes Are Swappable
+
+Same agent can run on different runtimes:
+- **Claude** — Claude Code CLI (`--dangerously-skip-permissions` for autonomous execution)
+- **ChatGPT** — Codex CLI
+- **Gemini** — Gemini CLI
+- **Ollama** — Local models
+- **Command** — Any shell command
+- **Webhook** — External HTTP endpoint
+
+The agent definition doesn't change. Just swap the runtime. This means you can run cheap tasks on Ollama and important tasks on Claude without changing any app code.
+
+### Implications for Product Design
+
+When building features on BoringOS:
+
+**Don't build algorithms. Configure agents.**
+- ❌ Write a lead scoring formula with weighted factors
+- ✅ Create a Lead Qualifier agent with scoring criteria in its instructions
+
+**Don't parse LLM output. Create tasks.**
+- ❌ `const response = await anthropic.messages.create(...)` then parse JSON
+- ✅ Create a task, wake the agent, read the work product when it's done
+
+**Don't engineer prompts in your backend. Write context providers.**
+- ❌ Build a prompt string with template literals and conditionals
+- ✅ Register a context provider that returns domain knowledge as markdown
+
+**Don't build "AI features." Build agent awareness.**
+- ❌ "AI-powered deal insights" = custom endpoint with prompt + API call
+- ✅ Give the copilot a `crm-deal-context` provider, it figures out insights itself
+
+The intelligence isn't in your code. It's in the CLI. Your job is to give it the right context and the right tasks.
+
+---
+
 ## Architecture Overview
 
 ```
@@ -111,7 +207,7 @@ Every entity in BoringOS follows the same pattern: **DB table → Admin API → 
 | **Approvals** | `approvals` | `GET /approvals`, `POST /approve`, `POST /reject` | `useApprovals()` | Read + Decide |
 | **Runtimes** | `runtimes` | `GET/POST/PATCH/DELETE /runtimes` | `useRuntimes()` | Full |
 | **Connectors** | `connectors` | `GET /connectors` | `useConnectors()` | Read only |
-| **Inbox** | `inbox_items` | `GET /inbox`, `POST /archive`, `POST /create-task` | `useInbox()` | Read + Actions |
+| **Inbox** | `inbox_items` | `GET /inbox` (filter by `assigneeUserId`, supports `=me`), `POST /archive`, `POST /create-task` | `useInbox()` | Read + Actions |
 | **Budgets** | `budget_policies` | `GET/POST/DELETE /budgets` | — | Full |
 | **Skills** | `company_skills` | `GET/POST /skills`, `POST/DELETE /skills/:id/attach/:agentId` | — | Full |
 | **Plugins** | `plugins` | `GET /plugins`, `POST /plugins/:name/jobs/:job/trigger` | — | Read + Trigger |
@@ -125,6 +221,7 @@ All admin endpoints:
 - Auth: `X-API-Key` header (configured via `auth.adminKey`)
 - Tenant scoping: `X-Tenant-Id` header
 - Both API key and session token (Bearer) are accepted
+- Session auth sets `userId`, `tenantId`, and `role` on the request context
 
 ```bash
 # List
@@ -240,9 +337,13 @@ User creates "Write Q2 proposal for Acme Corp"
 
 **API flow:**
 ```bash
-# Create task
+# Create task (assigned to agent)
 POST /api/admin/tasks
 { "title": "Write Q2 proposal", "assigneeAgentId": "content-writer-id" }
+
+# Create task (assigned to user — defaults to current user if omitted with session auth)
+POST /api/admin/tasks
+{ "title": "Review Q2 proposal", "assigneeUserId": "user-id" }
 
 # Wake the agent (assigns + runs)
 POST /api/admin/agents/:id/wake
@@ -823,7 +924,7 @@ connector-action(list_issues) → for-each → create-inbox-item → wake-agent
 | `wake-agent` | Wake an agent | `{ agentId, taskId? }` |
 | `connector-action` | Call connector API | `{ connectorKind, action, inputs? }` |
 | `for-each` | Iterate array | `{ items }` |
-| `create-inbox-item` | Store to inbox | `{ source, items }` or `{ source, subject, body, from }` |
+| `create-inbox-item` | Store to inbox | `{ source, items, assigneeUserId? }` or `{ source, subject, body, from, assigneeUserId? }` |
 | `emit-event` | Emit connector event | `{ connectorKind, eventType, data? }` or `{ items }` |
 
 ### Why Pattern A (store first, then agent)?
@@ -1759,9 +1860,10 @@ await client.updateAgent(agentId, { status: "archived" });
 
 **List** (`/tasks`):
 - View toggle: List | Board (kanban by status)
-- Filter by: status, label, assignee, priority
+- Filter by: status, label, assignee (agent or user), priority
 - [+ New Task] button
 - Each row shows: identifier (BOS-001), title, priority badge, status badge, assignee
+- Use `?assigneeUserId=me` to show only the current user's tasks
 
 **Board view** — 3 columns:
 - To Do (backlog + todo)
@@ -1774,6 +1876,7 @@ await client.updateAgent(agentId, { status: "archived" });
 - `priority` — dropdown: urgent / high / medium / low
 - `status` — dropdown: backlog / todo
 - `assigneeAgentId` — dropdown of agents
+- `assigneeUserId` — dropdown of users (defaults to current user)
 - `parentId` — optional, for subtasks
 - `labels` — multi-select
 
@@ -1806,7 +1909,8 @@ await client.updateAgent(agentId, { status: "archived" });
 **API calls:**
 ```typescript
 const tasks = await client.getTasks({ status: "todo" });
-await client.createTask({ title, description, priority, assigneeAgentId, parentId });
+const myTasks = await client.getTasks({ assigneeUserId: "me" });
+await client.createTask({ title, description, priority, assigneeAgentId, assigneeUserId, parentId });
 await client.updateTask(taskId, { status: "done", title: "Updated" });
 await client.assignTask(taskId, agentId, true);  // assign + wake in one call
 await client.postComment(taskId, { body: "Done!" });
@@ -2102,18 +2206,19 @@ PATCH /api/admin/goals/:id { "status": "done" }
 ### Entity: Inbox — Triage View
 
 **List** (`/inbox`):
-- Filter tabs: All | Unread | Archived
-- Each item shows: source badge (gmail, slack), subject, body preview, timestamp
+- Filter tabs: All | Unread | Archived | Mine (uses `?assigneeUserId=me`)
+- Each item shows: source badge (gmail, slack), subject, body preview, timestamp, assignee
 - Unread items have a left border accent
 - Actions per item: [Create Task] [Archive] [Mark Read]
-- [Create Task] converts inbox item to a task with pre-filled fields
+- [Create Task] converts inbox item to a task with pre-filled fields (assigneeUserId defaults to current user)
 
 **API calls:**
 ```bash
-GET /api/admin/inbox
-GET /api/admin/inbox/:id           # marks as read
+GET /api/admin/inbox                          # all items for tenant
+GET /api/admin/inbox?assigneeUserId=me        # my items only
+GET /api/admin/inbox/:id                      # marks as read
 POST /api/admin/inbox/:id/archive
-POST /api/admin/inbox/:id/create-task
+POST /api/admin/inbox/:id/create-task         # assigneeUserId defaults to current user
 ```
 
 ---
@@ -2428,7 +2533,7 @@ app.listen(5001);
 | `.blockHandler(handler)` | Register custom workflow block handler |
 | `.plugin(manifest)` | Register plugin |
 | `.schema(ddl)` | Add custom DB tables (DDL runs after migrations) |
-| `.routeToInbox(config)` | Route connector events to inbox |
+| `.routeToInbox(config)` | Route connector events to inbox (transform can return `assigneeUserId`) |
 | `.route(path, app)` | Mount custom Hono routes |
 | `.beforeStart(fn)` / `.afterStart(fn)` / `.beforeShutdown(fn)` | Lifecycle hooks |
 | `.listen(port?)` | Boot and start HTTP server |

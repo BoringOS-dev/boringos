@@ -39,7 +39,7 @@ The framework handles:
 - **JWT-authenticated callback API** — agents call back to update tasks, post comments, record work products
 - **Admin REST API** — manage agents, tasks, runs, runtimes, approvals via API key auth
 - **SSE realtime events** — live streaming of run status, task updates, approvals
-- **User auth** — signup, login, session tokens, user-tenant membership
+- **User auth** — signup, login, session tokens, user-tenant membership with role (`userId`, `tenantId`, `role` available on every authenticated request)
 - **Activity logging** — audit trail for all admin mutations
 - **Budget enforcement** — cost limits per agent/tenant with hard-stop + warnings
 - **Routine scheduler** — cron-based recurring agent tasks
@@ -53,7 +53,7 @@ The framework handles:
 - **Onboarding** — 5-step setup wizard per tenant
 - **Device auth** — CLI login flow (generate code → browser approve → poll for token)
 - **Evaluations** — A/B test agent quality with structured test cases
-- **Inbox** — receive and triage external messages, convert to tasks
+- **Inbox** — receive and triage external messages, convert to tasks, assign to users via `assigneeUserId`
 - **Custom schema** — `.schema(ddl)` to add your own tables that reference framework tables
 - **Entity linking** — link domain entities (contacts, deals) to tasks, runs, inbox items
 - **Event-to-inbox routing** — declaratively route connector events to inbox

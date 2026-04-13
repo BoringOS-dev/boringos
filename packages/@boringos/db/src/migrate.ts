@@ -474,6 +474,7 @@ async function ensureSchema(db: Db): Promise<void> {
     CREATE TABLE IF NOT EXISTS inbox_items (
       id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
       tenant_id UUID NOT NULL REFERENCES tenants(id),
+      assignee_user_id TEXT,
       source TEXT NOT NULL,
       source_id TEXT,
       subject TEXT NOT NULL,
@@ -504,6 +505,9 @@ async function ensureSchema(db: Db): Promise<void> {
     ALTER TABLE tasks ADD COLUMN IF NOT EXISTS project_id UUID REFERENCES projects(id);
     ALTER TABLE tasks ADD COLUMN IF NOT EXISTS goal_id UUID;
     ALTER TABLE tasks ADD COLUMN IF NOT EXISTS checkout_run_id UUID;
+
+    -- Add assignee_user_id to inbox_items if it doesn't exist (for existing DBs)
+    ALTER TABLE inbox_items ADD COLUMN IF NOT EXISTS assignee_user_id TEXT;
 
     CREATE INDEX IF NOT EXISTS agents_tenant_status_idx ON agents(tenant_id, status);
     CREATE INDEX IF NOT EXISTS tasks_tenant_status_idx ON tasks(tenant_id, status);

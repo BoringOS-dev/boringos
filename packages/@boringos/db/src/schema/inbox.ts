@@ -4,6 +4,7 @@ import { tenants } from "./tenants.js";
 export const inboxItems = pgTable("inbox_items", {
   id: uuid("id").primaryKey().defaultRandom(),
   tenantId: uuid("tenant_id").notNull().references(() => tenants.id),
+  assigneeUserId: text("assignee_user_id"),
   source: text("source").notNull(),
   sourceId: text("source_id"),
   subject: text("subject").notNull(),
