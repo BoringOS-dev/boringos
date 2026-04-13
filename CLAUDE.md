@@ -267,9 +267,11 @@ Application host — the entry point.
   - `.queue(adapter)` — set job queue adapter (default: in-process, opt-in: BullMQ)
   - `.blockHandler(handler)` — register custom workflow block handler
   - `.plugin(manifest)` — register plugin
+  - `.onTenantCreated(fn)` — hook called after a new tenant is provisioned (runtimes + copilot already created). Signature: `async (db, tenantId) => { ... }`. Use for app-specific tenant setup.
   - `.beforeStart(fn)` / `.afterStart(fn)` / `.beforeShutdown(fn)` — lifecycle hooks
   - `.route(path, app)` — mount custom Hono routes
   - `.listen(port?)` — boot everything and start HTTP server
+- **Exportable auth middleware:** `createAuthMiddleware(db)` — resolves session → sets `X-Tenant-Id`, `X-User-Id`, `X-User-Role` headers. Apps mount on their own routes.
 - **Agent callback API** (Hono routes at `/api/agent/*`, JWT authenticated):
   - `GET /tasks/:taskId` — read task + comments
   - `PATCH /tasks/:taskId` — update task status/title/description
@@ -297,14 +299,23 @@ Application host — the entry point.
   - `@boringos/ui` client: `client.subscribe(onEvent)` returns unsubscribe function
   - 30-second heartbeat keeps connection alive
   - In-memory EventEmitter (upgradeable to Redis pub/sub)
-- **Auth API** (`/api/auth/*`, unauthenticated):
-  - `POST /signup` — create user (name, email, password, optional tenantId)
-  - `POST /login` — authenticate, returns session token
-  - `GET /me` — get current user from session (Bearer token), returns `{ id, name, email, tenantId, role }`
+- **Auth API** (`/api/auth/*`):
+  - `POST /signup` — create user. Accepts `tenantName` (creates new tenant, auto-seeds 6 runtimes + copilot agent, runs `onTenantCreated` hook), `inviteCode` (joins existing tenant from invitation), or `tenantId` (joins existing tenant directly). Returns `{ userId, token }`.
+  - `POST /login` — authenticate, returns `{ userId, token, name, email, tenants: [{ id, name, role }] }` (all tenants user belongs to)
+  - `GET /me` — get current user from session (Bearer token). Returns `{ id, name, email, tenants: [...] }`. Accepts `X-Tenant-Id` header to select active tenant (returns `tenantId` + `role` for that tenant).
   - `POST /logout` — invalidate session
+  - **Invitations:**
+    - `POST /invite` — create invite (admin only). Body: `{ email, role? }`. Returns `{ id, inviteCode, expiresAt }` (7-day expiry).
+    - `GET /invitations` — list pending invitations for current tenant
+    - `DELETE /invitations/:id` — revoke invitation
+  - **Team management:**
+    - `GET /team` — list users in current tenant
+    - `PATCH /team/:userId/role` — change user role (admin only). Body: `{ role }`.
+    - `DELETE /team/:userId` — remove user from tenant (admin only)
   - Admin API accepts both API key (`X-API-Key`) and session token (`Authorization: Bearer`)
   - Session auth sets `userId`, `tenantId`, and `role` on request context — apps use these for authorization
   - User-tenant linking via `user_tenants` table (role: admin/member)
+  - **Exportable middleware:** `createAuthMiddleware(db)` exported from `@boringos/core` — resolves session token, sets `X-Tenant-Id`, `X-User-Id`, `X-User-Role` headers. Apps mount on their own routes instead of reimplementing.
 - **Activity Log** — audit trail for all admin mutations:
   - Logged: agent.created, task.created, comment.created, approval.approved, approval.rejected
   - `GET /api/admin/activity` — paginated activity log
@@ -410,13 +421,14 @@ Application host — the entry point.
   - `GET /api/admin/search?q=query` — searches across tasks (title + description), agents (name), inbox items (subject + body)
   - Returns grouped results: `{ tasks, agents, inboxItems }`
   - `useSearch(query)` hook
-- **Copilot:**
-  - Built-in system agent (role: `copilot`) — auto-created on boot for the first tenant
+- **Copilot (multi-tenant):**
+  - Built-in system agent (role: `copilot`) — auto-created per tenant (on signup when using `tenantName`, or at boot for the first tenant)
   - Conversational AI assistant that can both **operate** (manage entities via admin API) and **build** (read/edit code)
   - Sessions are tasks with `originKind: "copilot"`, messages are comments — reuses the existing agent execution pipeline
   - User posts a message → auto-wakes copilot agent → agent reads codebase + admin API → replies as comment
   - Persona: knows BUILD_GUIDELINE.md, CLAUDE.md, admin API schema, how to read/edit source files
   - API: `POST /api/copilot/sessions` (create), `GET /api/copilot/sessions` (list), `GET /api/copilot/sessions/:id` (messages), `POST /api/copilot/sessions/:id/message` (send + auto-wake)
+  - **Multi-tenant:** `/api/copilot/*` resolves tenant from session token — no longer hardcoded to first tenant. Works for all dynamically created tenants.
   - Agent result auto-posted as comment after each run — replies appear in chat UI
   - Zero configuration — every BoringOS app gets a copilot automatically
 - **Agent permissions:**

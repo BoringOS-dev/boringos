@@ -83,6 +83,7 @@ export class BoringOS {
   private queueAdapter: QueueAdapter<AgentRunJob> | undefined;
   private userSchemaStatements: string[] = [];
   private inboxRoutes: Array<{ filter: (event: Record<string, unknown>) => boolean; transform: (event: Record<string, unknown>) => { source: string; subject: string; body?: string; from?: string; assigneeUserId?: string } }> = [];
+  private tenantProvisionedHook: ((db: Db, tenantId: string) => Promise<void>) | undefined;
 
   constructor(config: BoringOSConfig = {}) {
     this.config = config;
@@ -143,6 +144,10 @@ export class BoringOS {
     return this;
   }
 
+  onTenantCreated(fn: (db: Db, tenantId: string) => Promise<void>): this {
+    this.tenantProvisionedHook = fn;
+    return this;
+  }
 
   beforeStart(fn: LifecycleHook): this {
     this.beforeStartHooks.push(fn);
@@ -320,7 +325,7 @@ export class BoringOS {
     app.get("/health", (c) => c.json({ status: "ok", timestamp: new Date().toISOString() }));
 
     // Auth routes (login, signup, session)
-    const authApp = createAuthRoutes(dbConn.db, jwtSecret);
+    const authApp = createAuthRoutes(dbConn.db, jwtSecret, this.tenantProvisionedHook);
     app.route("/api/auth", authApp);
 
     // Device auth routes (CLI login)
@@ -416,16 +421,17 @@ export class BoringOS {
       app.route(path, routeApp);
     }
 
-    // 10b. Copilot — auto-create copilot agent + register session routes
+    // 10b. Copilot routes — multi-tenant (resolves tenant from session)
     {
-      const { createAgentFromTemplate } = await import("@boringos/agent");
-      // Find first tenant (for copilot agent creation)
+      const copilotApp = createCopilotRoutes(dbConn.db, agentEngine);
+      app.route("/api/copilot", copilotApp);
+
+      // Auto-create copilot agent for existing first tenant (backward compat)
       const { tenants: tenantsTable } = await import("@boringos/db");
       const tenantRows = await dbConn.db.select().from(tenantsTable).limit(1);
       const firstTenantId = tenantRows[0]?.id;
 
       if (firstTenantId) {
-        // Create copilot agent if it doesn't exist
         const existingCopilot = await dbConn.db.select().from(
           (await import("@boringos/db")).agents
         ).where(
@@ -436,7 +442,7 @@ export class BoringOS {
         ).limit(1);
 
         if (existingCopilot.length === 0) {
-          // Find default runtime
+          const { createAgentFromTemplate } = await import("@boringos/agent");
           const rtRows = await dbConn.db.select().from(
             (await import("@boringos/db")).runtimes
           ).where(
@@ -449,10 +455,6 @@ export class BoringOS {
             runtimeId: rtRows[0]?.id,
           });
         }
-
-        // Register copilot routes
-        const copilotApp = createCopilotRoutes(dbConn.db, agentEngine, firstTenantId);
-        app.route("/api/copilot", copilotApp);
       }
     }
 

@@ -35,63 +35,74 @@ curl -X POST http://localhost:3000/api/admin/teams/from-template \
 
 ---
 
-## Prerequisite: Tenant Provisioning (Runtimes + Copilot)
+## Tenant Provisioning (Automatic)
 
-**Before you can build anything agentic on BoringOS, every tenant needs two things: runtimes and a copilot agent.** Without these, no agent can execute and there is no conversational interface.
+**The framework now handles tenant provisioning automatically.** When a user signs up with `tenantName`, the framework:
 
-The framework auto-provisions these for the first tenant at boot. But if your app creates tenants dynamically (multi-tenant SaaS, signup flow), **you must provision them yourself** when a new tenant is created.
+1. Creates the tenant
+2. Seeds 6 runtimes (claude, chatgpt, gemini, ollama, command, webhook)
+3. Creates the copilot agent for the tenant
 
-### What to create per tenant
+Apps **do not** need to manually create runtimes or copilot agents. This happens automatically on signup.
 
-**1. Runtimes** — at minimum one runtime so agents have something to execute on:
+### App-specific tenant setup
+
+If your app needs to create domain-specific data when a new tenant is created (e.g., seed default agents, workflows, sample data), use the `onTenantCreated` hook:
 
 ```typescript
-// Insert at least a Claude runtime for the tenant
-await db.insert(runtimes).values({
-  id: generateId(),
-  tenantId,
-  name: "claude",
-  type: "claude",
-  config: {},          // CLI picks up ANTHROPIC_API_KEY from env
-  model: "claude-sonnet-4-20250514",
+app.onTenantCreated(async (db, tenantId) => {
+  // Create app-specific agents, seed data, etc.
+  await createAgentFromTemplate(db, "engineer", {
+    tenantId,
+    name: "Lead Qualifier",
+    runtimeId: (await db.select().from(runtimes)
+      .where(eq(runtimes.tenantId, tenantId)).limit(1))[0]?.id,
+  });
 });
 ```
 
-Without a runtime record in the DB for this tenant, `createAgentFromTemplate` has no `runtimeId` to assign, and the agent engine has nowhere to dispatch runs.
+The hook runs after runtimes and copilot are already provisioned, so you can reference them.
 
-**2. Copilot agent** — the built-in conversational agent:
+### Signup flow
 
-```typescript
-import { createAgentFromTemplate } from "@boringos/agent";
+Signup now supports multi-tenant SaaS out of the box:
 
-// Find the runtime we just created
-const rtRows = await db.select().from(runtimes)
-  .where(eq(runtimes.tenantId, tenantId)).limit(1);
+- **New tenant:** `POST /api/auth/signup` with `tenantName` — creates tenant + provisions everything + returns session
+- **Join existing tenant:** `POST /api/auth/signup` with `inviteCode` — joins the tenant from the invitation
+- **Legacy:** `POST /api/auth/signup` with `tenantId` — joins an existing tenant directly (for backward compatibility)
 
-await createAgentFromTemplate(db, "copilot", {
-  tenantId,
-  name: "Copilot",
-  runtimeId: rtRows[0]?.id,
-});
+### Invitations
+
+Admins can invite users to their tenant:
+
+```bash
+# Create invite (admin only)
+POST /api/auth/invite { "email": "bob@acme.com", "role": "member" }
+→ { id, inviteCode, expiresAt }  # 7-day expiry
+
+# List pending invites
+GET /api/auth/invitations
+
+# Revoke an invite
+DELETE /api/auth/invitations/:id
 ```
 
-This creates an agent with `role: "copilot"` and the full copilot persona. The `/api/copilot/*` routes use this agent for conversational sessions.
+New users sign up with the `inviteCode` to join the tenant.
 
-### When to provision
+### Team management
 
-- **Multi-tenant SaaS:** In your signup flow, after creating the tenant (e.g., `createTenantWithPipeline`), immediately create runtimes + copilot.
-- **Single-tenant self-host:** The framework handles this at boot for the first tenant. But if you later add tenants, provision them manually.
-- **Team templates:** If using `createTeam("engineering")`, the team expects runtimes to already exist. Create runtimes first.
+Admins can manage users within their tenant:
 
-### Why this matters
+```bash
+# List team members
+GET /api/auth/team
 
-Every agentic feature depends on this:
-- **Copilot / Cmd+K** — needs copilot agent + runtime
-- **Specialized agents** (lead qualifier, follow-up writer, etc.) — need runtime
-- **Builder mode** — copilot in build mode needs runtime
-- **Workflow wake-agent blocks** — wake an agent that needs a runtime to execute
+# Change a user's role (admin only)
+PATCH /api/auth/team/:userId/role { "role": "admin" }
 
-**If your app creates tenants and doesn't provision runtimes + copilot, all agentic features silently fail.** This is the #1 thing to get right before building on top of the framework.
+# Remove a user (admin only)
+DELETE /api/auth/team/:userId
+```
 
 ---
 
@@ -282,6 +293,22 @@ All admin endpoints:
 - Tenant scoping: `X-Tenant-Id` header
 - Both API key and session token (Bearer) are accepted
 - Session auth sets `userId`, `tenantId`, and `role` on the request context
+
+### Exportable Auth Middleware
+
+For your own custom routes, use the framework's auth middleware instead of reimplementing session resolution:
+
+```typescript
+import { createAuthMiddleware } from "@boringos/core";
+
+const authMiddleware = createAuthMiddleware(db);
+
+// Mount on your custom routes
+app.route("/api/myapp", myAppRoutes);
+// In myAppRoutes, use authMiddleware — it resolves session → sets X-Tenant-Id, X-User-Id, X-User-Role headers
+```
+
+This gives your routes the same `userId`, `tenantId`, and `role` that the admin API has, without reimplementing session token parsing.
 
 ```bash
 # List
@@ -2603,6 +2630,8 @@ app.listen(5001);
 ## Copilot (Built-in AI Assistant)
 
 Every BoringOS app ships with a built-in copilot — a conversational AI agent that can both **operate** your system and **build** new features. Zero configuration needed.
+
+**Multi-tenant:** The copilot is now fully multi-tenant. `/api/copilot/*` routes resolve the tenant from the session token — no longer hardcoded to the first tenant. A copilot agent is auto-created for each new tenant on signup.
 
 ### How it works
 

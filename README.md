@@ -39,7 +39,7 @@ The framework handles:
 - **JWT-authenticated callback API** — agents call back to update tasks, post comments, record work products
 - **Admin REST API** — manage agents, tasks, runs, runtimes, approvals via API key auth
 - **SSE realtime events** — live streaming of run status, task updates, approvals
-- **User auth** — signup, login, session tokens, user-tenant membership with role (`userId`, `tenantId`, `role` available on every authenticated request)
+- **User auth (multi-tenant SaaS)** — signup with `tenantName` (creates new tenant) or `inviteCode` (joins existing), login returns all tenants, `/me` with `X-Tenant-Id` for switching, invitation system (create/list/revoke), team management (list users, change roles, remove members), exportable `createAuthMiddleware(db)` for custom routes
 - **Activity logging** — audit trail for all admin mutations
 - **Budget enforcement** — cost limits per agent/tenant with hard-stop + warnings
 - **Routine scheduler** — cron-based recurring agent tasks
@@ -64,7 +64,7 @@ The framework handles:
 - **Data sync** — workflow-triggered sync for email, calendar, Slack (connector-action → for-each → create-inbox-item → wake-agent)
 - **Auto-wake on comment** — posting a comment on an assigned task auto-wakes the agent
 - **Auto-post results** — agent run output auto-posted as comment on the task
-- **Built-in copilot** — conversational AI assistant that can operate the system AND build features, ships with every app, zero config
+- **Built-in copilot (multi-tenant)** — conversational AI assistant that can operate the system AND build features, resolves tenant from session token, auto-created per tenant on signup
 - **Convention over configuration** — everything works with zero config
 
 ## Packages
@@ -106,6 +106,7 @@ app.contextProvider(myProvider);               // add custom context providers
 app.blockHandler(myWorkflowHandler);           // add custom workflow block handlers
 app.persona("platform-engineer", bundle);      // add custom personas
 app.plugin(myPlugin);                          // register plugins
+app.onTenantCreated(async (db, tenantId) => { ... }); // app-specific tenant setup
 app.beforeStart(async (ctx) => { ... });       // lifecycle hooks
 app.route("/custom", honoApp);                 // mount custom routes
 

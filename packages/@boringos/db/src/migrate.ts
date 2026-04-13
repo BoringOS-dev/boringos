@@ -509,6 +509,20 @@ async function ensureSchema(db: Db): Promise<void> {
     -- Add assignee_user_id to inbox_items if it doesn't exist (for existing DBs)
     ALTER TABLE inbox_items ADD COLUMN IF NOT EXISTS assignee_user_id TEXT;
 
+    -- Invitations for multi-tenant team management
+    CREATE TABLE IF NOT EXISTS invitations (
+      id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+      tenant_id UUID NOT NULL REFERENCES tenants(id),
+      email TEXT NOT NULL,
+      role TEXT NOT NULL DEFAULT 'member',
+      code TEXT NOT NULL UNIQUE,
+      status TEXT NOT NULL DEFAULT 'pending',
+      invited_by TEXT NOT NULL,
+      expires_at TIMESTAMPTZ NOT NULL,
+      accepted_at TIMESTAMPTZ,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+    );
+
     CREATE INDEX IF NOT EXISTS agents_tenant_status_idx ON agents(tenant_id, status);
     CREATE INDEX IF NOT EXISTS tasks_tenant_status_idx ON tasks(tenant_id, status);
     CREATE INDEX IF NOT EXISTS tasks_assignee_agent_idx ON tasks(assignee_agent_id);
