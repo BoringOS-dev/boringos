@@ -32,11 +32,13 @@ class GoogleWorkspaceClient implements ConnectorClient {
   }
 }
 
-export function google(config: GoogleConfig): ConnectorDefinition {
+export function google(config: GoogleConfig): ConnectorDefinition & { clientId: string; clientSecret: string } {
   return {
     kind: "google",
     name: "Google Workspace",
     description: "Gmail and Google Calendar integration.",
+    clientId: config.clientId,
+    clientSecret: config.clientSecret,
 
     oauth: {
       authorizationUrl: "https://accounts.google.com/o/oauth2/v2/auth",
