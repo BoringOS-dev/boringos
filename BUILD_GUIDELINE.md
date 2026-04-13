@@ -35,6 +35,66 @@ curl -X POST http://localhost:3000/api/admin/teams/from-template \
 
 ---
 
+## Prerequisite: Tenant Provisioning (Runtimes + Copilot)
+
+**Before you can build anything agentic on BoringOS, every tenant needs two things: runtimes and a copilot agent.** Without these, no agent can execute and there is no conversational interface.
+
+The framework auto-provisions these for the first tenant at boot. But if your app creates tenants dynamically (multi-tenant SaaS, signup flow), **you must provision them yourself** when a new tenant is created.
+
+### What to create per tenant
+
+**1. Runtimes** — at minimum one runtime so agents have something to execute on:
+
+```typescript
+// Insert at least a Claude runtime for the tenant
+await db.insert(runtimes).values({
+  id: generateId(),
+  tenantId,
+  name: "claude",
+  type: "claude",
+  config: {},          // CLI picks up ANTHROPIC_API_KEY from env
+  model: "claude-sonnet-4-20250514",
+});
+```
+
+Without a runtime record in the DB for this tenant, `createAgentFromTemplate` has no `runtimeId` to assign, and the agent engine has nowhere to dispatch runs.
+
+**2. Copilot agent** — the built-in conversational agent:
+
+```typescript
+import { createAgentFromTemplate } from "@boringos/agent";
+
+// Find the runtime we just created
+const rtRows = await db.select().from(runtimes)
+  .where(eq(runtimes.tenantId, tenantId)).limit(1);
+
+await createAgentFromTemplate(db, "copilot", {
+  tenantId,
+  name: "Copilot",
+  runtimeId: rtRows[0]?.id,
+});
+```
+
+This creates an agent with `role: "copilot"` and the full copilot persona. The `/api/copilot/*` routes use this agent for conversational sessions.
+
+### When to provision
+
+- **Multi-tenant SaaS:** In your signup flow, after creating the tenant (e.g., `createTenantWithPipeline`), immediately create runtimes + copilot.
+- **Single-tenant self-host:** The framework handles this at boot for the first tenant. But if you later add tenants, provision them manually.
+- **Team templates:** If using `createTeam("engineering")`, the team expects runtimes to already exist. Create runtimes first.
+
+### Why this matters
+
+Every agentic feature depends on this:
+- **Copilot / Cmd+K** — needs copilot agent + runtime
+- **Specialized agents** (lead qualifier, follow-up writer, etc.) — need runtime
+- **Builder mode** — copilot in build mode needs runtime
+- **Workflow wake-agent blocks** — wake an agent that needs a runtime to execute
+
+**If your app creates tenants and doesn't provision runtimes + copilot, all agentic features silently fail.** This is the #1 thing to get right before building on top of the framework.
+
+---
+
 ## Build Thesis: The Framework Orchestrates, The CLI Thinks
 
 **BoringOS never calls an LLM API.** It spawns CLI agents that think for themselves.
