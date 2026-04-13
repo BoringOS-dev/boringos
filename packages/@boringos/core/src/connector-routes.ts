@@ -106,7 +106,10 @@ export function createConnectorRoutes(
       }
 
       // Redirect to frontend settings page
-      return c.redirect("/settings/team?connected=" + kind);
+      // Redirect back to frontend settings page
+      // Derive frontend URL: replace "crmapi." with "crm." or use same origin
+      const frontendBase = publicBase.replace("://crmapi.", "://crm.").replace("://api.", "://");
+      return c.redirect(`${frontendBase}/settings/team?connected=${kind}`);
     } catch (err) {
       return c.text(`OAuth token exchange failed: ${err instanceof Error ? err.message : String(err)}`, 500);
     }
