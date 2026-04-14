@@ -4,15 +4,18 @@ import type { BlockHandler, BlockHandlerContext, BlockHandlerResult } from "../t
  * create-inbox-item block handler — stores data in the inbox.
  * Used in sync workflows to persist fetched data before agent processing.
  *
+ * Emits "inbox.item_created" event for each new item so agents can react.
+ *
  * Config:
  *   - source: string — where the item came from (e.g., "gmail", "slack")
  *   - subject: string — item subject/title (supports templates)
  *   - body: string — item body/content (supports templates)
  *   - from: string — sender (supports templates)
+ *   - assigneeUserId: string — optional user to assign to
  *   - items: array — if provided, creates one inbox item per array element
  *     Each element should have { subject, body?, from? }
  *
- * Requires "db" service.
+ * Requires "db" service. Optionally uses "eventBus" service.
  */
 export const createInboxItemHandler: BlockHandler = {
   types: ["create-inbox-item"],
@@ -26,9 +29,12 @@ export const createInboxItemHandler: BlockHandler = {
     const { inboxItems } = await import("@boringos/db");
     const { generateId } = await import("@boringos/shared");
 
+    const eventBus = ctx.services.get("eventBus") as { emit(event: unknown): Promise<void> } | undefined;
+
     const source = (ctx.config.source as string) ?? "workflow";
     const tenantId = ctx.tenantId;
     let created = 0;
+    const createdIds: string[] = [];
 
     // Batch mode — create from array (may arrive as JSON string from template resolution)
     let items: unknown = ctx.config.items;
@@ -49,8 +55,9 @@ export const createInboxItemHandler: BlockHandler = {
           if (existing.length > 0) continue;
         }
 
+        const itemId = generateId();
         await db.insert(inboxItems).values({
-          id: generateId(),
+          id: itemId,
           tenantId,
           source,
           subject: (entry.subject as string) ?? (entry.summary as string) ?? (entry.title as string) ?? "No subject",
@@ -61,11 +68,13 @@ export const createInboxItemHandler: BlockHandler = {
           metadata: entry,
         });
         created++;
+        createdIds.push(itemId);
       }
     } else {
       // Single item mode
+      const itemId = generateId();
       await db.insert(inboxItems).values({
-        id: generateId(),
+        id: itemId,
         tenantId,
         source,
         subject: (ctx.config.subject as string) ?? "No subject",
@@ -74,10 +83,24 @@ export const createInboxItemHandler: BlockHandler = {
         assigneeUserId: (ctx.config.assigneeUserId as string) ?? null,
       });
       created = 1;
+      createdIds.push(itemId);
+    }
+
+    // Emit events for each created item so agents can react
+    if (eventBus && createdIds.length > 0) {
+      for (const itemId of createdIds) {
+        await eventBus.emit({
+          connectorKind: "inbox",
+          type: "inbox.item_created",
+          tenantId,
+          data: { itemId, source },
+          timestamp: new Date(),
+        }).catch(() => {}); // don't fail the workflow on event errors
+      }
     }
 
     return {
-      output: { created, source },
+      output: { created, source, itemIds: createdIds },
     };
   },
 };
