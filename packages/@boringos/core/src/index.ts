@@ -24,6 +24,7 @@ export type { AgentEngine, ContextProvider } from "@boringos/agent";
 export type { WorkflowEngine, BlockHandler } from "@boringos/workflow";
 
 export { createAuthMiddleware } from "./auth-middleware.js";
+export type { EventBus, ConnectorEvent } from "@boringos/connector";
 export { createRealtimeBus } from "./realtime.js";
 export type { RealtimeBus, RealtimeEvent, EventType } from "./realtime.js";
 

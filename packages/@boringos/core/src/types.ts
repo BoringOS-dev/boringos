@@ -5,6 +5,7 @@ import type { DatabaseConfig } from "@boringos/db";
 import type { AgentEngine, ContextProvider } from "@boringos/agent";
 import type { WorkflowEngine, BlockHandler } from "@boringos/workflow";
 import type { SkillProvider } from "@boringos/shared";
+import type { EventBus } from "@boringos/connector";
 
 // ── BoringOS — the application host ────────────────────────────────────────
 
@@ -43,6 +44,7 @@ export interface AppContext {
   runtimes: RuntimeRegistry;
   agentEngine: AgentEngine | null;
   workflowEngine: WorkflowEngine | null;
+  eventBus: EventBus;
 }
 
 // ── Component registration types ─────────────────────────────────────────────

@@ -84,6 +84,7 @@ export class BoringOS {
   private userSchemaStatements: string[] = [];
   private inboxRoutes: Array<{ filter: (event: Record<string, unknown>) => boolean; transform: (event: Record<string, unknown>) => { source: string; subject: string; body?: string; from?: string; assigneeUserId?: string } }> = [];
   private tenantProvisionedHook: ((db: Db, tenantId: string) => Promise<void>) | undefined;
+  private eventHandlers: Array<{ type: string | null; handler: (event: import("@boringos/connector").ConnectorEvent) => void | Promise<void> }> = [];
 
   constructor(config: BoringOSConfig = {}) {
     this.config = config;
@@ -141,6 +142,11 @@ export class BoringOS {
 
   blockHandler(handler: BlockHandler): this {
     this.blockHandlers.push(handler);
+    return this;
+  }
+
+  onEvent(type: string | null, handler: (event: import("@boringos/connector").ConnectorEvent) => void | Promise<void>): this {
+    this.eventHandlers.push({ type, handler });
     return this;
   }
 
@@ -258,7 +264,7 @@ export class BoringOS {
       },
     });
 
-    // 8. Build app context
+    // 8. Build app context (eventBus added after creation below)
     const context: AppContext = {
       config: this.config,
       db: dbConn.db,
@@ -267,6 +273,7 @@ export class BoringOS {
       runtimes,
       agentEngine,
       workflowEngine,
+      eventBus: null as any, // populated below after eventBus creation
     };
 
     // 8. Run beforeStart hooks
@@ -297,6 +304,18 @@ export class BoringOS {
     serviceMap.actionRunner = actionRunner;
     serviceMap.connectorRegistry = connectorRegistry;
     serviceMap.eventBus = eventBus;
+
+    // Populate eventBus on context (was null placeholder before eventBus creation)
+    context.eventBus = eventBus;
+
+    // Register app event handlers
+    for (const { type, handler } of this.eventHandlers) {
+      if (type) {
+        eventBus.on(type, handler);
+      } else {
+        eventBus.onAny(handler);
+      }
+    }
 
     // Wire connector events to agent wakeups + inbox routing
     eventBus.onAny(async (event) => {

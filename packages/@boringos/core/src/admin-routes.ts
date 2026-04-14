@@ -1083,6 +1083,21 @@ export function createAdminRoutes(
     return c.json(rows[0]);
   });
 
+  app.patch("/inbox/:id", async (c) => {
+    const body = await c.req.json() as Record<string, unknown>;
+    const values: Record<string, unknown> = { updatedAt: new Date() };
+    if (body.status !== undefined) values.status = body.status;
+    if (body.metadata !== undefined) values.metadata = body.metadata;
+    if (body.assigneeUserId !== undefined) values.assigneeUserId = body.assigneeUserId;
+
+    await db.update(inboxItems).set(values).where(
+      and(eq(inboxItems.id, c.req.param("id")), eq(inboxItems.tenantId, c.get("tenantId"))),
+    );
+    const rows = await db.select().from(inboxItems).where(eq(inboxItems.id, c.req.param("id"))).limit(1);
+    if (!rows[0]) return c.json({ error: "Inbox item not found" }, 404);
+    return c.json(rows[0]);
+  });
+
   app.post("/inbox/:id/archive", async (c) => {
     await db.update(inboxItems).set({
       status: "archived",
