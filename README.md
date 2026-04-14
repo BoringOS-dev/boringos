@@ -56,6 +56,7 @@ The framework handles:
 - **Inbox** — receive and triage external messages, convert to tasks, assign to users via `assigneeUserId`
 - **Custom schema** — `.schema(ddl)` to add your own tables that reference framework tables
 - **Entity linking** — link domain entities (contacts, deals) to tasks, runs, inbox items
+- **Event-driven architecture** — apps emit and subscribe to events via `EventBus`, agents wake reactively on `inbox.item_created` and custom events
 - **Event-to-inbox routing** — declaratively route connector events to inbox
 - **Cross-entity search** — `GET /api/admin/search?q=` across tasks, agents, inbox
 - **Agent templates** — `createAgentFromTemplate(role)` with built-in personas

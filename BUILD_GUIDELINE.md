@@ -1011,7 +1011,7 @@ connector-action(list_issues) → for-each → create-inbox-item → wake-agent
 | `wake-agent` | Wake an agent | `{ agentId, taskId? }` |
 | `connector-action` | Call connector API | `{ connectorKind, action, inputs? }` |
 | `for-each` | Iterate array | `{ items }` |
-| `create-inbox-item` | Store to inbox | `{ source, items, assigneeUserId? }` or `{ source, subject, body, from, assigneeUserId? }` |
+| `create-inbox-item` | Store to inbox (emits `inbox.item_created` event) | `{ source, items, assigneeUserId? }` or `{ source, subject, body, from, assigneeUserId? }` |
 | `emit-event` | Emit connector event | `{ connectorKind, eventType, data? }` or `{ items }` |
 
 ### Why Pattern A (store first, then agent)?
@@ -2620,6 +2620,7 @@ app.listen(5001);
 | `.blockHandler(handler)` | Register custom workflow block handler |
 | `.plugin(manifest)` | Register plugin |
 | `.schema(ddl)` | Add custom DB tables (DDL runs after migrations) |
+| `.onEvent(type, handler)` | Subscribe to EventBus events (e.g., `"inbox.item_created"`) |
 | `.routeToInbox(config)` | Route connector events to inbox (transform can return `assigneeUserId`) |
 | `.route(path, app)` | Mount custom Hono routes |
 | `.beforeStart(fn)` / `.afterStart(fn)` / `.beforeShutdown(fn)` | Lifecycle hooks |
@@ -2783,6 +2784,56 @@ External events flow through the inbox for user visibility:
 Connector event → routeToInbox() → inbox item (user sees it)
                 → also triggers workflow → wake-agent if needed
 ```
+
+### Pattern: Event-Driven Agent Wake (Reactive, Not Routine)
+
+BoringOS is event-driven, not just routine-driven. Instead of polling on a cron schedule, agents can wake reactively when something happens.
+
+**How it works:**
+
+```
+Ingest workflow → create-inbox-item → emits inbox.item_created event
+                                              ↓
+                               app.onEvent("inbox.item_created", handler)
+                                              ↓
+                                    Wake triage agent / enrichment agent / etc.
+```
+
+**Subscribe to events** with `app.onEvent(type, handler)`:
+
+```typescript
+app.onEvent("inbox.item_created", async (event) => {
+  // event is ConnectorEvent: { connectorKind, type, tenantId, data, timestamp }
+  // event.data contains { itemId, source }
+  const agentEngine = context.agentEngine;
+  await agentEngine.wake({ agentId: triageAgentId, tenantId: event.tenantId,
+    reason: "connector_event", payload: event.data });
+});
+```
+
+**Emit events** from your own routes via `AppContext.eventBus`:
+
+```typescript
+app.beforeStart(async (ctx) => {
+  // In a route handler:
+  ctx.eventBus.emit({
+    connectorKind: "app", type: "entity.created",
+    tenantId, data: { entityType: "crm_contact", entityId: id },
+    timestamp: new Date(),
+  });
+});
+```
+
+**Built-in events:**
+- `inbox.item_created` — emitted by the `create-inbox-item` workflow handler with `{ itemId, source }` in data
+
+**Update inbox items** with `PATCH /api/admin/inbox/:id` — agents write analysis results (metadata, status, assigneeUserId) back to inbox items after processing.
+
+**Why events > routines for reactive features:**
+- Routines poll on a schedule — waste cost when nothing happened, add latency when something did
+- Events fire immediately when data arrives — zero latency, zero wasted agent runs
+- Composable: multiple subscribers can react to the same event (triage agent + enrichment agent + notification)
+- The `create-inbox-item` handler emits events automatically — no extra workflow blocks needed
 
 ### Pattern: Memory Continuity
 

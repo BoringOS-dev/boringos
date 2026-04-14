@@ -145,7 +145,7 @@ DAG-based workflow engine with typed block handlers and condition branching.
 - **`wake-agent` handler:** Wakes an agent from within a workflow. Config: `{ agentId, reason?, taskId? }`. Uses `agentEngine.wake()` + `enqueue()`. Enables "smart routines" — workflows that only spawn agents when needed.
 - **`connector-action` handler:** Calls a connector action (e.g., `list_emails`, `list_events`) from within a workflow. Config: `{ connectorKind, action, inputs? }`. Fetches credentials from DB automatically.
 - **`for-each` handler:** Iterates over an array from a previous block. Config: `{ items: "{{fetch.messages}}" }`. Returns `{ items, count, processed }`.
-- **`create-inbox-item` handler:** Stores data in inbox. Single item: `{ source, subject, body, from, assigneeUserId? }`. Batch: `{ source, assigneeUserId?, items: [...] }`. Per-item `assigneeUserId` overrides block-level. Used in sync workflows to persist fetched data before agent processing (Pattern A).
+- **`create-inbox-item` handler:** Stores data in inbox. Single item: `{ source, subject, body, from, assigneeUserId? }`. Batch: `{ source, assigneeUserId?, items: [...] }`. Per-item `assigneeUserId` overrides block-level. Used in sync workflows to persist fetched data before agent processing (Pattern A). After creating items, emits `inbox.item_created` event with `{ itemId, source }` in data — any `app.onEvent("inbox.item_created", handler)` subscriber is notified.
 - **`emit-event` handler:** Emits connector events from workflow. Config: `{ connectorKind, eventType, data? }` or batch `{ items: [...] }`. Enables `routeToInbox()` to catch workflow-generated events.
 - **Branching:** condition blocks return `selectedHandle` (e.g., `condition-true`/`condition-false`) that determines which downstream edges activate
 - **Trigger types:** `cron`, `webhook`, `event`
@@ -266,6 +266,7 @@ Application host — the entry point.
   - `.persona(role, bundle)` — register custom persona
   - `.queue(adapter)` — set job queue adapter (default: in-process, opt-in: BullMQ)
   - `.blockHandler(handler)` — register custom workflow block handler
+  - `.onEvent(type, handler)` — subscribe to EventBus events (e.g., `"inbox.item_created"`). Handler receives `ConnectorEvent`: `{ connectorKind, type, tenantId, data, timestamp }`.
   - `.plugin(manifest)` — register plugin
   - `.onTenantCreated(fn)` — hook called after a new tenant is provisioned (runtimes + copilot already created). Signature: `async (db, tenantId) => { ... }`. Use for app-specific tenant setup.
   - `.beforeStart(fn)` / `.afterStart(fn)` / `.beforeShutdown(fn)` — lifecycle hooks
@@ -391,7 +392,7 @@ Application host — the entry point.
   - `useEvals()` hook in `@boringos/ui`
 - **Inbox:**
   - Receive and triage external messages/events, with optional `assigneeUserId` for user-level routing
-  - Admin API: `GET /api/admin/inbox` (filter by `?assigneeUserId=me`), `GET /api/admin/inbox/:id` (marks read), `POST /api/admin/inbox/:id/archive`, `POST /api/admin/inbox/:id/create-task` (defaults `assigneeUserId` to current user)
+  - Admin API: `GET /api/admin/inbox` (filter by `?assigneeUserId=me`), `GET /api/admin/inbox/:id` (marks read), `PATCH /api/admin/inbox/:id` (update metadata, status, assigneeUserId — agents write analysis results back), `POST /api/admin/inbox/:id/archive`, `POST /api/admin/inbox/:id/create-task` (defaults `assigneeUserId` to current user)
   - Items can be converted to tasks directly
   - `useInbox()` hook in `@boringos/ui`
 - **Agent templates & teams:**
@@ -414,6 +415,12 @@ Application host — the entry point.
   - `entity_references` table links domain entities (contacts, deals) to framework entities (tasks, runs, inbox)
   - Admin API: `POST /api/admin/entities/link`, `GET /api/admin/entities/:type/:id/refs`, `DELETE /api/admin/entities/link/:id`
   - `useEntityRefs(type, id)` hook
+- **Event-driven architecture:**
+  - `app.onEvent(type, handler)` — subscribe to EventBus events. Handler receives `ConnectorEvent`: `{ connectorKind, type, tenantId, data, timestamp }`.
+  - `AppContext.eventBus` — available in lifecycle hooks and routes. Call `ctx.eventBus.emit({ connectorKind, type, tenantId, data, timestamp })` to emit custom events.
+  - Built-in event: `inbox.item_created` — emitted by `create-inbox-item` workflow handler with `{ itemId, source }` in data. Subscribe to wake agents, trigger enrichment, etc.
+  - Pattern: ingest workflow -> create-inbox-item -> emits `inbox.item_created` -> `app.onEvent("inbox.item_created", handler)` -> wake triage/enrichment agent
+  - Events make the system reactive — connectors emit events, workflow handlers emit events, app routes can emit events. Agents wake on events instead of polling.
 - **Event-to-inbox routing:**
   - `.routeToInbox({ filter, transform })` — declaratively route connector events to inbox
   - Filter decides which events become inbox items, transform maps event data to inbox fields (`source`, `subject`, `body?`, `from?`, `assigneeUserId?`)
