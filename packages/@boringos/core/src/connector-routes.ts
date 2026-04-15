@@ -105,7 +105,15 @@ export function createConnectorRoutes(
         });
       }
 
-      // Redirect to frontend settings page
+      // Emit connector.connected event
+      await eventBus.emit({
+        connectorKind: kind,
+        type: "connector.connected",
+        tenantId,
+        data: { kind },
+        timestamp: new Date(),
+      }).catch(() => {});
+
       // Redirect back to frontend settings page
       // Derive frontend URL: replace "crmapi." with "crm." or use same origin
       const frontendBase = publicBase.replace("://crmapi.", "://crm.").replace("://api.", "://");
