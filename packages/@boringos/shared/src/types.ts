@@ -32,7 +32,7 @@ export type TaskStatus = (typeof TASK_STATUSES)[number];
 export const TASK_PRIORITIES = ["urgent", "high", "medium", "low"] as const;
 export type TaskPriority = (typeof TASK_PRIORITIES)[number];
 
-export const RUN_STATUSES = ["queued", "running", "done", "failed", "cancelled"] as const;
+export const RUN_STATUSES = ["queued", "running", "done", "failed", "cancelled", "skipped"] as const;
 export type RunStatus = (typeof RUN_STATUSES)[number];
 
 export const APPROVAL_STATUSES = ["pending", "approved", "rejected"] as const;
@@ -107,6 +107,7 @@ export interface AgentRun extends Identifiable, TenantScoped, Timestamped {
   errorCode: string | null;
   stdoutExcerpt: string | null;
   stderrExcerpt: string | null;
+  model: string | null;
   usageJson: Record<string, unknown> | null;
   contextSnapshot: Record<string, unknown> | null;
   startedAt: Date | null;

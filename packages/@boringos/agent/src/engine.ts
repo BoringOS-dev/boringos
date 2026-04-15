@@ -1,6 +1,6 @@
 import { eq, and } from "drizzle-orm";
 import type { Db } from "@boringos/db";
-import { agents, agentRuntimeState, agentWakeupRequests, costEvents } from "@boringos/db";
+import { agents, agentRuntimeState, agentWakeupRequests, agentRuns, costEvents, tenantSettings } from "@boringos/db";
 import type { MemoryProvider } from "@boringos/memory";
 import type { RuntimeRegistry, AgentRunCallbacks, CostEvent } from "@boringos/runtime";
 import type { StorageBackend } from "@boringos/drive";
@@ -119,6 +119,21 @@ export function createAgentEngine(config: AgentEngineConfig): AgentEngine {
 
     await lifecycle.updateStatus(runId, "running");
 
+    // Global agent pause check
+    const pauseRows = await db.select().from(tenantSettings).where(
+      and(eq(tenantSettings.tenantId, job.tenantId), eq(tenantSettings.key, "agents_paused")),
+    ).limit(1);
+    if (pauseRows[0]?.value === "true") {
+      await lifecycle.updateStatus(runId, "skipped", { error: "All agents are paused for this tenant", errorCode: "agents_paused" });
+      return;
+    }
+
+    // Per-agent pause check
+    if (agent.status === "paused") {
+      await lifecycle.updateStatus(runId, "skipped", { error: `Agent "${agent.name}" is paused`, errorCode: "agent_paused" });
+      return;
+    }
+
     // Budget check
     const { checkBudget } = await import("./budget.js");
     const budgetResult = await checkBudget(db, job.tenantId, job.agentId);
@@ -192,6 +207,9 @@ export function createAgentEngine(config: AgentEngineConfig): AgentEngine {
       if (rtRows[0]) {
         runtimeType = rtRows[0].type;
         runtimeConfig = (rtRows[0].config as Record<string, unknown>) ?? {};
+        if (rtRows[0].model && !runtimeConfig.model) {
+          runtimeConfig.model = rtRows[0].model;
+        }
       }
     }
     const runtime = runtimes.get(runtimeType);
@@ -201,6 +219,8 @@ export function createAgentEngine(config: AgentEngineConfig): AgentEngine {
     }
 
     // Execute runtime
+    let lastModel: string | undefined;
+
     const callbacks: AgentRunCallbacks = {
       async onOutputLine(line) {
         await lifecycle.appendLog(runId, line);
@@ -210,7 +230,7 @@ export function createAgentEngine(config: AgentEngineConfig): AgentEngine {
       },
       onCostEvent(event) {
         onCost.run(event);
-        // Record cost event in DB
+        lastModel = event.model;
         db.insert(costEvents).values({
           id: generateId(),
           tenantId: job.tenantId,
@@ -227,6 +247,13 @@ export function createAgentEngine(config: AgentEngineConfig): AgentEngine {
           exitCode: result.exitCode,
           sessionId: result.sessionId,
         });
+
+        // Persist model used on the run record
+        const runModel = lastModel ?? (runtimeConfig.model as string | undefined);
+        if (runModel) {
+          db.update(agentRuns).set({ model: runModel, updatedAt: new Date() } as Record<string, unknown>)
+            .where(eq(agentRuns.id, runId)).catch(() => {});
+        }
 
         // Update wakeup status
         if (job.wakeupRequestId) {

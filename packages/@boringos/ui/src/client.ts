@@ -48,9 +48,18 @@ export interface HealthStatus {
 
 // ── The client ───────────────────────────────────────────────────────────────
 
+export interface RuntimeModel {
+  id: string;
+  label: string;
+}
+
 export interface BoringOSClient {
   // Health
   health(): Promise<HealthStatus>;
+
+  // Settings
+  getSettings(): Promise<Record<string, string | null>>;
+  updateSettings(data: Record<string, unknown>): Promise<Record<string, string | null>>;
 
   // Tenants
   createTenant(data: { name: string; slug: string }): Promise<Record<string, unknown>>;
@@ -60,7 +69,7 @@ export interface BoringOSClient {
   getAgents(): Promise<Agent[]>;
   getAgent(agentId: string): Promise<Agent>;
   createAgent(data: { name: string; role?: string; instructions?: string; runtimeId?: string }): Promise<Agent>;
-  updateAgent(agentId: string, data: { name?: string; role?: string; instructions?: string; status?: string }): Promise<Agent>;
+  updateAgent(agentId: string, data: { name?: string; role?: string; instructions?: string; status?: string; runtimeId?: string; fallbackRuntimeId?: string }): Promise<Agent>;
   wakeAgent(agentId: string, taskId?: string): Promise<Record<string, unknown>>;
   getAgentRuns(agentId: string): Promise<AgentRun[]>;
 
@@ -85,6 +94,7 @@ export interface BoringOSClient {
   updateRuntime(runtimeId: string, data: { name?: string; config?: Record<string, unknown>; model?: string }): Promise<Record<string, unknown>>;
   deleteRuntime(runtimeId: string): Promise<void>;
   setDefaultRuntime(runtimeId: string): Promise<void>;
+  getRuntimeModels(runtimeId: string): Promise<RuntimeModel[]>;
 
   // Approvals
   getApprovals(status?: string): Promise<Approval[]>;
@@ -155,6 +165,16 @@ export function createBoringOSClient(config: BoringOSClientConfig): BoringOSClie
   return {
     health: () => get<HealthStatus>("/health"),
 
+    // Settings
+    getSettings: async () => {
+      const res = await get<{ settings: Record<string, string | null> }>(`${api}/settings`);
+      return res.settings;
+    },
+    updateSettings: async (data) => {
+      const res = await patch<{ settings: Record<string, string | null> }>(`${api}/settings`, data);
+      return res.settings;
+    },
+
     // Tenants
     createTenant: (data) => post<Record<string, unknown>>(`${api}/tenants`, data),
     getCurrentTenant: () => get<Record<string, unknown>>(`${api}/tenants/current`),
@@ -211,6 +231,10 @@ export function createBoringOSClient(config: BoringOSClientConfig): BoringOSClie
     updateRuntime: (runtimeId, data) => patch<Record<string, unknown>>(`${api}/runtimes/${runtimeId}`, data),
     deleteRuntime: (runtimeId) => del(`${api}/runtimes/${runtimeId}`),
     setDefaultRuntime: async (runtimeId) => { await post(`${api}/runtimes/${runtimeId}/default`, {}); },
+    getRuntimeModels: async (runtimeId) => {
+      const res = await get<{ models: RuntimeModel[] }>(`${api}/runtimes/${runtimeId}/models`);
+      return res.models;
+    },
 
     // Approvals
     getApprovals: async (status?) => {

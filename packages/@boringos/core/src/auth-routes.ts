@@ -97,9 +97,9 @@ export function createAuthRoutes(
       // Auto-seed runtimes
       await db.execute(sql`
         INSERT INTO runtimes (id, tenant_id, name, type, config, model, status, created_at, updated_at) VALUES
-          (${randomUUID()}, ${tenantId}, 'claude', 'claude', '{}', 'claude-sonnet-4-20250514', 'active', now(), now()),
-          (${randomUUID()}, ${tenantId}, 'chatgpt', 'chatgpt', '{}', 'gpt-4o', 'active', now(), now()),
-          (${randomUUID()}, ${tenantId}, 'gemini', 'gemini', '{}', 'gemini-2.5-pro', 'active', now(), now()),
+          (${randomUUID()}, ${tenantId}, 'claude', 'claude', '{"model":"claude-sonnet-4-6"}', 'claude-sonnet-4-6', 'active', now(), now()),
+          (${randomUUID()}, ${tenantId}, 'chatgpt', 'chatgpt', '{"model":"gpt-4o"}', 'gpt-4o', 'active', now(), now()),
+          (${randomUUID()}, ${tenantId}, 'gemini', 'gemini', '{"model":"gemini-2.5-pro"}', 'gemini-2.5-pro', 'active', now(), now()),
           (${randomUUID()}, ${tenantId}, 'ollama', 'ollama', '{}', null, 'active', now(), now()),
           (${randomUUID()}, ${tenantId}, 'command', 'command', '{}', null, 'active', now(), now()),
           (${randomUUID()}, ${tenantId}, 'webhook', 'webhook', '{}', null, 'active', now(), now())

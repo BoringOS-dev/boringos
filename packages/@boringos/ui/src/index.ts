@@ -7,6 +7,7 @@ export type {
   ConnectorInfo,
   WorkflowInfo,
   HealthStatus,
+  RuntimeModel,
 } from "./client.js";
 
 // React provider
@@ -20,6 +21,8 @@ export {
   useTask,
   useRuns,
   useRuntimes,
+  useRuntimeModels,
+  useSettings,
   useApprovals,
   useConnectors,
   useProjects,

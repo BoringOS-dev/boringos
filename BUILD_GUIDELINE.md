@@ -284,6 +284,7 @@ Every entity in BoringOS follows the same pattern: **DB table → Admin API → 
 | **Plugins** | `plugins` | `GET /plugins`, `POST /plugins/:name/jobs/:job/trigger` | — | Read + Trigger |
 | **Drive** | `drive_files` | `GET /drive/list`, `GET/PATCH /drive/skill` | — | Read + Edit |
 | **Activity** | `activity_log` | `GET /activity` | — | Read only |
+| **Settings** | `tenant_settings` | `GET/PATCH /settings` | `useSettings()` | Read + Update |
 
 ### Admin API Pattern
 
@@ -324,7 +325,34 @@ curl PATCH /api/admin/agents/:id -H "X-API-Key: ..." -H "X-Tenant-Id: ..." \
 
 # Delete
 curl DELETE /api/admin/agents/:id -H "X-API-Key: ..." -H "X-Tenant-Id: ..."
+
+# Settings (key-value tenant config)
+curl GET /api/admin/settings -H "X-API-Key: ..." -H "X-Tenant-Id: ..."
+curl PATCH /api/admin/settings -H "X-API-Key: ..." -H "X-Tenant-Id: ..." \
+  -d '{"agents_paused": "true"}'
+
+# Runtime model catalog
+curl GET /api/admin/runtimes/:id/models -H "X-API-Key: ..." -H "X-Tenant-Id: ..."
 ```
+
+### Agent Pause / Kill Switch
+
+Two levels of pause:
+
+1. **Global pause** — set `agents_paused` to `"true"` via `PATCH /settings`. Engine checks this before every run and returns status `"skipped"` with `errorCode: "agents_paused"`.
+2. **Per-agent pause** — set agent `status` to `"paused"` via `PATCH /agents/:id`. Engine skips with `errorCode: "agent_paused"`.
+
+Both are checked before budget check. Runs get `status: "skipped"` (not `"failed"`) so they're distinguishable.
+
+### Runtime Model Sync
+
+When `PATCH /runtimes/:id` receives a `model` value, it auto-syncs into `config.model` (and vice versa). This ensures the CLI always receives `--model` and the display column stays consistent.
+
+`GET /runtimes/:id/models` returns the available model catalog for that runtime type (static list or dynamic via `listModels()`).
+
+### Task Cost Enrichment
+
+`GET /tasks/:id` now returns `runs` and `costSummary` alongside `task`, `comments`, and `workProducts`. Each run includes `model`, `inputTokens`, `outputTokens`, `costUsd`, agent name, status, and duration. The `costSummary` aggregates total cost, tokens, run count, and distinct models used.
 
 ---
 

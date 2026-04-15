@@ -37,7 +37,9 @@ The framework handles:
 - **File storage** — local drive with organization rules agents understand
 - **Database** — embedded or external Postgres with Drizzle ORM
 - **JWT-authenticated callback API** — agents call back to update tasks, post comments, record work products
-- **Admin REST API** — manage agents, tasks, runs, runtimes, approvals via API key auth
+- **Admin REST API** — manage agents, tasks, runs, runtimes, approvals, tenant settings via API key auth
+- **Agent pause / kill switch** — global tenant-level and per-agent pause with `skipped` run status
+- **Runtime model management** — model catalog per runtime, admin model selection, automatic config sync
 - **SSE realtime events** — live streaming of run status, task updates, approvals
 - **User auth (multi-tenant SaaS)** — signup with `tenantName` (creates new tenant) or `inviteCode` (joins existing), login returns all tenants, `/me` with `X-Tenant-Id` for switching, invitation system (create/list/revoke), team management (list users, change roles, remove members), exportable `createAuthMiddleware(db)` for custom routes
 - **Activity logging** — audit trail for all admin mutations

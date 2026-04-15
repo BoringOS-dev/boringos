@@ -35,6 +35,7 @@ import {
 } from "@boringos/db";
 import type { AgentEngine } from "@boringos/agent";
 import type { WorkflowEngine } from "@boringos/workflow";
+import type { RuntimeRegistry } from "@boringos/runtime";
 import { generateId } from "@boringos/shared";
 import type { RealtimeBus } from "./realtime.js";
 
@@ -52,6 +53,7 @@ export function createAdminRoutes(
   adminKey: string,
   realtimeBus?: RealtimeBus,
   workflowEngine?: WorkflowEngine,
+  runtimeRegistry?: RuntimeRegistry,
 ): Hono<AdminEnv> {
 
   function emit(type: string, tenantId: string, data: Record<string, unknown>) {
@@ -265,7 +267,71 @@ export function createAdminRoutes(
     const workProducts = await db.select().from(taskWorkProducts)
       .where(eq(taskWorkProducts.taskId, taskId));
 
-    return c.json({ task: taskRows[0], comments, workProducts });
+    // Fetch runs + cost data for this task
+    const wakeups = await db.select().from(agentWakeupRequests)
+      .where(eq(agentWakeupRequests.taskId, taskId));
+    const wakeupIds = wakeups.map((w) => w.id);
+
+    let runs: Array<Record<string, unknown>> = [];
+    let costSummary = { totalCostUsd: 0, totalInputTokens: 0, totalOutputTokens: 0, runCount: 0, models: [] as string[] };
+
+    if (wakeupIds.length > 0) {
+      const runRows = await db.select().from(agentRuns)
+        .where(sql`${agentRuns.wakeupRequestId} = ANY(ARRAY[${sql.join(wakeupIds.map(id => sql`${id}::uuid`), sql`, `)}])`)
+        .orderBy(desc(agentRuns.createdAt));
+
+      const runIds = runRows.map((r) => r.id);
+      let costMap = new Map<string, { inputTokens: number; outputTokens: number; costUsd: number; model: string | null }>();
+
+      if (runIds.length > 0) {
+        const costRows = await db.select().from(costEvents)
+          .where(sql`${costEvents.runId} = ANY(ARRAY[${sql.join(runIds.map(id => sql`${id}::uuid`), sql`, `)}])`);
+
+        for (const ce of costRows) {
+          const existing = costMap.get(ce.runId!) ?? { inputTokens: 0, outputTokens: 0, costUsd: 0, model: null };
+          existing.inputTokens += ce.inputTokens;
+          existing.outputTokens += ce.outputTokens;
+          existing.costUsd += parseFloat(ce.costUsd ?? "0");
+          if (ce.model) existing.model = ce.model;
+          costMap.set(ce.runId!, existing);
+        }
+      }
+
+      const agentMap = new Map<string, string>();
+      const agentIds = [...new Set(runRows.map((r) => r.agentId))];
+      if (agentIds.length > 0) {
+        const agentRows = await db.select({ id: agents.id, name: agents.name }).from(agents)
+          .where(sql`${agents.id} = ANY(ARRAY[${sql.join(agentIds.map(id => sql`${id}::uuid`), sql`, `)}])`);
+        for (const a of agentRows) agentMap.set(a.id, a.name);
+      }
+
+      const modelsSet = new Set<string>();
+      runs = runRows.map((r) => {
+        const cost = costMap.get(r.id);
+        const model = r.model ?? cost?.model ?? null;
+        if (model) modelsSet.add(model);
+        costSummary.totalInputTokens += cost?.inputTokens ?? 0;
+        costSummary.totalOutputTokens += cost?.outputTokens ?? 0;
+        costSummary.totalCostUsd += cost?.costUsd ?? 0;
+        return {
+          id: r.id,
+          agentId: r.agentId,
+          agentName: agentMap.get(r.agentId) ?? null,
+          status: r.status,
+          model,
+          exitCode: r.exitCode,
+          startedAt: r.startedAt,
+          finishedAt: r.finishedAt,
+          inputTokens: cost?.inputTokens ?? 0,
+          outputTokens: cost?.outputTokens ?? 0,
+          costUsd: cost?.costUsd ?? 0,
+        };
+      });
+      costSummary.runCount = runs.length;
+      costSummary.models = [...modelsSet];
+    }
+
+    return c.json({ task: taskRows[0], comments, workProducts, runs, costSummary });
   });
 
   app.post("/tasks", async (c) => {
@@ -470,14 +536,40 @@ export function createAdminRoutes(
     const body = await c.req.json() as Record<string, unknown>;
     const values: Record<string, unknown> = { updatedAt: new Date() };
     if (body.name !== undefined) values.name = body.name;
-    if (body.config !== undefined) values.config = body.config;
-    if (body.model !== undefined) values.model = body.model;
+
+    // Keep config.model and model column in sync
+    if (body.config !== undefined) {
+      const cfg = body.config as Record<string, unknown>;
+      values.config = cfg;
+      if (cfg.model && body.model === undefined) values.model = cfg.model as string;
+    }
+    if (body.model !== undefined) {
+      values.model = body.model;
+      const existing = await db.select().from(runtimes).where(eq(runtimes.id, c.req.param("id"))).limit(1);
+      if (existing[0]) {
+        const cfg = { ...(existing[0].config as Record<string, unknown>), model: body.model };
+        if (!body.config) values.config = cfg;
+      }
+    }
 
     await db.update(runtimes).set(values).where(
       and(eq(runtimes.id, c.req.param("id")), eq(runtimes.tenantId, c.get("tenantId"))),
     );
     const rows = await db.select().from(runtimes).where(eq(runtimes.id, c.req.param("id"))).limit(1);
     return c.json(rows[0]);
+  });
+
+  app.get("/runtimes/:id/models", async (c) => {
+    const rows = await db.select().from(runtimes).where(
+      and(eq(runtimes.id, c.req.param("id")), eq(runtimes.tenantId, c.get("tenantId"))),
+    ).limit(1);
+    if (!rows[0]) return c.json({ error: "Runtime not found" }, 404);
+
+    const rtModule = runtimeRegistry?.get(rows[0].type);
+    if (!rtModule) return c.json({ models: [] });
+
+    const models = rtModule.models ?? (rtModule.listModels ? await rtModule.listModels() : []);
+    return c.json({ models });
   });
 
   app.delete("/runtimes/:id", async (c) => {
@@ -889,6 +981,40 @@ export function createAdminRoutes(
       .orderBy(desc(budgetIncidents.createdAt))
       .limit(50);
     return c.json({ incidents: rows });
+  });
+
+  // ── Settings ────────────────────────────────────────────────────────────
+
+  app.get("/settings", async (c) => {
+    const { tenantSettings } = await import("@boringos/db");
+    const rows = await db.select().from(tenantSettings).where(eq(tenantSettings.tenantId, c.get("tenantId")));
+    const settings: Record<string, string | null> = {};
+    for (const row of rows) settings[row.key] = row.value;
+    return c.json({ settings });
+  });
+
+  app.patch("/settings", async (c) => {
+    const body = await c.req.json() as Record<string, unknown>;
+    const { tenantSettings } = await import("@boringos/db");
+    const tenantId = c.get("tenantId");
+
+    for (const [key, value] of Object.entries(body)) {
+      const strValue = value === null ? null : String(value);
+      const existing = await db.select().from(tenantSettings).where(
+        and(eq(tenantSettings.tenantId, tenantId), eq(tenantSettings.key, key)),
+      ).limit(1);
+
+      if (existing[0]) {
+        await db.update(tenantSettings).set({ value: strValue, updatedAt: new Date() }).where(eq(tenantSettings.id, existing[0].id));
+      } else {
+        await db.insert(tenantSettings).values({ id: generateId(), tenantId, key, value: strValue });
+      }
+    }
+
+    const rows = await db.select().from(tenantSettings).where(eq(tenantSettings.tenantId, tenantId));
+    const settings: Record<string, string | null> = {};
+    for (const row of rows) settings[row.key] = row.value;
+    return c.json({ settings });
   });
 
   // ── Tenants ─────────────────────────────────────────────────────────────

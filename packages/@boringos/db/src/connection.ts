@@ -1,3 +1,5 @@
+import { existsSync } from "node:fs";
+import { join } from "node:path";
 import { drizzle } from "drizzle-orm/postgres-js";
 import postgres from "postgres";
 import * as schema from "./schema/index.js";
@@ -35,9 +37,15 @@ export async function createDatabase(config: DatabaseConfig): Promise<DatabaseCo
     persistent: true,
   });
 
-  await pg.initialise();
+  const alreadyInitialised = existsSync(join(dataDir, "PG_VERSION"));
+  if (!alreadyInitialised) {
+    await pg.initialise();
+  }
   await pg.start();
-  await pg.createDatabase("boringos");
+  await pg.createDatabase("boringos").catch((err: unknown) => {
+    const msg = err instanceof Error ? err.message : String(err);
+    if (!msg.includes("already exists")) throw err;
+  });
 
   const url = `postgres://boringos:boringos@127.0.0.1:${port}/boringos`;
   const client = postgres(url);

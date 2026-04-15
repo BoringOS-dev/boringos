@@ -30,6 +30,7 @@ export const agentRuns = pgTable(
     stderrExcerpt: text("stderr_excerpt"),
     usageJson: jsonb("usage_json").$type<Record<string, unknown>>(),
     contextSnapshot: jsonb("context_snapshot").$type<Record<string, unknown>>(),
+    model: text("model"),
     sessionIdBefore: text("session_id_before"),
     sessionIdAfter: text("session_id_after"),
     startedAt: timestamp("started_at", { withTimezone: true }),

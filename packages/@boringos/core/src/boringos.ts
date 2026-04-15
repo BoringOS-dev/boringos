@@ -364,7 +364,7 @@ export class BoringOS {
     // Realtime SSE
     const realtimeBus = createRealtimeBus();
 
-    const adminApp = createAdminRoutes(dbConn.db, agentEngine, adminKeyValue, realtimeBus, workflowEngine);
+    const adminApp = createAdminRoutes(dbConn.db, agentEngine, adminKeyValue, realtimeBus, workflowEngine, runtimes);
     app.route("/api/admin", adminApp);
     const sseApp = createSSERoutes(realtimeBus, adminKeyValue);
     app.route("/api", sseApp);

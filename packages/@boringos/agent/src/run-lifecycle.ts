@@ -25,7 +25,7 @@ export function createRunLifecycle(db: Db): RunLifecycle {
         status,
         updatedAt: new Date(),
       };
-      if (status === "done" || status === "failed" || status === "cancelled") {
+      if (status === "done" || status === "failed" || status === "cancelled" || status === "skipped") {
         values.finishedAt = new Date();
       }
       if (extra?.exitCode !== undefined) values.exitCode = extra.exitCode;

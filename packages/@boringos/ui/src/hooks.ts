@@ -18,6 +18,12 @@ export function useAgents() {
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ["agents"] }),
   });
 
+  const updateAgent = useMutation({
+    mutationFn: (params: { agentId: string; data: { name?: string; role?: string; instructions?: string; status?: string; runtimeId?: string; fallbackRuntimeId?: string } }) =>
+      client.updateAgent(params.agentId, params.data),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["agents"] }),
+  });
+
   const wakeAgent = useMutation({
     mutationFn: (params: { agentId: string; taskId?: string }) =>
       client.wakeAgent(params.agentId, params.taskId),
@@ -29,8 +35,10 @@ export function useAgents() {
     isLoading: query.isLoading,
     error: query.error,
     createAgent: createAgent.mutateAsync,
+    updateAgent: updateAgent.mutateAsync,
     wakeAgent: wakeAgent.mutateAsync,
     isCreating: createAgent.isPending,
+    isUpdating: updateAgent.isPending,
   };
 }
 
@@ -151,6 +159,17 @@ export function useRuntimes() {
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ["runtimes"] }),
   });
 
+  const updateRuntime = useMutation({
+    mutationFn: (params: { runtimeId: string; data: { name?: string; config?: Record<string, unknown>; model?: string } }) =>
+      client.updateRuntime(params.runtimeId, params.data),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["runtimes"] }),
+  });
+
+  const deleteRuntime = useMutation({
+    mutationFn: (runtimeId: string) => client.deleteRuntime(runtimeId),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["runtimes"] }),
+  });
+
   const setDefault = useMutation({
     mutationFn: (runtimeId: string) => client.setDefaultRuntime(runtimeId),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ["runtimes"] }),
@@ -161,7 +180,46 @@ export function useRuntimes() {
     isLoading: query.isLoading,
     error: query.error,
     createRuntime: createRuntime.mutateAsync,
+    updateRuntime: updateRuntime.mutateAsync,
+    deleteRuntime: deleteRuntime.mutateAsync,
     setDefault: setDefault.mutateAsync,
+  };
+}
+
+// ── Runtime Models ────────────────────────────────────────────────────────────
+
+export function useRuntimeModels(runtimeId: string | undefined) {
+  const client = useClient();
+
+  return useQuery({
+    queryKey: ["runtimeModels", runtimeId],
+    queryFn: () => client.getRuntimeModels(runtimeId!),
+    enabled: !!runtimeId,
+  });
+}
+
+// ── Settings ──────────────────────────────────────────────────────────────────
+
+export function useSettings() {
+  const client = useClient();
+  const queryClient = useQueryClient();
+
+  const query = useQuery({
+    queryKey: ["settings"],
+    queryFn: () => client.getSettings(),
+  });
+
+  const updateSettings = useMutation({
+    mutationFn: (data: Record<string, unknown>) => client.updateSettings(data),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["settings"] }),
+  });
+
+  return {
+    settings: query.data ?? {},
+    isLoading: query.isLoading,
+    error: query.error,
+    updateSettings: updateSettings.mutateAsync,
+    isUpdating: updateSettings.isPending,
   };
 }
 
