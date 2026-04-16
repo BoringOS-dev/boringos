@@ -2863,6 +2863,36 @@ app.beforeStart(async (ctx) => {
 - Composable: multiple subscribers can react to the same event (triage agent + enrichment agent + notification)
 - The `create-inbox-item` handler emits events automatically — no extra workflow blocks needed
 
+### Pattern: Agent Pause/Resume
+
+BoringOS supports pausing agents at two levels — useful for maintenance, cost control, or incident response.
+
+**Global pause** — pause ALL agents for the entire tenant:
+
+```bash
+curl -X PATCH /api/admin/settings \
+  -H "X-API-Key: ..." -H "X-Tenant-Id: ..." \
+  -d '{"agents_paused": "true"}'
+```
+
+**Per-agent pause** — pause a single agent:
+
+```bash
+curl -X PATCH /api/admin/agents/:id \
+  -H "X-API-Key: ..." -H "X-Tenant-Id: ..." \
+  -d '{"status": "paused"}'
+```
+
+**Pause behavior:**
+- Already-running agents are NOT killed — they finish their current run
+- New runs are skipped with `status: "skipped"` and error code `agents_paused` (global) or `agent_paused` (per-agent)
+- Events still fire, tasks still get created — only CLI spawning is blocked
+- Budget is not consumed during pause
+
+**Resume** — set `agents_paused` to `"false"` (global) or `status` to `"idle"` (per-agent). On global resume, the framework auto-re-wakes all agents that have pending `todo` tasks. No work is lost during pause.
+
+**Auto-re-wake after run** — after any agent run completes, the engine checks if that agent has remaining `todo` tasks. If yes, it auto-re-wakes the agent. This prevents tasks from getting stuck when multiple events coalesce into a single run.
+
 ### Pattern: Memory Continuity
 
 Agents use memory to learn across sessions:

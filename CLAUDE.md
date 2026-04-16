@@ -291,6 +291,14 @@ Application host — the entry point.
   - **Approvals:** `GET /approvals`, `GET /approvals/:id`, `POST /approvals/:id/approve`, `POST /approvals/:id/reject`
   - **Tenants:** `GET /tenants/current`, `POST /tenants`
   - **Costs:** `GET /costs`
+  - **Settings:** `GET /settings`, `PATCH /settings` (upsert key-value tenant settings, e.g. `{"agents_paused": "true"}`)
+  - **Agent pause/resume:**
+    - **Global pause:** `PATCH /settings` with `{ agents_paused: "true" }` — pauses ALL agents for the tenant. Set to `"false"` to resume.
+    - **Per-agent pause:** `PATCH /agents/:id` with `{ status: "paused" }` — pauses individual agent. Set to `"idle"` to resume.
+    - Already-running agents finish their current run (not killed). New runs get `status: "skipped"` with `errorCode: "agents_paused"` or `"agent_paused"`.
+    - Events still fire, tasks still get created — only CLI spawning is blocked. Budget is not consumed during pause.
+    - **Auto-re-wake on resume:** when `agents_paused` is set to `"false"`, the framework auto-re-wakes all agents with pending `todo` tasks.
+    - **Auto-re-wake after run:** after any agent run completes, the engine checks for remaining `todo` tasks and auto-re-wakes if needed (prevents tasks from getting stuck when multiple events coalesce).
   - Configure admin key: `new BoringOS({ auth: { adminKey: "..." } })`
 - **SSE / Realtime** (`GET /api/events`, API key + tenant ID authenticated):
   - Streams events as Server-Sent Events: `run:started`, `run:completed`, `run:failed`, `task:created`, `task:updated`, `task:comment_added`, `agent:created`, `approval:decided`
