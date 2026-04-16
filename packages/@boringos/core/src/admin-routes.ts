@@ -1014,6 +1014,32 @@ export function createAdminRoutes(
     const rows = await db.select().from(tenantSettings).where(eq(tenantSettings.tenantId, tenantId));
     const settings: Record<string, string | null> = {};
     for (const row of rows) settings[row.key] = row.value;
+
+    // When agents are resumed, re-wake all agents with pending todo tasks
+    if (body.agents_paused === "false" || body.agents_paused === false) {
+      try {
+        const pendingAgents = await db.execute(sql`
+          SELECT DISTINCT t.assignee_agent_id as agent_id
+          FROM tasks t
+          WHERE t.tenant_id = ${tenantId}
+            AND t.status = 'todo'
+            AND t.assignee_agent_id IS NOT NULL
+        `);
+        for (const row of pendingAgents as unknown as Array<{ agent_id: string }>) {
+          const outcome = await engine.wake({
+            agentId: row.agent_id,
+            tenantId,
+            reason: "manual_request",
+          });
+          if (outcome.kind === "created") {
+            await engine.enqueue(outcome.wakeupRequestId);
+          }
+        }
+      } catch {
+        // Non-fatal
+      }
+    }
+
     return c.json({ settings });
   });
 
