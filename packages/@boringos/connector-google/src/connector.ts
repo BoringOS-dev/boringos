@@ -23,7 +23,7 @@ class GoogleWorkspaceClient implements ConnectorClient {
 
   async executeAction(action: string, inputs: Record<string, unknown>): Promise<ActionResult> {
     // Route to the right sub-client
-    const gmailActions = ["list_emails", "read_email", "send_email", "search_emails"];
+    const gmailActions = ["list_emails", "read_email", "send_email", "search_emails", "get_thread", "archive_email", "reply_email"];
     const calendarActions = ["list_events", "create_event", "update_event", "find_free_slots"];
 
     if (gmailActions.includes(action)) return this.gmail.executeAction(action, inputs);
@@ -44,7 +44,7 @@ export function google(config: GoogleConfig): ConnectorDefinition & { clientId: 
       authorizationUrl: "https://accounts.google.com/o/oauth2/v2/auth",
       tokenUrl: "https://oauth2.googleapis.com/token",
       scopes: [
-        "https://www.googleapis.com/auth/gmail.readonly",
+        "https://www.googleapis.com/auth/gmail.modify",
         "https://www.googleapis.com/auth/gmail.send",
         "https://www.googleapis.com/auth/calendar",
         "https://www.googleapis.com/auth/calendar.events",
