@@ -36,6 +36,8 @@ import {
   createCommentsProvider,
   createApprovalProvider,
   createHierarchyProvider,
+  createApiCatalogProvider,
+  type ApiCatalogEntry,
 } from "./providers/index.js";
 
 export interface AgentEngineConfig {
@@ -47,6 +49,13 @@ export interface AgentEngineConfig {
   callbackUrl: string;
   jwtSecret: string;
   queue?: QueueAdapter<AgentRunJob>;
+  /**
+   * App-registered HTTP mounts with agent-facing docs. Accepts a getter so
+   * the catalog can be resolved at prompt-build time — important when apps
+   * register routes in `beforeStart` hooks that run after engine creation.
+   * A built-in context provider emits these into every agent's system prompt.
+   */
+  apiCatalog?: ApiCatalogEntry[] | (() => ApiCatalogEntry[]);
 }
 
 function registerDefaultProviders(pipeline: ContextPipeline, config: AgentEngineConfig): void {
@@ -59,6 +68,9 @@ function registerDefaultProviders(pipeline: ContextPipeline, config: AgentEngine
   pipeline.add(memorySkillProvider);
   pipeline.add(agentInstructionsProvider);
   pipeline.add(protocolProvider);
+  if (config.apiCatalog) {
+    pipeline.add(createApiCatalogProvider(config.apiCatalog));
+  }
 
   // Context markdown providers
   pipeline.add(sessionProvider);

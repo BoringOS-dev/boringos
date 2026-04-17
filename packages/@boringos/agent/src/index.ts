@@ -34,7 +34,9 @@ export {
   createCommentsProvider,
   memoryContextProvider,
   createApprovalProvider,
+  createApiCatalogProvider,
 } from "./providers/index.js";
+export type { ApiCatalogEntry, AgentDocs } from "./providers/index.js";
 
 export { signCallbackToken, verifyCallbackToken } from "./jwt.js";
 export type { CallbackTokenClaims } from "./jwt.js";

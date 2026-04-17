@@ -78,7 +78,7 @@ export class BoringOS {
   private beforeStartHooks: LifecycleHook[] = [];
   private afterStartHooks: LifecycleHook[] = [];
   private beforeShutdownHooks: LifecycleHook[] = [];
-  private extraRoutes: Array<{ path: string; app: Hono }> = [];
+  private extraRoutes: Array<{ path: string; app: Hono; agentDocs?: string | ((callbackUrl: string) => string) }> = [];
   private blockHandlers: BlockHandler[] = [];
   private queueAdapter: QueueAdapter<AgentRunJob> | undefined;
   private userSchemaStatements: string[] = [];
@@ -170,8 +170,20 @@ export class BoringOS {
     return this;
   }
 
-  route(path: string, app: Hono): this {
-    this.extraRoutes.push({ path, app });
+  /**
+   * Mount a Hono sub-app at `path`.
+   *
+   * Pass `options.agentDocs` to teach agents how to call the endpoints under
+   * this mount. The framework concatenates all registered agentDocs and
+   * injects them into every agent run's system prompt via the built-in
+   * api-catalog context provider — no per-app context provider needed.
+   *
+   * The docs string is markdown and may reference `$BORINGOS_TENANT_ID` and
+   * `$BORINGOS_CALLBACK_TOKEN` (injected as env vars in the agent subprocess)
+   * along with the callback URL, which the provider substitutes at build time.
+   */
+  route(path: string, app: Hono, options?: { agentDocs?: string | ((callbackUrl: string) => string) }): this {
+    this.extraRoutes.push({ path, app, agentDocs: options?.agentDocs });
     return this;
   }
 
@@ -220,6 +232,13 @@ export class BoringOS {
     const jwtSecret = this.config.auth?.secret ?? "boringos-dev-secret";
     const callbackUrl = `http://localhost:${listenPort}`;
 
+    // Resolve apiCatalog lazily so routes registered in `beforeStart` hooks
+    // (which run after engine creation) are still picked up.
+    const apiCatalog = () =>
+      this.extraRoutes
+        .filter((r) => r.agentDocs)
+        .map((r) => ({ path: r.path, agentDocs: r.agentDocs! }));
+
     const agentEngine = createAgentEngine({
       db: dbConn.db,
       runtimes,
@@ -229,6 +248,7 @@ export class BoringOS {
       callbackUrl,
       jwtSecret,
       queue: this.queueAdapter,
+      apiCatalog,
     });
 
     // 7. Build workflow engine
