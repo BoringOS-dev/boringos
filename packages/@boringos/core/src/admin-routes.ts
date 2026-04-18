@@ -669,6 +669,7 @@ export function createAdminRoutes(
   });
 
   app.post("/runtimes", async (c) => {
+    const denied = requireAdmin(c); if (denied) return denied;
     const body = await c.req.json() as Record<string, unknown>;
     const id = generateId();
     await db.insert(runtimes).values({
@@ -684,6 +685,7 @@ export function createAdminRoutes(
   });
 
   app.patch("/runtimes/:id", async (c) => {
+    const denied = requireAdmin(c); if (denied) return denied;
     const body = await c.req.json() as Record<string, unknown>;
     const values: Record<string, unknown> = { updatedAt: new Date() };
     if (body.name !== undefined) values.name = body.name;
@@ -724,6 +726,7 @@ export function createAdminRoutes(
   });
 
   app.delete("/runtimes/:id", async (c) => {
+    const denied = requireAdmin(c); if (denied) return denied;
     await db.delete(runtimes).where(
       and(eq(runtimes.id, c.req.param("id")), eq(runtimes.tenantId, c.get("tenantId"))),
     );
@@ -731,6 +734,7 @@ export function createAdminRoutes(
   });
 
   app.post("/runtimes/:id/default", async (c) => {
+    const denied = requireAdmin(c); if (denied) return denied;
     const tenantId = c.get("tenantId");
     // Unset all defaults first
     await db.update(runtimes).set({ isDefault: false }).where(eq(runtimes.tenantId, tenantId));
@@ -1206,6 +1210,7 @@ export function createAdminRoutes(
   });
 
   app.post("/budgets", async (c) => {
+    const denied = requireAdmin(c); if (denied) return denied;
     const body = await c.req.json() as Record<string, unknown>;
     const id = generateId();
     await db.insert(budgetPolicies).values({
@@ -1222,6 +1227,7 @@ export function createAdminRoutes(
   });
 
   app.delete("/budgets/:id", async (c) => {
+    const denied = requireAdmin(c); if (denied) return denied;
     await db.delete(budgetPolicies).where(
       and(eq(budgetPolicies.id, c.req.param("id")), eq(budgetPolicies.tenantId, c.get("tenantId"))),
     );
@@ -1247,6 +1253,7 @@ export function createAdminRoutes(
   });
 
   app.patch("/settings", async (c) => {
+    const denied = requireAdmin(c); if (denied) return denied;
     const body = await c.req.json() as Record<string, unknown>;
     const { tenantSettings } = await import("@boringos/db");
     const tenantId = c.get("tenantId");
