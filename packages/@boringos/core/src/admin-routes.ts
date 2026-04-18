@@ -36,7 +36,7 @@ import {
   workflowBlockRuns,
 } from "@boringos/db";
 import type { AgentEngine } from "@boringos/agent";
-import type { WorkflowEngine } from "@boringos/workflow";
+import type { WorkflowEngine, TriggerType } from "@boringos/workflow";
 import type { RuntimeRegistry } from "@boringos/runtime";
 import { generateId } from "@boringos/shared";
 import type { RealtimeBus } from "./realtime.js";
@@ -1195,6 +1195,45 @@ export function createAdminRoutes(
       status: result.status,
       error: result.error,
       awaitingActionTaskId: result.awaitingActionTaskId,
+    });
+  });
+
+  /**
+   * Replay a past run. Loads the original run's workflowId + triggerPayload
+   * and re-executes against the *current* workflow definition. That matters
+   * for debugging: after you fix a block you can re-run the scenario that
+   * broke without reconstructing its input.
+   *
+   * Note: we execute the workflow as it is *now*, not a snapshot of what
+   * the definition looked like when the run first fired. Replay is a
+   * "does this still happen?" tool, not a "reproduce byte-for-byte" tool.
+   */
+  app.post("/workflow-runs/:id/replay", async (c) => {
+    if (!workflowEngine) return c.json({ error: "workflow engine not available" }, 503);
+    const tenantId = c.get("tenantId") as string;
+
+    const runRows = await db.select({
+      id: workflowRuns.id,
+      workflowId: workflowRuns.workflowId,
+      triggerType: workflowRuns.triggerType,
+      triggerPayload: workflowRuns.triggerPayload,
+    }).from(workflowRuns).where(
+      and(eq(workflowRuns.id, c.req.param("id")), eq(workflowRuns.tenantId, tenantId)),
+    ).limit(1);
+
+    const original = runRows[0];
+    if (!original) return c.json({ error: "run not found" }, 404);
+
+    const triggerType = (original.triggerType ?? "manual") as TriggerType;
+    const result = await workflowEngine.execute(original.workflowId, {
+      type: triggerType,
+      data: (original.triggerPayload as Record<string, unknown> | null) ?? {},
+    });
+    return c.json({
+      runId: result.runId,
+      status: result.status,
+      error: result.error,
+      replayedFromRunId: original.id,
     });
   });
 
