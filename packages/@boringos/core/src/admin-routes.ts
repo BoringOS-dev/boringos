@@ -32,6 +32,8 @@ import {
   inboxItems,
   entityReferences,
   workflows,
+  workflowRuns,
+  workflowBlockRuns,
 } from "@boringos/db";
 import type { AgentEngine } from "@boringos/agent";
 import type { WorkflowEngine } from "@boringos/workflow";
@@ -1068,6 +1070,78 @@ export function createAdminRoutes(
       and(eq(workflows.id, c.req.param("id")), eq(workflows.tenantId, c.get("tenantId"))),
     );
     return c.json({ ok: true });
+  });
+
+  /**
+   * Manually trigger a workflow run. Useful for testing, debugging, and
+   * letting users "run now" without waiting for cron.
+   */
+  app.post("/workflows/:id/execute", async (c) => {
+    if (!workflowEngine) return c.json({ error: "workflow engine not available" }, 503);
+    const body = await c.req.json().catch(() => ({})) as Record<string, unknown>;
+    const result = await workflowEngine.execute(c.req.param("id"), {
+      type: "manual",
+      data: (body.payload as Record<string, unknown> | undefined) ?? {},
+    });
+    return c.json({
+      runId: result.runId,
+      status: result.status,
+      error: result.error,
+    });
+  });
+
+  // ── Workflow runs (execution history) ──────────────────────────────────
+
+  /**
+   * Recent runs scoped to a workflow. Use this to power the "History" tab
+   * on a workflow's detail page.
+   */
+  app.get("/workflows/:id/runs", async (c) => {
+    const limit = Math.min(Number(c.req.query("limit") ?? "50"), 200);
+    const rows = await db.select().from(workflowRuns)
+      .where(and(
+        eq(workflowRuns.workflowId, c.req.param("id")),
+        eq(workflowRuns.tenantId, c.get("tenantId")),
+      ))
+      .orderBy(desc(workflowRuns.startedAt))
+      .limit(limit);
+    return c.json({ runs: rows });
+  });
+
+  /**
+   * All recent runs for the tenant across every workflow. Used by the
+   * Workflows list view to show "last activity" and by a future
+   * "Workflow activity feed" page.
+   */
+  app.get("/workflow-runs", async (c) => {
+    const limit = Math.min(Number(c.req.query("limit") ?? "50"), 200);
+    const rows = await db.select().from(workflowRuns)
+      .where(eq(workflowRuns.tenantId, c.get("tenantId")))
+      .orderBy(desc(workflowRuns.startedAt))
+      .limit(limit);
+    return c.json({ runs: rows });
+  });
+
+  /**
+   * Full per-block execution detail for one run. Powers the DAG trace view:
+   * each block's resolved config, input context snapshot, output, timing,
+   * and any error.
+   */
+  app.get("/workflow-runs/:id", async (c) => {
+    const runRows = await db.select().from(workflowRuns)
+      .where(and(
+        eq(workflowRuns.id, c.req.param("id")),
+        eq(workflowRuns.tenantId, c.get("tenantId")),
+      ))
+      .limit(1);
+    const run = runRows[0];
+    if (!run) return c.json({ error: "run not found" }, 404);
+
+    const blocks = await db.select().from(workflowBlockRuns)
+      .where(eq(workflowBlockRuns.workflowRunId, run.id))
+      .orderBy(workflowBlockRuns.startedAt);
+
+    return c.json({ run, blocks });
   });
 
   // ── Budgets ──────────────────────────────────────────────────────────────

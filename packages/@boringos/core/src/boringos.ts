@@ -23,6 +23,7 @@ import type { QueueAdapter } from "@boringos/pipeline";
 import {
   createWorkflowEngine,
   createWorkflowStore,
+  createWorkflowRunStore,
   createHandlerRegistry,
   triggerHandler,
   conditionHandler,
@@ -267,12 +268,14 @@ export class BoringOS {
     }
 
     const workflowStore = createWorkflowStore(dbConn.db);
+    const workflowRunStore = createWorkflowRunStore(dbConn.db);
     const memoryRef = this.memoryProvider;
     // Lazy service map — allows services registered after workflow engine creation
     // (e.g., actionRunner, connectorRegistry) to be available to block handlers.
     const serviceMap: Record<string, unknown> = { db: dbConn.db, memory: memoryRef, drive, agentEngine };
     const workflowEngine = createWorkflowEngine({
       store: workflowStore,
+      runStore: workflowRunStore,
       handlers: handlerRegistry,
       services: {
         get<T>(key: string): T | undefined {
@@ -519,6 +522,19 @@ export class BoringOS {
           });
         }
       }
+    }
+
+    // 10c. Recover wake requests + runs orphaned by a prior crash/restart.
+    // Pending wakes go back in the queue; running runs are closed out as failed.
+    try {
+      const recovered = await agentEngine.recoverPending();
+      if (recovered.orphanedRuns > 0 || recovered.reenqueued > 0) {
+        console.log(
+          `[boringos] recovered pending work: ${recovered.reenqueued} wake(s) re-enqueued, ${recovered.orphanedRuns} stale run(s) closed`,
+        );
+      }
+    } catch (err) {
+      console.error("[boringos] recoverPending failed:", err);
     }
 
     // 11. Start HTTP server

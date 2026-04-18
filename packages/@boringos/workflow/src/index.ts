@@ -31,5 +31,18 @@ export type { HandlerRegistry } from "./handler-registry.js";
 export { createWorkflowEngine } from "./engine.js";
 export type { WorkflowEngineConfig } from "./engine.js";
 export { createWorkflowStore } from "./store.js";
+export { createWorkflowRunStore } from "./run-store.js";
+export type {
+  WorkflowRunStore,
+  WorkflowRunStatus,
+  BlockRunStatus,
+  RunTriggerType,
+  WorkflowRunRow,
+  BlockRunRow,
+  CreateWorkflowRunInput,
+  UpdateWorkflowRunInput,
+  CreateBlockRunInput,
+  UpdateBlockRunInput,
+} from "./run-store.js";
 
 export { triggerHandler, conditionHandler, delayHandler, transformHandler, wakeAgentHandler, connectorActionHandler, forEachHandler, createInboxItemHandler, emitEventHandler } from "./handlers/index.js";

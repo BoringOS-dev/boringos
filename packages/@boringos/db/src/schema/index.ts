@@ -8,6 +8,7 @@ export { connectors } from "./connectors.js";
 export { companySkills, agentSkills } from "./skills.js";
 export { driveFiles, driveSkillRevisions } from "./drive.js";
 export { workflows } from "./workflows.js";
+export { workflowRuns, workflowBlockRuns } from "./workflow_runs.js";
 export { activityLog } from "./activity.js";
 export { budgetPolicies, budgetIncidents } from "./budgets.js";
 export { routines } from "./routines.js";

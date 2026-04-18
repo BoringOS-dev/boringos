@@ -510,6 +510,45 @@ async function ensureSchema(db: Db): Promise<void> {
     -- Index for the Actions queue: filter by assignee + status + origin_kind
     CREATE INDEX IF NOT EXISTS tasks_actions_idx ON tasks(tenant_id, assignee_user_id, status, origin_kind);
 
+    -- Workflow execution history (Phase 1 of the workflow UI roadmap)
+    CREATE TABLE IF NOT EXISTS workflow_runs (
+      id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+      tenant_id UUID NOT NULL REFERENCES tenants(id),
+      workflow_id UUID NOT NULL REFERENCES workflows(id),
+      trigger_type TEXT NOT NULL DEFAULT 'manual',
+      trigger_payload JSONB,
+      status TEXT NOT NULL DEFAULT 'queued',
+      error TEXT,
+      started_at TIMESTAMPTZ,
+      finished_at TIMESTAMPTZ,
+      duration_ms INTEGER,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+      updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+    );
+    CREATE INDEX IF NOT EXISTS workflow_runs_workflow_started_idx ON workflow_runs(workflow_id, started_at DESC);
+    CREATE INDEX IF NOT EXISTS workflow_runs_tenant_started_idx ON workflow_runs(tenant_id, started_at DESC);
+
+    CREATE TABLE IF NOT EXISTS workflow_block_runs (
+      id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+      workflow_run_id UUID NOT NULL REFERENCES workflow_runs(id) ON DELETE CASCADE,
+      tenant_id UUID NOT NULL REFERENCES tenants(id),
+      block_id TEXT NOT NULL,
+      block_name TEXT NOT NULL,
+      block_type TEXT NOT NULL,
+      status TEXT NOT NULL DEFAULT 'pending',
+      resolved_config JSONB,
+      input_context JSONB,
+      output JSONB,
+      selected_handle TEXT,
+      error TEXT,
+      started_at TIMESTAMPTZ,
+      finished_at TIMESTAMPTZ,
+      duration_ms INTEGER,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+      updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+    );
+    CREATE INDEX IF NOT EXISTS workflow_block_runs_run_idx ON workflow_block_runs(workflow_run_id);
+
     -- Add assignee_user_id to inbox_items if it doesn't exist (for existing DBs)
     ALTER TABLE inbox_items ADD COLUMN IF NOT EXISTS assignee_user_id TEXT;
 

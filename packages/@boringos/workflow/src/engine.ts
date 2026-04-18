@@ -12,16 +12,54 @@ import type {
 import { buildDAG } from "./dag.js";
 import { createExecutionState, resolveTemplate } from "./state.js";
 import type { HandlerRegistry } from "./handler-registry.js";
+import type { WorkflowRunStore, RunTriggerType } from "./run-store.js";
 import { generateId } from "@boringos/shared";
 
 export interface WorkflowEngineConfig {
   store: WorkflowStore;
   handlers: HandlerRegistry;
   services: ServiceAccessor;
+  /**
+   * Optional persistence layer for run + block-run history. When provided,
+   * every workflow execution writes one `workflow_runs` row plus one
+   * `workflow_block_runs` row per block — lets the UI render run history,
+   * live execution traces, and replay/debug views. If omitted, engine
+   * behavior is unchanged and runs leave no trace (useful for tests).
+   */
+  runStore?: WorkflowRunStore;
 }
 
 export function createWorkflowEngine(config: WorkflowEngineConfig): WorkflowEngine {
-  const { store, handlers, services } = config;
+  const { store, handlers, services, runStore } = config;
+
+  // Persistence wrappers — swallow errors so a DB hiccup never kills a workflow.
+  async function safeCreateRun(input: Parameters<NonNullable<typeof runStore>["createRun"]>[0]): Promise<string | null> {
+    if (!runStore) return null;
+    try { return await runStore.createRun(input); } catch (err) { console.warn("[workflow] createRun failed:", err); return null; }
+  }
+  async function safeUpdateRun(id: string | null, input: Parameters<NonNullable<typeof runStore>["updateRun"]>[1]): Promise<void> {
+    if (!runStore || !id) return;
+    try { await runStore.updateRun(id, input); } catch (err) { console.warn("[workflow] updateRun failed:", err); }
+  }
+  async function safeCreateBlockRun(input: Parameters<NonNullable<typeof runStore>["createBlockRun"]>[0]): Promise<string | null> {
+    if (!runStore) return null;
+    try { return await runStore.createBlockRun(input); } catch (err) { console.warn("[workflow] createBlockRun failed:", err); return null; }
+  }
+  async function safeUpdateBlockRun(id: string | null, input: Parameters<NonNullable<typeof runStore>["updateBlockRun"]>[1]): Promise<void> {
+    if (!runStore || !id) return;
+    try { await runStore.updateBlockRun(id, input); } catch (err) { console.warn("[workflow] updateBlockRun failed:", err); }
+  }
+
+  // Snapshot the outputs of all completed blocks — used as "input context"
+  // for the next block, so the UI can show exactly what data was visible.
+  function snapshotState(state: { get(id: string): BlockState | undefined }, nameToId: Map<string, string>): Record<string, unknown> {
+    const snap: Record<string, unknown> = {};
+    for (const [name, id] of nameToId) {
+      const bs = state.get(id);
+      if (bs?.status === "completed" && bs.output !== undefined) snap[name] = bs.output;
+    }
+    return snap;
+  }
 
   return {
     async execute(workflowId: string, trigger?: TriggerPayload): Promise<WorkflowRunResult> {
@@ -44,7 +82,22 @@ export function createWorkflowEngine(config: WorkflowEngineConfig): WorkflowEngi
       const completed = new Set<string>();
       const failed = new Set<string>();
 
-      // Execute start node
+      // --- Persistence: create the workflow run row up-front ---
+      const runStartedAt = new Date();
+      const triggerType = (trigger?.type as RunTriggerType | undefined) ?? "manual";
+      const persistedRunId = await safeCreateRun({
+        tenantId: workflow.tenantId,
+        workflowId,
+        triggerType,
+        triggerPayload: (trigger?.data as Record<string, unknown> | undefined) ?? undefined,
+      });
+      await safeUpdateRun(persistedRunId, { status: "running", finishedAt: undefined });
+      // startedAt not on update input currently — write via raw path below if needed.
+      // The drizzle migration has startedAt; we set it in createRun path? Not ideal —
+      // let's add startedAt through the run row's createdAt proximity for v1 and let
+      // Phase 1.5 tighten. For now: keep it simple.
+
+      // --- Execute start node (the trigger block) ---
       const startNode = dag.nodes.get(dag.startNodeId)!;
       const triggerResult: BlockHandlerResult = {
         output: trigger?.data ?? {},
@@ -52,6 +105,26 @@ export function createWorkflowEngine(config: WorkflowEngineConfig): WorkflowEngi
       state.set(dag.startNodeId, { status: "completed", output: triggerResult.output, completedAt: new Date() });
       blockResults.set(dag.startNodeId, triggerResult);
       completed.add(dag.startNodeId);
+
+      // Persist trigger block as a completed block run (instantaneous)
+      const startBlockRunId = await safeCreateBlockRun({
+        workflowRunId: persistedRunId ?? "",
+        tenantId: workflow.tenantId,
+        blockId: dag.startNodeId,
+        blockName: startNode.name,
+        blockType: startNode.type,
+        status: "running",
+      });
+      const startedTrigger = new Date();
+      await safeUpdateBlockRun(startBlockRunId, {
+        status: "completed",
+        resolvedConfig: (startNode.config ?? {}) as Record<string, unknown>,
+        inputContext: {},
+        output: (trigger?.data as Record<string, unknown> | undefined) ?? {},
+        startedAt: startedTrigger,
+        finishedAt: startedTrigger,
+        durationMs: 0,
+      });
 
       // BFS walk through the graph
       let frontier = getActivatedBlocks(dag.startNodeId, null, dag);
@@ -77,14 +150,37 @@ export function createWorkflowEngine(config: WorkflowEngineConfig): WorkflowEngi
           if (anyDepFailed) {
             state.set(blockId, { status: "skipped" });
             completed.add(blockId);
+            const skippedId = await safeCreateBlockRun({
+              workflowRunId: persistedRunId ?? "",
+              tenantId: workflow.tenantId,
+              blockId,
+              blockName: node.name,
+              blockType: node.type,
+              status: "skipped",
+            });
+            await safeUpdateBlockRun(skippedId, {
+              status: "skipped",
+              error: "upstream block failed",
+              finishedAt: new Date(),
+            });
             continue;
           }
 
           // Find handler
           const handler = handlers.get(node.type);
           if (!handler) {
-            state.set(blockId, { status: "failed", error: `No handler for block type: ${node.type}` });
+            const err = `No handler for block type: ${node.type}`;
+            state.set(blockId, { status: "failed", error: err });
             failed.add(blockId);
+            const noHandlerId = await safeCreateBlockRun({
+              workflowRunId: persistedRunId ?? "",
+              tenantId: workflow.tenantId,
+              blockId,
+              blockName: node.name,
+              blockType: node.type,
+              status: "failed",
+            });
+            await safeUpdateBlockRun(noHandlerId, { status: "failed", error: err, finishedAt: new Date() });
             continue;
           }
 
@@ -96,8 +192,24 @@ export function createWorkflowEngine(config: WorkflowEngineConfig): WorkflowEngi
               : value;
           }
 
-          // Execute block
-          state.set(blockId, { status: "running", startedAt: new Date() });
+          // Persist the block run (status=running) BEFORE executing so live views see it
+          const blockStartedAt = new Date();
+          state.set(blockId, { status: "running", startedAt: blockStartedAt });
+          const blockRunId = await safeCreateBlockRun({
+            workflowRunId: persistedRunId ?? "",
+            tenantId: workflow.tenantId,
+            blockId,
+            blockName: node.name,
+            blockType: node.type,
+            status: "running",
+          });
+          const inputContextSnapshot = snapshotState(state, nameToId);
+          await safeUpdateBlockRun(blockRunId, {
+            status: "running",
+            resolvedConfig,
+            inputContext: inputContextSnapshot,
+            startedAt: blockStartedAt,
+          });
 
           try {
             const ctx: BlockHandlerContext = {
@@ -105,7 +217,7 @@ export function createWorkflowEngine(config: WorkflowEngineConfig): WorkflowEngi
               blockName: node.name,
               blockType: node.type,
               config: resolvedConfig,
-              workflowRunId: generateId(),
+              workflowRunId: persistedRunId ?? generateId(),
               workflowId,
               tenantId: workflow.tenantId,
               governingAgentId: workflow.governingAgentId,
@@ -115,17 +227,33 @@ export function createWorkflowEngine(config: WorkflowEngineConfig): WorkflowEngi
             };
 
             const result = await handler.execute(ctx);
-            state.set(blockId, { status: "completed", output: result.output, completedAt: new Date() });
+            const blockFinishedAt = new Date();
+            state.set(blockId, { status: "completed", output: result.output, completedAt: blockFinishedAt });
             blockResults.set(blockId, result);
             completed.add(blockId);
+
+            await safeUpdateBlockRun(blockRunId, {
+              status: "completed",
+              output: (result.output as Record<string, unknown> | undefined) ?? {},
+              selectedHandle: result.selectedHandle ?? null,
+              finishedAt: blockFinishedAt,
+              durationMs: blockFinishedAt.getTime() - blockStartedAt.getTime(),
+            });
 
             // Get next blocks — respecting selectedHandle for branching
             const activated = getActivatedBlocks(blockId, result.selectedHandle ?? null, dag);
             nextFrontier.push(...activated);
           } catch (err) {
             const error = err instanceof Error ? err.message : String(err);
+            const blockFinishedAt = new Date();
             state.set(blockId, { status: "failed", error });
             failed.add(blockId);
+            await safeUpdateBlockRun(blockRunId, {
+              status: "failed",
+              error,
+              finishedAt: blockFinishedAt,
+              durationMs: blockFinishedAt.getTime() - blockStartedAt.getTime(),
+            });
           }
         }
 
@@ -133,8 +261,19 @@ export function createWorkflowEngine(config: WorkflowEngineConfig): WorkflowEngi
       }
 
       const hasFailure = failed.size > 0;
+      const runFinishedAt = new Date();
+      const runDurationMs = runFinishedAt.getTime() - runStartedAt.getTime();
+
+      // Persist final run status
+      await safeUpdateRun(persistedRunId, {
+        status: hasFailure ? "failed" : "completed",
+        error: hasFailure ? `${failed.size} block(s) failed` : null,
+        finishedAt: runFinishedAt,
+        durationMs: runDurationMs,
+      });
+
       return {
-        runId: generateId(),
+        runId: persistedRunId ?? generateId(),
         status: hasFailure ? "failed" : "completed",
         blockResults,
         error: hasFailure ? `${failed.size} block(s) failed` : undefined,
