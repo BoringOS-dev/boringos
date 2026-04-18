@@ -13,6 +13,7 @@ export interface AgentEngine {
   wake(request: WakeRequest): Promise<WakeupOutcome>;
   enqueue(wakeupId: string): Promise<string>;
   cancel(runId: string): Promise<void>;
+  recoverPending(): Promise<RecoverPendingResult>;
 
   beforeRun: Hook<BeforeRunEvent>;
   buildContext: Hook<ContextBuildEvent>;
@@ -36,6 +37,11 @@ export type WakeupOutcome =
   | { kind: "coalesced"; existingWakeupRequestId: string }
   | { kind: "agent_not_found" }
   | { kind: "agent_not_invokable"; agentStatus: string };
+
+export interface RecoverPendingResult {
+  orphanedRuns: number;
+  reenqueued: number;
+}
 
 // ── Context provider pipeline ────────────────────────────────────────────────
 

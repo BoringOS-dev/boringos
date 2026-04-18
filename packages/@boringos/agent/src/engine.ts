@@ -17,6 +17,7 @@ import type {
   AfterRunEvent,
   RunErrorEvent,
   AgentRunJob,
+  RecoverPendingResult,
 } from "./types.js";
 import { ContextPipeline } from "./context-pipeline.js";
 import { signCallbackToken } from "./jwt.js";
@@ -368,6 +369,66 @@ export function createAgentEngine(config: AgentEngineConfig): AgentEngine {
 
     async cancel(runId: string): Promise<void> {
       await lifecycle.updateStatus(runId, "cancelled");
+    },
+
+    async recoverPending(): Promise<RecoverPendingResult> {
+      // A "running" agent_run row only makes sense for an in-process job.
+      // On boot, there is no such process — any row in that state is stranded
+      // from a prior crash/restart. Mark it failed so operators see the truth,
+      // and move its wake request to "abandoned" so it isn't re-run blindly
+      // (the prior process may have completed partial side effects).
+      const orphaned = await db
+        .select({ id: agentRuns.id, wakeupRequestId: agentRuns.wakeupRequestId })
+        .from(agentRuns)
+        .where(eq(agentRuns.status, "running"));
+
+      if (orphaned.length > 0) {
+        await db
+          .update(agentRuns)
+          .set({
+            status: "failed",
+            error: "Orphaned by server restart",
+            errorCode: "orphaned_by_restart",
+            finishedAt: new Date(),
+            updatedAt: new Date(),
+          })
+          .where(eq(agentRuns.status, "running"));
+
+        for (const row of orphaned) {
+          if (!row.wakeupRequestId) continue;
+          await db
+            .update(agentWakeupRequests)
+            .set({ status: "abandoned", updatedAt: new Date() })
+            .where(eq(agentWakeupRequests.id, row.wakeupRequestId));
+        }
+      }
+
+      // Remaining "pending" wakes never got a run — re-enqueue them so the
+      // new process picks up the work the old one never started.
+      const pending = await db
+        .select()
+        .from(agentWakeupRequests)
+        .where(eq(agentWakeupRequests.status, "pending"));
+
+      let reenqueued = 0;
+      for (const wake of pending) {
+        const job: AgentRunJob = {
+          wakeupRequestId: wake.id,
+          agentId: wake.agentId,
+          tenantId: wake.tenantId,
+          wakeReason: wake.reason as AgentRunJob["wakeReason"],
+          taskId: wake.taskId ?? undefined,
+          payload: wake.payload as Record<string, unknown> | undefined,
+        };
+        try {
+          await queue.enqueue(job);
+          reenqueued++;
+        } catch {
+          // keep going — one bad row shouldn't block the rest
+        }
+      }
+
+      return { orphanedRuns: orphaned.length, reenqueued };
     },
 
     beforeRun,
