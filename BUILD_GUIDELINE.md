@@ -608,30 +608,43 @@ app.persona("tax-specialist", {
 
 ---
 
-## Agent Hierarchy (Delegation & Escalation)
+## Agent Hierarchy (Skills, Delegation, Handoff, Escalation)
 
-Agents can have a boss (`reportsTo`) and direct reports. The framework provides automatic delegation, escalation, and org context injection.
+Agents live in an org: each has a boss (`reportsTo`), a set of `skills`, and a role. The framework provides typed delegation, peer-aware context, a handoff primitive, and cycle-safe reparenting.
 
-### Setting Up Hierarchy
+### Data model
+
+| Column | Purpose |
+|---|---|
+| `role` | Short immutable identity (e.g. `vp-sales`, `engineer`). Used as fallback for routing and for agent names in prompts. |
+| `skills` | JSONB array of capability tags (e.g. `["deal-coaching", "competitor-analysis"]`). Primary signal for the delegation router. Editable anytime. |
+| `reportsTo` | Parent agent. Cycle-checked on every edit. |
+| `instructions` | Per-agent prompt/persona. |
+| `status` | `idle` / `running` / `paused` / `archived`. Paused and archived agents are skipped by the delegation router. |
+
+### Setting up hierarchy
 
 ```typescript
-// When creating agents manually:
-const cto = await createAgent({ name: "CTO", role: "cto", ... });
-const engineer = await createAgent({ name: "Engineer", role: "engineer", reportsTo: cto.id, ... });
-
-// Or use team templates — hierarchy is wired automatically
+const ceo = await createAgent({ name: "CEO", role: "ceo" });
+const vp = await createAgent({
+  name: "VP Sales", role: "vp-sales",
+  reportsTo: ceo.id,
+  skills: ["deal-coaching", "pipeline-review"],
+});
 ```
 
-### Org Tree
+Team templates create a full hierarchy in one call and are the recommended starting point for new tenants.
+
+### Org tree
 
 ```bash
 GET /api/admin/agents/org-tree
 # Returns:
-# [
-#   { id: "cto-id", name: "CTO", role: "cto", status: "idle", reports: [
-#     { id: "eng-id", name: "Engineer", role: "engineer", status: "idle", reports: [] }
+# { tree: [
+#   { id: "ceo-id", name: "CEO", role: "ceo", status: "idle", reports: [
+#     { id: "vp-id", name: "VP Sales", role: "vp-sales", status: "idle", reports: [] }
 #   ]}
-# ]
+# ]}
 ```
 
 ```typescript
@@ -639,52 +652,89 @@ import { buildOrgTree } from "@boringos/agent";
 const tree = await buildOrgTree(db, tenantId);
 ```
 
-### Automatic Delegation
+### Delegation — three tiers
 
-When an agent gets a task it can't handle, the framework can find the best report to delegate to:
+`findDelegateForTask` accepts either a bare title (legacy) or a structured query, and resolves in order:
+
+1. **Tier A — exact skill match.** If the query carries a `requiredSkill` hint, or a skill name from a candidate agent appears in the task title/description, that agent wins.
+2. **Tier B — role keyword heuristic.** The original regex by role (`engineer`, `devops`, `qa`, etc.) is used as a fallback when no skill matches.
+3. **Tier C — LLM router (opt-in).** Stub by default; apps opt in via `forceLLM: true`. Apps wiring a real implementation can replace the stub in framework config.
+
+Among tied candidates, the router prefers the agent with the fewest in-flight `todo`/`in_progress` tasks (load-aware tiebreak). Paused and archived agents are skipped.
 
 ```typescript
 import { findDelegateForTask } from "@boringos/agent";
 
-// CTO gets a "fix login bug" task — framework routes it to the engineer
-const delegateId = await findDelegateForTask(db, ctoAgentId, "Fix login bug");
-// Returns the engineer's ID (matched "fix" → engineer keywords)
+// Structured query
+const id = await findDelegateForTask(db, ceoAgentId, {
+  title: "Write up competitor-analysis for Acme",
+  requiredSkill: "competitor-analysis",
+});
+
+// Legacy string overload still works
+const id2 = await findDelegateForTask(db, ceoAgentId, "Fix the login bug");
 ```
 
-**Keyword matching by role:**
-- `engineer`: code, build, fix, implement, test, bug, feature, deploy, refactor
-- `devops`: devops, infra, deploy, pipeline, docker, k8s
-- `researcher`: research, analyze, investigate, find, explore
-- `designer`: design, ux, ui, wireframe, mockup
-- `qa`: test, qa, quality, verify, validate, regression
-- `pm`: plan, roadmap, prioritize, spec, requirement
-- `content-creator`: write, content, blog, social, marketing
-- `finance`: budget, cost, invoice, financial, expense, revenue
+### Handoff — first-class primitive
 
-### Automatic Escalation
-
-When an agent is blocked, escalate to their manager:
+`createHandoffTask` is the canonical way one agent hands work to another. It writes a subtask assigned to the receiver, posts a comment on the parent explaining the handoff, and enforces a 3-handoff-per-tree depth limit. On overflow, the root task is marked `blocked` rather than spawning another level.
 
 ```typescript
-import { escalateToManager } from "@boringos/agent";
+import { createHandoffTask } from "@boringos/agent";
 
-// Engineer is stuck — creates an escalation task for the CTO
-const escalationTaskId = await escalateToManager(db, engineerAgentId, blockedTaskId, "Can't reproduce the bug");
-// Creates: "[Escalation] Engineer blocked on: Fix login bug" task assigned to CTO
+const subtaskId = await createHandoffTask(db, {
+  fromAgentId: vpSalesId,
+  toAgentId: dealAnalystId,
+  parentTaskId,
+  title: "Assess risk on the Acme deal",
+  description: "Needs a quick read on their hesitations around pricing.",
+  originKind: "handoff",
+  priority: "high",
+});
+// Returns subtask id, or null if the handoff chain is already too deep.
 ```
 
-### Hierarchy Context Provider
+`escalateToManager` is a thin wrapper over `createHandoffTask` with `originKind: "escalation"` and the agent's boss as the target. The two flows share the same machinery; the only difference is which `originKind` label is used and who the recipient is.
 
-The framework automatically injects org context into every agent's prompt:
+### Hierarchy context provider
+
+The framework automatically injects org context into every agent's prompt, bounded to keep the prompt affordable in large tenants:
 
 ```
-You report to: CTO (idle)
-Your direct reports: Engineer 1 (running), Engineer 2 (idle)
-- Delegate tasks to your reports when appropriate
-- Escalate to your manager when blocked
+## Your Organization
+- You report to: CEO (ceo)
+- Your direct reports:
+  - Email Triage (email-triage) — idle — skills: classify-email, draft-reply
+  - Deal Analyst (deal-analyst) — idle — skills: pipeline-review
+- Your colleagues (peers):
+  - VP Marketing (vp) — skills: campaign-strategy
+  - VP Product (vp) — skills: roadmap [paused]
+- Skip-level reports:
+  - SDR (sdr)
 ```
 
-This is injected at system phase, priority 15 — no configuration needed.
+Caps: at most 10 peers and 8 skip-level entries, with `… and N more` truncation beyond that. Paused peers are flagged inline so the agent's reasoning routes around them. The provider injects at `system` phase, priority 15 — no app wiring needed.
+
+### Reparent semantics
+
+- `PATCH /agents/:id` with `reportsTo` runs a cycle check before accepting. Self-reference and any cycle return `409`.
+- When an agent is archived (status set to `archived`), the framework reparents its reports to the archived agent's manager. Set-null would orphan a subtree; grandparent preserves structure on departures.
+- `agent:reparented` and `agent:updated` events fire on every change — wire them into your realtime UI.
+
+### Dedicated skills endpoint
+
+```
+PATCH /api/admin/agents/:id/skills
+{ "set": ["deal-coaching", "pipeline-review"] }   # full replacement
+{ "add": ["competitor-analysis"] }                # incremental
+{ "remove": ["stale-skill"] }                     # incremental
+```
+
+Cheaper than round-tripping the whole agent for simple tag edits.
+
+### Admin gating
+
+All agent mutation routes (`POST /agents`, `PATCH /agents/:id`, `PATCH /agents/:id/skills`, `POST /agents/:id/wake`, `POST /agents/from-template`, `POST /teams/from-template`) require `role=admin` when session-authenticated. API-key auth bypasses (treated as superuser for system provisioning). GET routes stay open to all tenant members.
 
 ---
 

@@ -254,6 +254,80 @@ describe("hierarchy provider", () => {
   }, 30000);
 });
 
+describe("admin gating", () => {
+  it("non-admin session receives 403 on agent mutations; admin succeeds", async () => {
+    const server = await boot(5572);
+    try {
+      const { generateId } = await import("@boringos/shared");
+      const { tenants } = await import("@boringos/db");
+      const { sql } = await import("drizzle-orm");
+      const db = server.context.db as import("@boringos/db").Db;
+
+      // Set up a tenant + one admin user + one staff user, both with session tokens.
+      // auth_users / auth_sessions / user_tenants are defined in core/src/auth.ts
+      // (raw SQL rather than drizzle schema). Seed via raw SQL.
+      const tid = generateId();
+      await db.insert(tenants).values({ id: tid, name: "Gate Co", slug: "gate-co" });
+
+      const adminId = generateId();
+      const adminToken = generateId();
+      await db.execute(sql`INSERT INTO auth_users (id, email, name) VALUES (${adminId}, 'admin@gate.co', 'Admin')`);
+      await db.execute(sql`INSERT INTO user_tenants (id, user_id, tenant_id, role) VALUES (${generateId()}, ${adminId}, ${tid}, 'admin')`);
+      await db.execute(sql`INSERT INTO auth_sessions (id, user_id, token, expires_at) VALUES (${generateId()}, ${adminId}, ${adminToken}, now() + interval '1 hour')`);
+
+      const staffId = generateId();
+      const staffToken = generateId();
+      await db.execute(sql`INSERT INTO auth_users (id, email, name) VALUES (${staffId}, 'staff@gate.co', 'Staff')`);
+      await db.execute(sql`INSERT INTO user_tenants (id, user_id, tenant_id, role) VALUES (${generateId()}, ${staffId}, ${tid}, 'staff')`);
+      await db.execute(sql`INSERT INTO auth_sessions (id, user_id, token, expires_at) VALUES (${generateId()}, ${staffId}, ${staffToken}, now() + interval '1 hour')`);
+
+      const hAuth = (tok: string) => ({ "Content-Type": "application/json", "Authorization": `Bearer ${tok}`, "X-Tenant-Id": tid });
+
+      // Admin can create an agent
+      const created = await fetch(`${server.url}/api/admin/agents`, {
+        method: "POST", headers: hAuth(adminToken),
+        body: JSON.stringify({ name: "Admin-made", role: "general" }),
+      });
+      expect(created.status).toBe(201);
+      const agent = await created.json() as { id: string };
+
+      // Staff cannot create
+      const denied = await fetch(`${server.url}/api/admin/agents`, {
+        method: "POST", headers: hAuth(staffToken),
+        body: JSON.stringify({ name: "Staff-try", role: "general" }),
+      });
+      expect(denied.status).toBe(403);
+
+      // Staff cannot patch
+      const patchDenied = await fetch(`${server.url}/api/admin/agents/${agent.id}`, {
+        method: "PATCH", headers: hAuth(staffToken),
+        body: JSON.stringify({ name: "Staff-try-rename" }),
+      });
+      expect(patchDenied.status).toBe(403);
+
+      // Staff cannot update skills
+      const skillsDenied = await fetch(`${server.url}/api/admin/agents/${agent.id}/skills`, {
+        method: "PATCH", headers: hAuth(staffToken),
+        body: JSON.stringify({ set: ["foo"] }),
+      });
+      expect(skillsDenied.status).toBe(403);
+
+      // Staff CAN read (GET routes are open)
+      const read = await fetch(`${server.url}/api/admin/agents`, { headers: hAuth(staffToken) });
+      expect(read.status).toBe(200);
+      const readBody = await read.json() as { agents: unknown[] };
+      expect(readBody.agents.length).toBeGreaterThanOrEqual(1);
+
+      // Admin can patch
+      const patchOk = await fetch(`${server.url}/api/admin/agents/${agent.id}`, {
+        method: "PATCH", headers: hAuth(adminToken),
+        body: JSON.stringify({ name: "Admin-renamed" }),
+      });
+      expect(patchOk.status).toBe(200);
+    } finally { await server.close(); }
+  }, 30000);
+});
+
 describe("reparent semantics", () => {
   it("rejects reportsTo changes that create cycles", async () => {
     const server = await boot(5570);
