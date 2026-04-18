@@ -17,6 +17,22 @@ import type { HandlerRegistry } from "./handler-registry.js";
 import type { WorkflowRunStore, RunTriggerType } from "./run-store.js";
 import { generateId } from "@boringos/shared";
 
+/**
+ * Event payload emitted by the engine at run / block lifecycle transitions.
+ * Wired into the framework's RealtimeBus by boringos.ts so the web UI can
+ * stream live updates via SSE instead of polling.
+ */
+export type WorkflowEvent =
+  | { type: "run_started";     tenantId: string; workflowId: string; runId: string }
+  | { type: "run_completed";   tenantId: string; workflowId: string; runId: string }
+  | { type: "run_failed";      tenantId: string; workflowId: string; runId: string; error?: string }
+  | { type: "run_paused";      tenantId: string; workflowId: string; runId: string; blockId: string; awaitingActionTaskId: string }
+  | { type: "block_started";   tenantId: string; workflowId: string; runId: string; blockId: string; blockType: string }
+  | { type: "block_completed"; tenantId: string; workflowId: string; runId: string; blockId: string; blockType: string; durationMs: number }
+  | { type: "block_failed";    tenantId: string; workflowId: string; runId: string; blockId: string; blockType: string; error: string }
+  | { type: "block_waiting";   tenantId: string; workflowId: string; runId: string; blockId: string; blockType: string }
+  | { type: "block_skipped";   tenantId: string; workflowId: string; runId: string; blockId: string; blockType: string };
+
 export interface WorkflowEngineConfig {
   store: WorkflowStore;
   handlers: HandlerRegistry;
@@ -32,10 +48,23 @@ export interface WorkflowEngineConfig {
    * nothing to reload from.
    */
   runStore?: WorkflowRunStore;
+  /**
+   * Optional event sink — engine calls this on every run/block lifecycle
+   * transition. Framework wires this to the RealtimeBus so SSE consumers
+   * (the web UI's live DAG view) get pushed updates. Errors are swallowed
+   * so a broken listener never kills a workflow.
+   */
+  onEvent?: (event: WorkflowEvent) => void;
 }
 
 export function createWorkflowEngine(config: WorkflowEngineConfig): WorkflowEngine {
-  const { store, handlers, services, runStore } = config;
+  const { store, handlers, services, runStore, onEvent } = config;
+
+  /** Dispatch an event to the configured sink, swallowing any errors. */
+  function emit(event: WorkflowEvent): void {
+    if (!onEvent) return;
+    try { onEvent(event); } catch (err) { console.warn("[workflow] onEvent sink threw:", err); }
+  }
 
   // ── Persistence helpers — swallow errors so a DB hiccup never kills a run ──
 
@@ -113,6 +142,7 @@ export function createWorkflowEngine(config: WorkflowEngineConfig): WorkflowEngi
             blockId, blockName: node.name, blockType: node.type, status: "skipped",
           });
           await safeUpdateBlockRun(skippedId, { status: "skipped", error: "upstream block failed", finishedAt: new Date() });
+          if (params.workflowRunId) emit({ type: "block_skipped", tenantId: workflow.tenantId, workflowId: workflow.id, runId: params.workflowRunId, blockId, blockType: node.type });
           continue;
         }
 
@@ -150,6 +180,7 @@ export function createWorkflowEngine(config: WorkflowEngineConfig): WorkflowEngi
           inputContext: inputCtx,
           startedAt: blockStartedAt,
         });
+        if (params.workflowRunId) emit({ type: "block_started", tenantId: workflow.tenantId, workflowId: workflow.id, runId: params.workflowRunId, blockId, blockType: node.type });
 
         try {
           const ctx: BlockHandlerContext = {
@@ -183,6 +214,7 @@ export function createWorkflowEngine(config: WorkflowEngineConfig): WorkflowEngi
               startedAt: blockStartedAt,
               // leave finishedAt null — the block is paused, not done
             });
+            if (params.workflowRunId) emit({ type: "block_waiting", tenantId: workflow.tenantId, workflowId: workflow.id, runId: params.workflowRunId, blockId, blockType: node.type });
             return { kind: "paused", blockId, taskId: result.waitingForResume.taskId };
           }
 
@@ -190,13 +222,15 @@ export function createWorkflowEngine(config: WorkflowEngineConfig): WorkflowEngi
           blockResults.set(blockId, result);
           completed.add(blockId);
 
+          const blockDuration = blockFinishedAt.getTime() - blockStartedAt.getTime();
           await safeUpdateBlockRun(blockRunId, {
             status: "completed",
             output: (result.output as Record<string, unknown> | undefined) ?? {},
             selectedHandle: result.selectedHandle ?? null,
             finishedAt: blockFinishedAt,
-            durationMs: blockFinishedAt.getTime() - blockStartedAt.getTime(),
+            durationMs: blockDuration,
           });
+          if (params.workflowRunId) emit({ type: "block_completed", tenantId: workflow.tenantId, workflowId: workflow.id, runId: params.workflowRunId, blockId, blockType: node.type, durationMs: blockDuration });
 
           const activated = getActivatedBlocks(blockId, result.selectedHandle ?? null, dag);
           nextFrontier.push(...activated);
@@ -211,6 +245,7 @@ export function createWorkflowEngine(config: WorkflowEngineConfig): WorkflowEngi
             finishedAt: blockFinishedAt,
             durationMs: blockFinishedAt.getTime() - blockStartedAt.getTime(),
           });
+          if (params.workflowRunId) emit({ type: "block_failed", tenantId: workflow.tenantId, workflowId: workflow.id, runId: params.workflowRunId, blockId, blockType: node.type, error });
         }
       }
 
@@ -248,6 +283,7 @@ export function createWorkflowEngine(config: WorkflowEngineConfig): WorkflowEngi
         triggerPayload: (trigger?.data as Record<string, unknown> | undefined) ?? undefined,
       });
       await safeUpdateRun(persistedRunId, { status: "running" });
+      if (persistedRunId) emit({ type: "run_started", tenantId: workflow.tenantId, workflowId, runId: persistedRunId });
 
       // Run the trigger block synthetically — it has no handler logic, just
       // carries the incoming trigger payload as its "output" for downstream.
@@ -392,6 +428,11 @@ export function createWorkflowEngine(config: WorkflowEngineConfig): WorkflowEngi
         pausedAtBlockId: outcome.blockId,
         awaitingActionTaskId: outcome.taskId,
       });
+      // Pull the workflow id by looking it up on the run row — we only have runId here
+      if (runId && runStore) {
+        const row = await runStore.getRun(runId).catch(() => null);
+        if (row) emit({ type: "run_paused", tenantId: row.tenantId, workflowId: row.workflowId, runId, blockId: outcome.blockId, awaitingActionTaskId: outcome.taskId });
+      }
       return {
         runId: runId ?? generateId(),
         status: "waiting_for_human",
@@ -407,6 +448,14 @@ export function createWorkflowEngine(config: WorkflowEngineConfig): WorkflowEngi
       finishedAt,
       durationMs,
     });
+    if (runId && runStore) {
+      const row = await runStore.getRun(runId).catch(() => null);
+      if (row) {
+        emit(hasFailure
+          ? { type: "run_failed",    tenantId: row.tenantId, workflowId: row.workflowId, runId, error: `${outcome.failed.size} block(s) failed` }
+          : { type: "run_completed", tenantId: row.tenantId, workflowId: row.workflowId, runId });
+      }
+    }
 
     return {
       runId: runId ?? generateId(),

@@ -90,6 +90,11 @@ export function createAdminRoutes(
   app.use("/*", async (c, next) => {
     const apiKey = c.req.header("X-API-Key");
     const bearer = c.req.header("Authorization")?.replace("Bearer ", "");
+    // EventSource can't set custom headers, so endpoints intended for it
+    // (SSE streams) accept the session token as `?token=`. We only honor
+    // the query-param form when the Authorization header is absent so
+    // normal requests aren't affected.
+    const queryToken = !bearer ? c.req.query("token") : undefined;
 
     // Option 1: API key auth
     if (apiKey && apiKey === adminKey) {
@@ -99,10 +104,11 @@ export function createAdminRoutes(
       return next();
     }
 
-    // Option 2: Session token auth (from login)
-    if (bearer) {
+    // Option 2: Session token auth (from login) — via header or query param
+    const sessionToken = bearer ?? queryToken;
+    if (sessionToken) {
       const { validateSession } = await import("./auth.js");
-      const session = await validateSession(db, bearer);
+      const session = await validateSession(db, sessionToken);
       if (session) {
         c.set("tenantId", session.tenantId);
         c.set("userId", session.userId);
@@ -1123,6 +1129,51 @@ export function createAdminRoutes(
       status: result.status,
       error: result.error,
       awaitingActionTaskId: result.awaitingActionTaskId,
+    });
+  });
+
+  /**
+   * SSE stream of lifecycle events scoped to a single workflow run. Powers
+   * the live DAG view. Frontend opens an EventSource on this URL and
+   * invalidates its React Query cache when any event arrives.
+   *
+   * EventSource can't send custom Authorization headers, so this accepts
+   * the session bearer as `?token=` query param as well. Read-only.
+   */
+  app.get("/workflow-runs/:id/events", async (c) => {
+    if (!realtimeBus) return c.json({ error: "realtime bus not available" }, 503);
+
+    let tenantId = c.get("tenantId") as string | undefined;
+    if (!tenantId) {
+      const queryToken = c.req.query("token");
+      if (!queryToken) return c.json({ error: "missing auth" }, 401);
+      const { validateSession } = await import("./auth.js");
+      const session = await validateSession(db, queryToken);
+      if (!session) return c.json({ error: "invalid token" }, 401);
+      tenantId = session.tenantId;
+    }
+
+    const runRows = await db.select({ id: workflowRuns.id }).from(workflowRuns).where(
+      and(eq(workflowRuns.id, c.req.param("id")), eq(workflowRuns.tenantId, tenantId)),
+    ).limit(1);
+    if (!runRows[0]) return c.json({ error: "run not found" }, 404);
+
+    const runId = c.req.param("id");
+    const { streamSSE } = await import("hono/streaming");
+    const scopedTenantId = tenantId;
+
+    return streamSSE(c, async (stream) => {
+      const unsubscribe = realtimeBus.subscribe(scopedTenantId, (event) => {
+        if (!event.type.startsWith("workflow:")) return;
+        const payload = event.data as { runId?: string };
+        if (payload.runId !== runId) return;
+        stream.writeSSE({ event: event.type, data: JSON.stringify(event.data) });
+      });
+      const heartbeat = setInterval(() => {
+        stream.writeSSE({ event: "heartbeat", data: "" });
+      }, 30000);
+      stream.onAbort(() => { unsubscribe(); clearInterval(heartbeat); });
+      await new Promise(() => {});
     });
   });
 

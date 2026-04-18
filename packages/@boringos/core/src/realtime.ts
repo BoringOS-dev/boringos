@@ -26,6 +26,16 @@ export const EVENT_TYPES = [
   "approval:decided",
   "workflow:started",
   "workflow:completed",
+  // Phase 5 — fine-grained workflow events for live DAG views
+  "workflow:run_started",
+  "workflow:run_completed",
+  "workflow:run_failed",
+  "workflow:run_paused",
+  "workflow:block_started",
+  "workflow:block_completed",
+  "workflow:block_failed",
+  "workflow:block_waiting",
+  "workflow:block_skipped",
 ] as const;
 
 export type EventType = (typeof EVENT_TYPES)[number];

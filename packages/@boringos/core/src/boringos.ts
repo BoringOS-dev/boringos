@@ -281,6 +281,10 @@ export class BoringOS {
     // Lazy service map — allows services registered after workflow engine creation
     // (e.g., actionRunner, connectorRegistry) to be available to block handlers.
     const serviceMap: Record<string, unknown> = { db: dbConn.db, memory: memoryRef, drive, agentEngine };
+    // Forward-declare realtimeBus so we can close over it; the bus itself is
+    // created below at step 10. The closure reads it lazily so initialization
+    // order doesn't matter.
+    let realtimeBusRef: import("./realtime.js").RealtimeBus | null = null;
     const workflowEngine = createWorkflowEngine({
       store: workflowStore,
       runStore: workflowRunStore,
@@ -292,6 +296,16 @@ export class BoringOS {
         has(key: string): boolean {
           return key in serviceMap;
         },
+      },
+      // Publish every engine event to the RealtimeBus so SSE consumers (the
+      // live DAG view in the CRM) get pushed updates instead of polling.
+      onEvent: (event) => {
+        realtimeBusRef?.publish({
+          type: `workflow:${event.type}`,
+          tenantId: event.tenantId,
+          data: event as unknown as Record<string, unknown>,
+          timestamp: new Date().toISOString(),
+        });
       },
     });
 
@@ -394,6 +408,8 @@ export class BoringOS {
     const adminKeyValue = this.config.auth?.adminKey ?? jwtSecret;
     // Realtime SSE
     const realtimeBus = createRealtimeBus();
+    // Now that the bus exists, connect the workflow engine's event sink.
+    realtimeBusRef = realtimeBus;
 
     const adminApp = createAdminRoutes(dbConn.db, agentEngine, adminKeyValue, realtimeBus, workflowEngine, runtimes);
     app.route("/api/admin", adminApp);

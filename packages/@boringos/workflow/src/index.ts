@@ -29,7 +29,7 @@ export { createExecutionState, resolveTemplate } from "./state.js";
 export { createHandlerRegistry } from "./handler-registry.js";
 export type { HandlerRegistry } from "./handler-registry.js";
 export { createWorkflowEngine } from "./engine.js";
-export type { WorkflowEngineConfig } from "./engine.js";
+export type { WorkflowEngineConfig, WorkflowEvent } from "./engine.js";
 export { createWorkflowStore } from "./store.js";
 export { createWorkflowRunStore } from "./run-store.js";
 export type {
