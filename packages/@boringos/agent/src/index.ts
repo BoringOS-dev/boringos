@@ -35,6 +35,7 @@ export {
   memoryContextProvider,
   createApprovalProvider,
   createApiCatalogProvider,
+  chiefOfStaffProvider,
 } from "./providers/index.js";
 export type { ApiCatalogEntry, AgentDocs } from "./providers/index.js";
 

@@ -505,6 +505,10 @@ async function ensureSchema(db: Db): Promise<void> {
     ALTER TABLE tasks ADD COLUMN IF NOT EXISTS project_id UUID REFERENCES projects(id);
     ALTER TABLE tasks ADD COLUMN IF NOT EXISTS goal_id UUID;
     ALTER TABLE tasks ADD COLUMN IF NOT EXISTS checkout_run_id UUID;
+    -- Pre-filled payload for agent_action tasks (Actions queue)
+    ALTER TABLE tasks ADD COLUMN IF NOT EXISTS proposed_params JSONB;
+    -- Index for the Actions queue: filter by assignee + status + origin_kind
+    CREATE INDEX IF NOT EXISTS tasks_actions_idx ON tasks(tenant_id, assignee_user_id, status, origin_kind);
 
     -- Add assignee_user_id to inbox_items if it doesn't exist (for existing DBs)
     ALTER TABLE inbox_items ADD COLUMN IF NOT EXISTS assignee_user_id TEXT;

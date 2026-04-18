@@ -87,6 +87,13 @@ export function createCallbackRoutes(db: Db, _engine: AgentEngine, jwtSecret: st
   });
 
   // POST /tasks — create task
+  //
+  // Well-known `originKind` values (string convention, no enum lock-in):
+  //   - agent_action  : pre-filled, human approves → executor runs proposedParams
+  //   - human_todo    : reminder for the user to do; agent can't do it
+  //   - agent_blocked : agent waiting on user input via task comment
+  //   - agent_created : default when none supplied
+  //   - manual        : human-created
   app.post("/tasks", async (c) => {
     const claims = c.get("claims");
     const body = await c.req.json() as Record<string, unknown>;
@@ -100,8 +107,10 @@ export function createCallbackRoutes(db: Db, _engine: AgentEngine, jwtSecret: st
       priority: (body.priority as string) ?? "medium",
       parentId: body.parentId as string | undefined,
       assigneeAgentId: body.assigneeAgentId as string | undefined,
+      assigneeUserId: body.assigneeUserId as string | undefined,
       createdByAgentId: claims.agent_id,
       originKind: (body.originKind as string) ?? "agent_created",
+      proposedParams: body.proposedParams as Record<string, unknown> | undefined,
     });
     return c.json({ id }, 201);
   });

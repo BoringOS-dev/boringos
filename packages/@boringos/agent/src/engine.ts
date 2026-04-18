@@ -38,6 +38,7 @@ import {
   createHierarchyProvider,
   createApiCatalogProvider,
   type ApiCatalogEntry,
+  chiefOfStaffProvider,
 } from "./providers/index.js";
 
 export interface AgentEngineConfig {
@@ -64,6 +65,7 @@ function registerDefaultProviders(pipeline: ContextPipeline, config: AgentEngine
   pipeline.add(createHierarchyProvider({ db: config.db }));
   pipeline.add(personaProvider);
   pipeline.add(createTenantGuidelinesProvider({ db: config.db }));
+  pipeline.add(chiefOfStaffProvider);
   pipeline.add(createDriveSkillProvider({ drive: config.drive }));
   pipeline.add(memorySkillProvider);
   pipeline.add(agentInstructionsProvider);

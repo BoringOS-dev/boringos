@@ -20,6 +20,13 @@ export const tasks = pgTable(
     identifier: text("identifier"),
     originKind: text("origin_kind").notNull().default("manual"),
     originId: text("origin_id"),
+    /**
+     * Pre-filled payload for `agent_action` tasks — everything the executor
+     * needs to do the work when the human clicks Approve. Examples: draft
+     * email body for `kind: 'reply'`, datetime + attendees for
+     * `kind: 'schedule_meeting'`, target stage for `kind: 'update_stage'`.
+     */
+    proposedParams: jsonb("proposed_params").$type<Record<string, unknown>>(),
     requestDepth: integer("request_depth").notNull().default(0),
     startedAt: timestamp("started_at", { withTimezone: true }),
     completedAt: timestamp("completed_at", { withTimezone: true }),
