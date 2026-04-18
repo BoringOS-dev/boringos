@@ -15,8 +15,9 @@ import {
 import type { RuntimeModule, RuntimeRegistry } from "@boringos/runtime";
 import { createLocalStorage, scaffoldDrive } from "@boringos/drive";
 import type { StorageBackend } from "@boringos/drive";
-import { createDatabase, createMigrationManager } from "@boringos/db";
+import { createDatabase, createMigrationManager, workflows as workflowsSchema } from "@boringos/db";
 import type { Db, DatabaseConnection } from "@boringos/db";
+import { and, eq as eqOp } from "drizzle-orm";
 import { createAgentEngine, ContextPipeline } from "@boringos/agent";
 import type { AgentEngine, ContextProvider, AgentRunJob } from "@boringos/agent";
 import type { QueueAdapter } from "@boringos/pipeline";
@@ -380,6 +381,47 @@ export class BoringOS {
           }).catch(() => {});
         }
       }
+    });
+
+    // Event-dispatch primitive: every connector event is checked against
+    // all active workflows in the event's tenant. Any workflow whose entry
+    // `trigger` block has config.eventType === event.type is auto-executed
+    // with the event payload as the trigger data. This is how onEvent()
+    // handlers become workflows — the workflow subscribes declaratively
+    // via its trigger block, no hand-rolled dispatcher code per handler.
+    //
+    // Runs in the background (Promise.resolve().then) so a slow workflow
+    // never blocks the event bus or starves other handlers.
+    eventBus.onAny((event) => {
+      Promise.resolve().then(async () => {
+        try {
+          const matches = await dbConn.db.select({
+            id: workflowsSchema.id,
+            blocks: workflowsSchema.blocks,
+          }).from(workflowsSchema).where(
+            and(
+              eqOp(workflowsSchema.tenantId, event.tenantId),
+              eqOp(workflowsSchema.status, "active"),
+            ),
+          );
+
+          for (const w of matches) {
+            const blocks = (w.blocks as Array<{ type: string; config?: Record<string, unknown> }>) ?? [];
+            const trigger = blocks.find((b) => b.type === "trigger");
+            const triggerEventType = trigger?.config?.eventType;
+            if (typeof triggerEventType !== "string" || triggerEventType !== event.type) continue;
+            // Fire-and-forget — the run is persisted, results visible in the UI.
+            await workflowEngine.execute(w.id, {
+              type: "event",
+              data: { ...(event.data ?? {}), eventType: event.type },
+            }).catch((err) => {
+              console.warn(`[workflow-dispatch] ${w.id} failed:`, err);
+            });
+          }
+        } catch (err) {
+          console.warn("[workflow-dispatch] lookup failed:", err);
+        }
+      });
     });
 
     // 11. Build Hono app
