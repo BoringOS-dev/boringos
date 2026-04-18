@@ -45,6 +45,17 @@ export interface BlockHandlerContext {
 export interface BlockHandlerResult {
   output: Record<string, unknown>;
   selectedHandle?: string;
+  /**
+   * When set, the engine pauses the workflow run at this block. The run
+   * transitions to status `waiting_for_human` and stores `taskId` as the
+   * awaiting-action pointer. The block's state is recorded as `"waiting"`.
+   * Resume via `engine.resume(runId, { userInput })` — typically triggered
+   * when the user approves the corresponding Actions-queue card.
+   */
+  waitingForResume?: {
+    taskId: string;
+    reason?: string;
+  };
 }
 
 // ── Execution state ──────────────────────────────────────────────────────────
@@ -56,7 +67,7 @@ export interface ExecutionState {
 }
 
 export interface BlockState {
-  status: "pending" | "running" | "completed" | "failed" | "skipped";
+  status: "pending" | "running" | "completed" | "failed" | "skipped" | "waiting";
   output?: Record<string, unknown>;
   error?: string;
   startedAt?: Date;
@@ -131,6 +142,13 @@ export interface UpdateWorkflowInput {
 
 export interface WorkflowEngine {
   execute(workflowId: string, trigger?: TriggerPayload): Promise<WorkflowRunResult>;
+  /**
+   * Resume a paused workflow run. Reloads the persisted execution state
+   * (completed block outputs) from `workflow_block_runs`, marks the
+   * paused block as completed with the supplied `userInput` as its output,
+   * and continues the DAG walk from the paused block's outgoing edges.
+   */
+  resume(runId: string, userInput?: Record<string, unknown>): Promise<WorkflowRunResult>;
   cancel(runId: string): Promise<void>;
 }
 
@@ -141,9 +159,11 @@ export interface TriggerPayload {
 
 export interface WorkflowRunResult {
   runId: string;
-  status: "completed" | "failed" | "cancelled";
+  status: "completed" | "failed" | "cancelled" | "waiting_for_human";
   blockResults: Map<string, BlockHandlerResult>;
   error?: string;
+  /** When status=waiting_for_human, the task the user must act on to resume. */
+  awaitingActionTaskId?: string;
 }
 
 // ── Workflow triggers ────────────────────────────────────────────────────────

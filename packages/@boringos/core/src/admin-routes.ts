@@ -76,6 +76,16 @@ export function createAdminRoutes(
 
   const app = new Hono<AdminEnv>();
 
+  // Role gate for mutating operations. API-key auth (system/tenant provisioning) bypasses.
+  // Session-authed callers must have role="admin" to pass; anyone else gets 403.
+  // Returns a Response on rejection, or null when the caller is permitted.
+  function requireAdmin(c: import("hono").Context<AdminEnv>) {
+    if (c.req.header("X-API-Key")) return null;
+    const role = c.get("role");
+    if (role !== "admin") return c.json({ error: "Admin only" }, 403);
+    return null;
+  }
+
   // Auth middleware — supports API key OR session token
   app.use("/*", async (c, next) => {
     const apiKey = c.req.header("X-API-Key");
@@ -131,6 +141,7 @@ export function createAdminRoutes(
   });
 
   app.post("/agents", async (c) => {
+    const denied = requireAdmin(c); if (denied) return denied;
     const body = await c.req.json() as Record<string, unknown>;
     const id = generateId();
     const skills = Array.isArray(body.skills) ? (body.skills as string[]).filter((s) => typeof s === "string") : [];
@@ -151,6 +162,7 @@ export function createAdminRoutes(
   });
 
   app.patch("/agents/:id", async (c) => {
+    const denied = requireAdmin(c); if (denied) return denied;
     const body = await c.req.json() as Record<string, unknown>;
     const values: Record<string, unknown> = { updatedAt: new Date() };
     if (body.name !== undefined) values.name = body.name;
@@ -218,6 +230,7 @@ export function createAdminRoutes(
 
   // Dedicated skills endpoint: cheaper than round-tripping the whole array for edits
   app.patch("/agents/:id/skills", async (c) => {
+    const denied = requireAdmin(c); if (denied) return denied;
     const body = await c.req.json() as { add?: string[]; remove?: string[]; set?: string[] };
     const rows = await db.select().from(agents).where(
       and(eq(agents.id, c.req.param("id")), eq(agents.tenantId, c.get("tenantId"))),
@@ -239,6 +252,7 @@ export function createAdminRoutes(
   });
 
   app.post("/agents/:id/wake", async (c) => {
+    const denied = requireAdmin(c); if (denied) return denied;
     const body = (await c.req.json().catch(() => ({}))) as Record<string, unknown>;
     const outcome = await engine.wake({
       agentId: c.req.param("id"),
@@ -264,6 +278,7 @@ export function createAdminRoutes(
   // ── Agent Templates & Teams ──────────────────────────────────────────────
 
   app.post("/agents/from-template", async (c) => {
+    const denied = requireAdmin(c); if (denied) return denied;
     const body = await c.req.json() as Record<string, unknown>;
     const { createAgentFromTemplate } = await import("@boringos/agent");
     const agent = await createAgentFromTemplate(db, body.role as string, {
@@ -278,6 +293,7 @@ export function createAdminRoutes(
   });
 
   app.post("/teams/from-template", async (c) => {
+    const denied = requireAdmin(c); if (denied) return denied;
     const body = await c.req.json() as Record<string, unknown>;
     const { createTeam } = await import("@boringos/agent");
     const agents = await createTeam(db, body.template as string, {
@@ -1087,6 +1103,28 @@ export function createAdminRoutes(
       runId: result.runId,
       status: result.status,
       error: result.error,
+      awaitingActionTaskId: result.awaitingActionTaskId,
+    });
+  });
+
+  /**
+   * Resume a paused workflow run. Called by the CRM actions executor when
+   * a user approves an `agent_action` whose `proposedParams.kind` is
+   * `"resume_workflow"`. Re-enters the run, finalizes the paused block
+   * with user input, and walks the rest of the DAG.
+   */
+  app.post("/workflow-runs/:id/resume", async (c) => {
+    if (!workflowEngine) return c.json({ error: "workflow engine not available" }, 503);
+    const body = await c.req.json().catch(() => ({})) as Record<string, unknown>;
+    const result = await workflowEngine.resume(
+      c.req.param("id"),
+      (body.userInput as Record<string, unknown> | undefined) ?? {},
+    );
+    return c.json({
+      runId: result.runId,
+      status: result.status,
+      error: result.error,
+      awaitingActionTaskId: result.awaitingActionTaskId,
     });
   });
 

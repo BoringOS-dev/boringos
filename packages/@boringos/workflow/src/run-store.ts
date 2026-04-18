@@ -3,8 +3,8 @@ import type { Db } from "@boringos/db";
 import { workflowRuns, workflowBlockRuns } from "@boringos/db";
 import { generateId } from "@boringos/shared";
 
-export type WorkflowRunStatus = "queued" | "running" | "completed" | "failed" | "cancelled";
-export type BlockRunStatus = "pending" | "running" | "completed" | "skipped" | "failed";
+export type WorkflowRunStatus = "queued" | "running" | "waiting_for_human" | "completed" | "failed" | "cancelled";
+export type BlockRunStatus = "pending" | "running" | "completed" | "skipped" | "failed" | "waiting";
 /** Run-level trigger source. Wider than `TriggerType` in types.ts which only covers workflow-definition trigger kinds. */
 export type RunTriggerType = "cron" | "event" | "webhook" | "manual";
 
@@ -20,6 +20,8 @@ export interface UpdateWorkflowRunInput {
   error?: string | null;
   finishedAt?: Date;
   durationMs?: number;
+  pausedAtBlockId?: string | null;
+  awaitingActionTaskId?: string | null;
 }
 
 export interface CreateBlockRunInput {
@@ -51,6 +53,8 @@ export interface WorkflowRunRow {
   triggerPayload: Record<string, unknown> | null;
   status: string;
   error: string | null;
+  pausedAtBlockId: string | null;
+  awaitingActionTaskId: string | null;
   startedAt: Date | null;
   finishedAt: Date | null;
   durationMs: number | null;
@@ -113,6 +117,8 @@ export function createWorkflowRunStore(db: Db): WorkflowRunStore {
       if (input.error !== undefined) values.error = input.error;
       if (input.finishedAt !== undefined) values.finishedAt = input.finishedAt;
       if (input.durationMs !== undefined) values.durationMs = input.durationMs;
+      if (input.pausedAtBlockId !== undefined) values.pausedAtBlockId = input.pausedAtBlockId;
+      if (input.awaitingActionTaskId !== undefined) values.awaitingActionTaskId = input.awaitingActionTaskId;
       await db.update(workflowRuns).set(values).where(eq(workflowRuns.id, id));
     },
 

@@ -10,3 +10,4 @@ export { emitEventHandler } from "./emit-event.js";
 export { queryDatabaseHandler } from "./query-database.js";
 export { updateRowHandler } from "./update-row.js";
 export { createTaskHandler } from "./create-task.js";
+export { waitForHumanHandler } from "./wait-for-human.js";

@@ -37,6 +37,7 @@ import {
   queryDatabaseHandler,
   updateRowHandler,
   createTaskHandler,
+  waitForHumanHandler,
 } from "@boringos/workflow";
 import type { WorkflowEngine, BlockHandler } from "@boringos/workflow";
 import {
@@ -269,6 +270,7 @@ export class BoringOS {
     handlerRegistry.register(queryDatabaseHandler);
     handlerRegistry.register(updateRowHandler);
     handlerRegistry.register(createTaskHandler);
+    handlerRegistry.register(waitForHumanHandler);
     for (const handler of this.blockHandlers) {
       handlerRegistry.register(handler);
     }

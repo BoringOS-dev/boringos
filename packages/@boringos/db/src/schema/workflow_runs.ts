@@ -17,10 +17,14 @@ export const workflowRuns = pgTable(
     triggerType: text("trigger_type").notNull().default("manual"),
     /** The payload the workflow received (event data, cron tick, webhook body) */
     triggerPayload: jsonb("trigger_payload").$type<Record<string, unknown>>(),
-    /** "queued" | "running" | "completed" | "failed" | "cancelled" */
+    /** "queued" | "running" | "waiting_for_human" | "completed" | "failed" | "cancelled" */
     status: text("status").notNull().default("queued"),
     /** Optional error message when status=failed */
     error: text("error"),
+    /** When paused: block id where the wait-for-human block sits. */
+    pausedAtBlockId: text("paused_at_block_id"),
+    /** When paused: the task the user must act on to resume. */
+    awaitingActionTaskId: uuid("awaiting_action_task_id"),
     startedAt: timestamp("started_at", { withTimezone: true }),
     finishedAt: timestamp("finished_at", { withTimezone: true }),
     durationMs: integer("duration_ms"),

@@ -549,6 +549,10 @@ async function ensureSchema(db: Db): Promise<void> {
     );
     CREATE INDEX IF NOT EXISTS workflow_block_runs_run_idx ON workflow_block_runs(workflow_run_id);
 
+    -- Phase 3: wait-for-human resume support
+    ALTER TABLE workflow_runs ADD COLUMN IF NOT EXISTS paused_at_block_id TEXT;
+    ALTER TABLE workflow_runs ADD COLUMN IF NOT EXISTS awaiting_action_task_id UUID;
+
     -- Add assignee_user_id to inbox_items if it doesn't exist (for existing DBs)
     ALTER TABLE inbox_items ADD COLUMN IF NOT EXISTS assignee_user_id TEXT;
 
