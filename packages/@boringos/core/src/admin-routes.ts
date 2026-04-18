@@ -522,14 +522,21 @@ export function createAdminRoutes(
     emit("task:comment_added", tenantId, { taskId, commentId: id });
     await logActivity(tenantId, "comment.created", "task_comment", id, { taskId });
 
-    // Auto-wake assigned agent when a user posts a comment
-    // Agent gets this specific task + comments in its context
+    // Auto-wake on user comment.
+    //  - If the task is assigned to an agent → wake the assignee (handles
+    //    copilot sessions, delegated work, etc.).
+    //  - Otherwise, if the task was created by an agent (typical human_todo
+    //    case: agent proposes a follow-up question, user answers in a
+    //    comment) → wake the creator so the answer can flow back into
+    //    whatever state the creator owns (dossier, intelligence, plan).
+    // Either way the agent receives the task + comments in its context.
     if (!body.authorAgentId) {
       const taskRows = await db.select().from(tasks).where(eq(tasks.id, taskId)).limit(1);
       const task = taskRows[0];
-      if (task?.assigneeAgentId) {
+      const wakeTargetAgentId = task?.assigneeAgentId ?? task?.createdByAgentId ?? null;
+      if (wakeTargetAgentId) {
         const outcome = await engine.wake({
-          agentId: task.assigneeAgentId,
+          agentId: wakeTargetAgentId,
           tenantId,
           reason: "comment_posted",
           taskId,
@@ -1047,6 +1054,14 @@ export function createAdminRoutes(
   app.get("/workflows", async (c) => {
     const rows = await db.select().from(workflows).where(eq(workflows.tenantId, c.get("tenantId")));
     return c.json({ workflows: rows });
+  });
+
+  app.get("/workflows/:id", async (c) => {
+    const rows = await db.select().from(workflows).where(
+      and(eq(workflows.id, c.req.param("id")), eq(workflows.tenantId, c.get("tenantId"))),
+    ).limit(1);
+    if (!rows[0]) return c.json({ error: "Workflow not found" }, 404);
+    return c.json(rows[0]);
   });
 
   app.post("/workflows", async (c) => {
