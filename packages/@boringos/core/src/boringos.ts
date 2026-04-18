@@ -39,6 +39,7 @@ import {
   updateRowHandler,
   createTaskHandler,
   waitForHumanHandler,
+  invokeWorkflowHandler,
 } from "@boringos/workflow";
 import type { WorkflowEngine, BlockHandler } from "@boringos/workflow";
 import {
@@ -272,6 +273,7 @@ export class BoringOS {
     handlerRegistry.register(updateRowHandler);
     handlerRegistry.register(createTaskHandler);
     handlerRegistry.register(waitForHumanHandler);
+    handlerRegistry.register(invokeWorkflowHandler);
     for (const handler of this.blockHandlers) {
       handlerRegistry.register(handler);
     }
@@ -309,6 +311,10 @@ export class BoringOS {
         });
       },
     });
+    // Expose the engine itself in the service map so invoke-workflow blocks
+    // can recursively call engine.execute on another workflow. Must set
+    // after engine creation — the service map is consulted lazily.
+    serviceMap.workflowEngine = workflowEngine;
 
     // 8. Build app context (eventBus added after creation below)
     const context: AppContext = {
