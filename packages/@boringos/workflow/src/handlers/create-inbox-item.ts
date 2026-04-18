@@ -37,11 +37,18 @@ export const createInboxItemHandler: BlockHandler = {
     const createdIds: string[] = [];
 
     // Batch mode — create from array (may arrive as JSON string from template resolution)
+    const hasItemsConfig = "items" in ctx.config;
     let items: unknown = ctx.config.items;
     if (typeof items === "string") {
-      try { items = JSON.parse(items); } catch { /* not JSON, treat as single */ }
+      try { items = JSON.parse(items); } catch { items = []; }
     }
-    if (Array.isArray(items) && items.length > 0) {
+    // If `items` was configured (even if it resolved to empty/invalid), stay in batch mode.
+    // Otherwise a zero-fetch sync tick would fall through to single-item mode and insert a
+    // junk row with unresolved template values.
+    if (hasItemsConfig) {
+      if (!Array.isArray(items) || items.length === 0) {
+        return { output: { created: 0, source, itemIds: [] } };
+      }
       const { eq, and } = await import("drizzle-orm");
       for (const item of items) {
         const entry = item as Record<string, unknown>;

@@ -85,6 +85,56 @@ describe("create-inbox-item handler", () => {
       expect(rows.map(r => r.subject).sort()).toEqual(["Invoice #42", "Meeting tomorrow"]);
     } finally { await server.close(); }
   }, 30000);
+
+  it("does not insert a junk row when items resolves to empty array", async () => {
+    const { createInboxItemHandler, createExecutionState } = await import("@boringos/workflow");
+    const { BoringOS } = await import("@boringos/core");
+    const { mkdtemp } = await import("node:fs/promises");
+    const { tmpdir } = await import("node:os");
+    const { join } = await import("node:path");
+
+    const d = await mkdtemp(join(tmpdir(), "boringos-sync-"));
+    const server = await new BoringOS({
+      database: { embedded: true, dataDir: d, port: 5561 },
+      drive: { root: join(d, "drive") },
+      auth: { secret: "s", adminKey: "k" },
+    }).listen(0);
+
+    try {
+      const db = server.context.db as import("@boringos/db").Db;
+      const { tenants, inboxItems } = await import("@boringos/db");
+      const { generateId } = await import("@boringos/shared");
+      const { eq } = await import("drizzle-orm");
+
+      const tid = generateId();
+      await db.insert(tenants).values({ id: tid, name: "Empty Co", slug: "empty-co" });
+
+      // Zero-fetch sync tick: upstream block returned no items, template resolves to []
+      const emptyArray = await createInboxItemHandler.execute({
+        blockId: "b1", blockName: "store", blockType: "create-inbox-item",
+        config: { source: "gmail", items: [] },
+        workflowRunId: "r1", workflowId: "w1", tenantId: tid,
+        governingAgentId: null, workflowType: "system",
+        state: createExecutionState(),
+        services: { get: (k: string) => k === "db" ? db : undefined, has: (k: string) => k === "db" },
+      });
+      expect(emptyArray.output.created).toBe(0);
+
+      // Template resolution fails and leaves items as undefined (still declared in config)
+      const undefItems = await createInboxItemHandler.execute({
+        blockId: "b2", blockName: "store", blockType: "create-inbox-item",
+        config: { source: "gmail", items: undefined },
+        workflowRunId: "r1", workflowId: "w1", tenantId: tid,
+        governingAgentId: null, workflowType: "system",
+        state: createExecutionState(),
+        services: { get: (k: string) => k === "db" ? db : undefined, has: (k: string) => k === "db" },
+      });
+      expect(undefItems.output.created).toBe(0);
+
+      const rows = await db.select().from(inboxItems).where(eq(inboxItems.tenantId, tid));
+      expect(rows).toHaveLength(0);
+    } finally { await server.close(); }
+  }, 30000);
 });
 
 describe("emit-event handler", () => {
