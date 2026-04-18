@@ -7,3 +7,6 @@ export { connectorActionHandler } from "./connector-action.js";
 export { forEachHandler } from "./for-each.js";
 export { createInboxItemHandler } from "./create-inbox-item.js";
 export { emitEventHandler } from "./emit-event.js";
+export { queryDatabaseHandler } from "./query-database.js";
+export { updateRowHandler } from "./update-row.js";
+export { createTaskHandler } from "./create-task.js";

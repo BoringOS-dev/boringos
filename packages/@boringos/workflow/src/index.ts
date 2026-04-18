@@ -45,4 +45,4 @@ export type {
   UpdateBlockRunInput,
 } from "./run-store.js";
 
-export { triggerHandler, conditionHandler, delayHandler, transformHandler, wakeAgentHandler, connectorActionHandler, forEachHandler, createInboxItemHandler, emitEventHandler } from "./handlers/index.js";
+export { triggerHandler, conditionHandler, delayHandler, transformHandler, wakeAgentHandler, connectorActionHandler, forEachHandler, createInboxItemHandler, emitEventHandler, queryDatabaseHandler, updateRowHandler, createTaskHandler } from "./handlers/index.js";

@@ -34,6 +34,9 @@ import {
   forEachHandler,
   createInboxItemHandler,
   emitEventHandler,
+  queryDatabaseHandler,
+  updateRowHandler,
+  createTaskHandler,
 } from "@boringos/workflow";
 import type { WorkflowEngine, BlockHandler } from "@boringos/workflow";
 import {
@@ -263,6 +266,9 @@ export class BoringOS {
     handlerRegistry.register(forEachHandler);
     handlerRegistry.register(createInboxItemHandler);
     handlerRegistry.register(emitEventHandler);
+    handlerRegistry.register(queryDatabaseHandler);
+    handlerRegistry.register(updateRowHandler);
+    handlerRegistry.register(createTaskHandler);
     for (const handler of this.blockHandlers) {
       handlerRegistry.register(handler);
     }
