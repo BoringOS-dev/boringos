@@ -21,6 +21,7 @@ export const EVENT_TYPES = [
   "agent:created",
   "agent:updated",
   "agent:woken",
+  "agent:reparented",
   "approval:created",
   "approval:decided",
   "workflow:started",

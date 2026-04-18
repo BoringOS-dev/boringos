@@ -150,4 +150,222 @@ describe("delegation", () => {
 
     await conn.close();
   }, 30000);
+
+  it("tier A: exact skill match beats role heuristic", async () => {
+    const { findDelegateForTask } = await import("@boringos/agent");
+    const { createDatabase, createMigrationManager, tenants, agents } = await import("@boringos/db");
+    const { generateId } = await import("@boringos/shared");
+
+    const d = await mkdtemp(join(tmpdir(), "boringos-tier-a-"));
+    const conn = await createDatabase({ embedded: true, dataDir: join(d, "pg"), port: 5566 });
+    await createMigrationManager(conn.db).apply();
+
+    const tid = generateId();
+    await conn.db.insert(tenants).values({ id: tid, name: "Tier A Co", slug: "tier-a-co" });
+
+    const bossId = generateId();
+    const engId = generateId();
+    const writerId = generateId();
+    await conn.db.insert(agents).values({ id: bossId, tenantId: tid, name: "Boss", role: "ceo", status: "idle" });
+    // Engineer with an unusual skill that'd never match the keyword regex
+    await conn.db.insert(agents).values({
+      id: engId, tenantId: tid, name: "Dev", role: "engineer", reportsTo: bossId, status: "idle",
+      skills: ["competitor-analysis"],
+    });
+    await conn.db.insert(agents).values({
+      id: writerId, tenantId: tid, name: "Writer", role: "content-creator", reportsTo: bossId, status: "idle",
+      skills: [],
+    });
+
+    // Tier A skill "competitor-analysis" should beat Tier B role regex ("write" → content-creator)
+    const delegate = await findDelegateForTask(conn.db, bossId, {
+      title: "Write up competitor-analysis for Acme",
+    });
+    expect(delegate).toBe(engId);
+
+    // requiredSkill hint also works
+    const delegate2 = await findDelegateForTask(conn.db, bossId, {
+      title: "Anything goes",
+      requiredSkill: "competitor-analysis",
+    });
+    expect(delegate2).toBe(engId);
+
+    await conn.close();
+  }, 30000);
+
+  it("skips paused reports", async () => {
+    const { findDelegateForTask } = await import("@boringos/agent");
+    const { createDatabase, createMigrationManager, tenants, agents } = await import("@boringos/db");
+    const { generateId } = await import("@boringos/shared");
+
+    const d = await mkdtemp(join(tmpdir(), "boringos-paused-"));
+    const conn = await createDatabase({ embedded: true, dataDir: join(d, "pg"), port: 5567 });
+    await createMigrationManager(conn.db).apply();
+
+    const tid = generateId();
+    await conn.db.insert(tenants).values({ id: tid, name: "Paused Co", slug: "paused-co" });
+
+    const bossId = generateId();
+    const pausedId = generateId();
+    const activeId = generateId();
+    await conn.db.insert(agents).values({ id: bossId, tenantId: tid, name: "Boss", role: "ceo", status: "idle" });
+    await conn.db.insert(agents).values({ id: pausedId, tenantId: tid, name: "Paused Eng", role: "engineer", reportsTo: bossId, status: "paused" });
+    await conn.db.insert(agents).values({ id: activeId, tenantId: tid, name: "Active Eng", role: "engineer", reportsTo: bossId, status: "idle" });
+
+    const delegate = await findDelegateForTask(conn.db, bossId, "Fix a bug");
+    expect(delegate).toBe(activeId);
+
+    await conn.close();
+  }, 30000);
+});
+
+describe("hierarchy provider", () => {
+  it("includes manager, peers, direct reports, and skip-level with skills", async () => {
+    const { createHierarchyProvider } = await import("@boringos/agent");
+    const { createDatabase, createMigrationManager, tenants, agents } = await import("@boringos/db");
+    const { generateId } = await import("@boringos/shared");
+
+    const d = await mkdtemp(join(tmpdir(), "boringos-peers-"));
+    const conn = await createDatabase({ embedded: true, dataDir: join(d, "pg"), port: 5569 });
+    await createMigrationManager(conn.db).apply();
+
+    const tid = generateId();
+    await conn.db.insert(tenants).values({ id: tid, name: "Peers Co", slug: "peers-co" });
+
+    const ceo = generateId(); const vp = generateId(); const peer1 = generateId(); const peer2 = generateId(); const ic = generateId();
+    await conn.db.insert(agents).values({ id: ceo, tenantId: tid, name: "CEO", role: "ceo", status: "idle", skills: [] });
+    await conn.db.insert(agents).values({ id: vp, tenantId: tid, name: "VP Sales", role: "vp", reportsTo: ceo, status: "idle", skills: ["deal-coaching"] });
+    await conn.db.insert(agents).values({ id: peer1, tenantId: tid, name: "VP Marketing", role: "vp", reportsTo: ceo, status: "idle", skills: ["campaign-strategy"] });
+    await conn.db.insert(agents).values({ id: peer2, tenantId: tid, name: "VP Product", role: "vp", reportsTo: ceo, status: "paused", skills: ["roadmap"] });
+    await conn.db.insert(agents).values({ id: ic, tenantId: tid, name: "SDR", role: "sdr", reportsTo: vp, status: "idle", skills: ["prospecting"] });
+
+    const provider = createHierarchyProvider({ db: conn.db });
+    const vpRows = await conn.db.select().from(agents).where((await import("drizzle-orm")).eq(agents.id, vp)).limit(1);
+    const out = await provider.provide({ agent: vpRows[0] } as any);
+    expect(out).toBeTruthy();
+    expect(out).toContain("CEO");           // manager
+    expect(out).toContain("VP Marketing");   // peer
+    expect(out).toContain("campaign-strategy"); // peer skill
+    expect(out).toContain("[paused]");       // paused peer flagged
+    expect(out).toContain("SDR");            // direct report
+    expect(out).toContain("prospecting");    // report skill
+
+    await conn.close();
+  }, 30000);
+});
+
+describe("reparent semantics", () => {
+  it("rejects reportsTo changes that create cycles", async () => {
+    const server = await boot(5570);
+    try {
+      const { generateId } = await import("@boringos/shared");
+      const { tenants } = await import("@boringos/db");
+      const db = server.context.db as import("@boringos/db").Db;
+      const tid = generateId();
+      await db.insert(tenants).values({ id: tid, name: "Cycle Co", slug: "cycle-co" });
+
+      // A → B → C. Try to set A.reportsTo = C (which would create A→C→B→A).
+      const aRes = await fetch(`${server.url}/api/admin/agents`, { method: "POST", headers: h(tid), body: JSON.stringify({ name: "A", role: "general" }) });
+      const a = await aRes.json() as { id: string };
+      const bRes = await fetch(`${server.url}/api/admin/agents`, { method: "POST", headers: h(tid), body: JSON.stringify({ name: "B", role: "general", reportsTo: a.id }) });
+      const b = await bRes.json() as { id: string };
+      const cRes = await fetch(`${server.url}/api/admin/agents`, { method: "POST", headers: h(tid), body: JSON.stringify({ name: "C", role: "general", reportsTo: b.id }) });
+      const cc = await cRes.json() as { id: string };
+
+      const badRes = await fetch(`${server.url}/api/admin/agents/${a.id}`, {
+        method: "PATCH", headers: h(tid),
+        body: JSON.stringify({ reportsTo: cc.id }),
+      });
+      expect(badRes.status).toBe(409);
+
+      // Self-reference also rejected
+      const selfRes = await fetch(`${server.url}/api/admin/agents/${a.id}`, {
+        method: "PATCH", headers: h(tid),
+        body: JSON.stringify({ reportsTo: a.id }),
+      });
+      expect(selfRes.status).toBe(409);
+    } finally { await server.close(); }
+  }, 30000);
+
+  it("archives reparent reports to grandparent", async () => {
+    const server = await boot(5571);
+    try {
+      const { generateId } = await import("@boringos/shared");
+      const { tenants, agents } = await import("@boringos/db");
+      const { eq } = await import("drizzle-orm");
+      const db = server.context.db as import("@boringos/db").Db;
+      const tid = generateId();
+      await db.insert(tenants).values({ id: tid, name: "Archive Co", slug: "archive-co" });
+
+      // CEO → VP → IC. Archive VP. IC should now report to CEO.
+      const ceoRes = await fetch(`${server.url}/api/admin/agents`, { method: "POST", headers: h(tid), body: JSON.stringify({ name: "CEO", role: "ceo" }) });
+      const ceo = await ceoRes.json() as { id: string };
+      const vpRes = await fetch(`${server.url}/api/admin/agents`, { method: "POST", headers: h(tid), body: JSON.stringify({ name: "VP", role: "vp", reportsTo: ceo.id }) });
+      const vp = await vpRes.json() as { id: string };
+      const icRes = await fetch(`${server.url}/api/admin/agents`, { method: "POST", headers: h(tid), body: JSON.stringify({ name: "IC", role: "engineer", reportsTo: vp.id }) });
+      const ic = await icRes.json() as { id: string };
+
+      const patch = await fetch(`${server.url}/api/admin/agents/${vp.id}`, {
+        method: "PATCH", headers: h(tid),
+        body: JSON.stringify({ status: "archived" }),
+      });
+      expect(patch.status).toBe(200);
+
+      const icAfter = await db.select().from(agents).where(eq(agents.id, ic.id)).limit(1);
+      expect(icAfter[0].reportsTo).toBe(ceo.id);
+    } finally { await server.close(); }
+  }, 30000);
+});
+
+describe("handoff", () => {
+  it("creates subtask + parent comment; respects 3-handoff limit", async () => {
+    const { createHandoffTask } = await import("@boringos/agent");
+    const { createDatabase, createMigrationManager, tenants, agents, tasks, taskComments } = await import("@boringos/db");
+    const { generateId } = await import("@boringos/shared");
+    const { eq } = await import("drizzle-orm");
+
+    const d = await mkdtemp(join(tmpdir(), "boringos-handoff-"));
+    const conn = await createDatabase({ embedded: true, dataDir: join(d, "pg"), port: 5568 });
+    await createMigrationManager(conn.db).apply();
+
+    const tid = generateId();
+    await conn.db.insert(tenants).values({ id: tid, name: "Handoff Co", slug: "handoff-co" });
+
+    const a = generateId(); const b = generateId(); const cc = generateId(); const dd = generateId();
+    await conn.db.insert(agents).values({ id: a, tenantId: tid, name: "A", role: "general", status: "idle" });
+    await conn.db.insert(agents).values({ id: b, tenantId: tid, name: "B", role: "general", status: "idle" });
+    await conn.db.insert(agents).values({ id: cc, tenantId: tid, name: "C", role: "general", status: "idle" });
+    await conn.db.insert(agents).values({ id: dd, tenantId: tid, name: "D", role: "general", status: "idle" });
+
+    // Root task, assigned to A
+    const rootId = generateId();
+    await conn.db.insert(tasks).values({ id: rootId, tenantId: tid, title: "Root", status: "todo", priority: "medium", assigneeAgentId: a, originKind: "manual" });
+
+    // A → B (handoff depth 0 at root, 1 after this subtask)
+    const h1 = await createHandoffTask(conn.db, { fromAgentId: a, toAgentId: b, parentTaskId: rootId, title: "A→B" });
+    expect(h1).not.toBeNull();
+
+    // B → C (depth 2)
+    const h2 = await createHandoffTask(conn.db, { fromAgentId: b, toAgentId: cc, parentTaskId: h1!, title: "B→C" });
+    expect(h2).not.toBeNull();
+
+    // C → D (depth 3)
+    const h3 = await createHandoffTask(conn.db, { fromAgentId: cc, toAgentId: dd, parentTaskId: h2!, title: "C→D" });
+    expect(h3).not.toBeNull();
+
+    // D → A on top of 3 existing handoffs → blocked
+    const h4 = await createHandoffTask(conn.db, { fromAgentId: dd, toAgentId: a, parentTaskId: h3!, title: "D→A (over limit)" });
+    expect(h4).toBeNull();
+
+    // Root is now blocked
+    const root = await conn.db.select().from(tasks).where(eq(tasks.id, rootId)).limit(1);
+    expect(root[0].status).toBe("blocked");
+
+    // Parent of h1 (= root) should have a handoff comment
+    const rootComments = await conn.db.select().from(taskComments).where(eq(taskComments.taskId, rootId));
+    expect(rootComments.length).toBe(1);
+    expect(rootComments[0].body).toContain("Handed off");
+
+    await conn.close();
+  }, 30000);
 });

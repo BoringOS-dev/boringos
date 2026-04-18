@@ -1,5 +1,7 @@
-import { eq } from "drizzle-orm";
 import type { ContextProvider, ContextBuildEvent } from "../types.js";
+
+const MAX_PEERS = 10;
+const MAX_SKIP_LEVEL = 8;
 
 export function createHierarchyProvider(deps: { db: unknown }): ContextProvider {
   return {
@@ -9,7 +11,7 @@ export function createHierarchyProvider(deps: { db: unknown }): ContextProvider 
 
     async provide(event: ContextBuildEvent): Promise<string | null> {
       try {
-        const { eq: eqOp } = await import("drizzle-orm");
+        const { eq: eqOp, and, ne, inArray } = await import("drizzle-orm");
         const { agents } = await import("@boringos/db");
         const db = deps.db as import("@boringos/db").Db;
 
@@ -17,9 +19,11 @@ export function createHierarchyProvider(deps: { db: unknown }): ContextProvider 
         const lines: string[] = ["## Your Organization"];
 
         // Find boss
+        let bossId: string | null = null;
         if (agent.reportsTo) {
           const bossRows = await db.select().from(agents).where(eqOp(agents.id, agent.reportsTo)).limit(1);
           if (bossRows[0]) {
+            bossId = bossRows[0].id;
             lines.push(`- **You report to:** ${bossRows[0].name} (${bossRows[0].role})`);
             lines.push(`- When stuck or blocked, escalate to your manager.`);
           }
@@ -32,10 +36,49 @@ export function createHierarchyProvider(deps: { db: unknown }): ContextProvider 
         if (reports.length > 0) {
           lines.push(`- **Your direct reports:**`);
           for (const r of reports) {
-            lines.push(`  - ${r.name} (${r.role}) — ${r.status}`);
+            const skills = Array.isArray((r as any).skills) ? ((r as any).skills as string[]) : [];
+            const skillsLabel = skills.length > 0 ? ` — skills: ${skills.slice(0, 4).join(", ")}` : "";
+            lines.push(`  - ${r.name} (${r.role}) — ${r.status}${skillsLabel}`);
           }
           lines.push(`- When a task is too large or outside your expertise, delegate to your reports.`);
           lines.push(`- Create subtasks and assign them. Don't do everything yourself.`);
+        }
+
+        // Find peers (siblings that share the same boss, if any)
+        if (bossId) {
+          const peers = await db.select().from(agents).where(
+            and(eqOp(agents.reportsTo, bossId), ne(agents.id, agent.id)),
+          );
+          const eligiblePeers = peers.filter((p) => p.status !== "archived");
+          if (eligiblePeers.length > 0) {
+            lines.push(`- **Your colleagues (peers):**`);
+            for (const p of eligiblePeers.slice(0, MAX_PEERS)) {
+              const skills = Array.isArray((p as any).skills) ? ((p as any).skills as string[]) : [];
+              const skillsLabel = skills.length > 0 ? ` — skills: ${skills.slice(0, 4).join(", ")}` : "";
+              const pausedLabel = p.status === "paused" ? " [paused]" : "";
+              lines.push(`  - ${p.name} (${p.role})${skillsLabel}${pausedLabel}`);
+            }
+            if (eligiblePeers.length > MAX_PEERS) {
+              lines.push(`  - … and ${eligiblePeers.length - MAX_PEERS} more`);
+            }
+            lines.push(`- When a task fits a peer better than you, hand it off rather than doing it yourself.`);
+          }
+        }
+
+        // Skip-level (reports' reports) — so a manager sees one level deeper
+        if (reports.length > 0) {
+          const reportIds = reports.map((r) => r.id);
+          const skipLevel = await db.select().from(agents).where(inArray(agents.reportsTo, reportIds));
+          const eligibleSkip = skipLevel.filter((a) => a.status !== "archived");
+          if (eligibleSkip.length > 0) {
+            lines.push(`- **Skip-level reports (your reports' reports):**`);
+            for (const s of eligibleSkip.slice(0, MAX_SKIP_LEVEL)) {
+              lines.push(`  - ${s.name} (${s.role})`);
+            }
+            if (eligibleSkip.length > MAX_SKIP_LEVEL) {
+              lines.push(`  - … and ${eligibleSkip.length - MAX_SKIP_LEVEL} more`);
+            }
+          }
         }
 
         // Only return if there's actual hierarchy info

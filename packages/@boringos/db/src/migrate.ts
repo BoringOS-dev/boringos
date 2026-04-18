@@ -516,6 +516,9 @@ async function ensureSchema(db: Db): Promise<void> {
     -- Add model column to agent_runs for tracking which model was used
     ALTER TABLE agent_runs ADD COLUMN IF NOT EXISTS model TEXT;
 
+    -- Add skills column to agents (tag list of capabilities, drives delegation router)
+    ALTER TABLE agents ADD COLUMN IF NOT EXISTS skills JSONB NOT NULL DEFAULT '[]'::jsonb;
+
     -- Invitations for multi-tenant team management
     CREATE TABLE IF NOT EXISTS invitations (
       id UUID PRIMARY KEY DEFAULT gen_random_uuid(),

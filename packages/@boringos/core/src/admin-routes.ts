@@ -131,6 +131,7 @@ export function createAdminRoutes(
   app.post("/agents", async (c) => {
     const body = await c.req.json() as Record<string, unknown>;
     const id = generateId();
+    const skills = Array.isArray(body.skills) ? (body.skills as string[]).filter((s) => typeof s === "string") : [];
     await db.insert(agents).values({
       id,
       tenantId: c.get("tenantId"),
@@ -138,6 +139,8 @@ export function createAdminRoutes(
       role: (body.role as string) ?? "general",
       instructions: body.instructions as string | undefined,
       runtimeId: body.runtimeId as string | undefined,
+      reportsTo: body.reportsTo as string | undefined,
+      skills,
     });
     const rows = await db.select().from(agents).where(eq(agents.id, id)).limit(1);
     emit("agent:created", c.get("tenantId"), { agentId: id, name: body.name });
@@ -150,16 +153,87 @@ export function createAdminRoutes(
     const values: Record<string, unknown> = { updatedAt: new Date() };
     if (body.name !== undefined) values.name = body.name;
     if (body.role !== undefined) values.role = body.role;
+    if (body.title !== undefined) values.title = body.title;
     if (body.instructions !== undefined) values.instructions = body.instructions;
     if (body.status !== undefined) values.status = body.status;
     if (body.runtimeId !== undefined) values.runtimeId = body.runtimeId;
     if (body.fallbackRuntimeId !== undefined) values.fallbackRuntimeId = body.fallbackRuntimeId;
+    if (body.budgetMonthlyCents !== undefined) values.budgetMonthlyCents = body.budgetMonthlyCents;
+    if (body.skills !== undefined) {
+      values.skills = Array.isArray(body.skills) ? (body.skills as unknown[]).filter((s) => typeof s === "string") : [];
+    }
+
+    // When archiving an agent, reparent reports to the archived agent's manager (grandparent).
+    // Set-null would orphan a subtree; grandparent preserves org structure on departures.
+    if (body.status === "archived") {
+      const agentId = c.req.param("id");
+      const selfRows = await db.select({ reportsTo: agents.reportsTo }).from(agents).where(eq(agents.id, agentId)).limit(1);
+      const grandparent = selfRows[0]?.reportsTo ?? null;
+      const myReports = await db.select({ id: agents.id }).from(agents).where(
+        and(eq(agents.reportsTo, agentId), eq(agents.tenantId, c.get("tenantId"))),
+      );
+      for (const r of myReports) {
+        await db.update(agents).set({ reportsTo: grandparent, updatedAt: new Date() }).where(eq(agents.id, r.id));
+        emit("agent:reparented", c.get("tenantId"), { agentId: r.id, reportsTo: grandparent });
+      }
+    }
+
+    // reportsTo: cycle check before accepting
+    if (body.reportsTo !== undefined) {
+      const newParent = body.reportsTo as string | null;
+      if (newParent) {
+        const selfId = c.req.param("id");
+        if (newParent === selfId) return c.json({ error: "Agent cannot report to itself" }, 409);
+        // Walk up the proposed chain; if we hit selfId, it's a cycle.
+        let cursor: string | null = newParent;
+        const seen = new Set<string>();
+        while (cursor) {
+          if (cursor === selfId) return c.json({ error: "Reparent would create a cycle" }, 409);
+          if (seen.has(cursor)) break;
+          seen.add(cursor);
+          const cursorRows: Array<{ reportsTo: string | null }> = await db
+            .select({ reportsTo: agents.reportsTo })
+            .from(agents)
+            .where(eq(agents.id, cursor))
+            .limit(1) as Array<{ reportsTo: string | null }>;
+          cursor = cursorRows[0]?.reportsTo ?? null;
+        }
+      }
+      values.reportsTo = newParent;
+    }
 
     await db.update(agents).set(values).where(
       and(eq(agents.id, c.req.param("id")), eq(agents.tenantId, c.get("tenantId"))),
     );
     const rows = await db.select().from(agents).where(eq(agents.id, c.req.param("id"))).limit(1);
+
+    if (body.reportsTo !== undefined) {
+      emit("agent:reparented", c.get("tenantId"), { agentId: c.req.param("id"), reportsTo: values.reportsTo });
+    }
+    emit("agent:updated", c.get("tenantId"), { agentId: c.req.param("id") });
     return c.json(rows[0]);
+  });
+
+  // Dedicated skills endpoint: cheaper than round-tripping the whole array for edits
+  app.patch("/agents/:id/skills", async (c) => {
+    const body = await c.req.json() as { add?: string[]; remove?: string[]; set?: string[] };
+    const rows = await db.select().from(agents).where(
+      and(eq(agents.id, c.req.param("id")), eq(agents.tenantId, c.get("tenantId"))),
+    ).limit(1);
+    if (!rows[0]) return c.json({ error: "Agent not found" }, 404);
+    let next: string[];
+    if (Array.isArray(body.set)) {
+      next = body.set.filter((s) => typeof s === "string");
+    } else {
+      const current = Array.isArray(rows[0].skills) ? rows[0].skills as string[] : [];
+      const afterRemove = Array.isArray(body.remove)
+        ? current.filter((s) => !body.remove!.includes(s))
+        : current;
+      const add = Array.isArray(body.add) ? body.add.filter((s) => typeof s === "string" && !afterRemove.includes(s)) : [];
+      next = [...afterRemove, ...add];
+    }
+    await db.update(agents).set({ skills: next, updatedAt: new Date() }).where(eq(agents.id, c.req.param("id")));
+    return c.json({ agentId: c.req.param("id"), skills: next });
   });
 
   app.post("/agents/:id/wake", async (c) => {
@@ -477,6 +551,58 @@ export function createAdminRoutes(
     }
 
     return c.json({ assigned: true });
+  });
+
+  // POST /tasks/:id/handoff — hand off a task to another agent
+  // Creates a subtask assigned to toAgentId, posts a comment on this task,
+  // optionally wakes the recipient. Enforces 3-handoff-per-tree limit.
+  app.post("/tasks/:id/handoff", async (c) => {
+    const body = await c.req.json() as { toAgentId?: string; fromAgentId?: string; message?: string; wake?: boolean };
+    if (!body.toAgentId) return c.json({ error: "toAgentId required" }, 400);
+
+    const parentTaskId = c.req.param("id");
+    const tenantId = c.get("tenantId");
+
+    // If fromAgentId isn't supplied, infer from the task's current assignee
+    let fromAgentId = body.fromAgentId ?? null;
+    if (!fromAgentId) {
+      const parentRows = await db.select({ assigneeAgentId: tasks.assigneeAgentId }).from(tasks)
+        .where(and(eq(tasks.id, parentTaskId), eq(tasks.tenantId, tenantId))).limit(1);
+      fromAgentId = parentRows[0]?.assigneeAgentId ?? null;
+    }
+
+    // Resolve an author display for the handoff comment — if no fromAgent, use the current user
+    const targetRows = await db.select({ name: agents.name }).from(agents).where(eq(agents.id, body.toAgentId)).limit(1);
+    const toName = targetRows[0]?.name ?? "agent";
+
+    const { createHandoffTask } = await import("@boringos/agent");
+    const subtaskId = await createHandoffTask(db, {
+      fromAgentId: fromAgentId ?? body.toAgentId, // fallback to self if no from — keeps FK valid
+      toAgentId: body.toAgentId,
+      parentTaskId,
+      title: `Handoff: ${body.message?.slice(0, 80) ?? "see parent task"}`,
+      description: body.message ?? undefined,
+      originKind: "handoff",
+    });
+    if (!subtaskId) {
+      return c.json({ error: "Handoff chain too deep; root task marked blocked" }, 409);
+    }
+
+    // Optionally wake the recipient
+    if (body.wake) {
+      const outcome = await engine.wake({
+        agentId: body.toAgentId,
+        tenantId,
+        reason: "manual_request",
+        taskId: subtaskId,
+      });
+      if (outcome.kind === "created") {
+        await engine.enqueue(outcome.wakeupRequestId);
+      }
+      return c.json({ subtaskId, to: toName, wakeup: outcome.kind });
+    }
+
+    return c.json({ subtaskId, to: toName });
   });
 
   // ── Runs ────────────────────────────────────────────────────────────────

@@ -54,6 +54,7 @@ export type { SkillSyncConfig, InjectedSkill } from "./skills.js";
 export { createAgentFromTemplate, createTeam, buildOrgTree, BUILT_IN_TEAMS } from "./templates.js";
 export type { AgentTemplateConfig, CreatedAgent, TeamTemplate, OrgNode } from "./templates.js";
 
-export { findDelegateForTask, escalateToManager } from "./hierarchy.js";
+export { findDelegateForTask, escalateToManager, createHandoffTask } from "./hierarchy.js";
+export type { DelegateQuery } from "./hierarchy.js";
 
 export { createHierarchyProvider } from "./providers/hierarchy.js";
