@@ -1082,15 +1082,20 @@ connector-action(list_issues) → for-each → create-inbox-item → wake-agent
 
 | Handler | What it does | Config |
 |---|---|---|
-| `trigger` | Entry point | — |
+| `trigger` | Entry point. Set `eventType` to subscribe to a connector event — the framework fires this workflow whenever that event is emitted in the tenant. | `{ eventType?: string }` |
 | `condition` | Branch true/false | `{ field, operator, value }` |
 | `delay` | Wait N ms | `{ durationMs }` |
 | `transform` | Map data | `{ mappings: {...} }` |
-| `wake-agent` | Wake an agent | `{ agentId, taskId? }` |
+| `wake-agent` | Wake an agent | `{ agentId? \| agentRole?, reason?, taskId? }` |
 | `connector-action` | Call connector API | `{ connectorKind, action, inputs? }` |
 | `for-each` | Iterate array | `{ items }` |
 | `create-inbox-item` | Store to inbox (emits `inbox.item_created` event) | `{ source, items, assigneeUserId? }` or `{ source, subject, body, from, assigneeUserId? }` |
 | `emit-event` | Emit connector event | `{ connectorKind, eventType, data? }` or `{ items }` |
+| `query-database` | Read rows from a tenant-scoped table (auto-injects `tenant_id`) | `{ table, where?, limit? }` |
+| `update-row` | Update rows in a tenant-scoped table. WHERE supports equality, IN, NULL, and `{ op: "like" \| "ilike" \| "ne", value }` operator objects. | `{ table, where, set }` |
+| `create-task` | Create a framework task. Set `dedup: true` with `originKind`+`originId` to skip insert when an open task with the same origin already exists. | `{ title, description?, status?, priority?, originKind?, originId?, assigneeAgentId?, assigneeUserId?, parentId?, proposedParams?, dedup? }` |
+| `wait-for-human` | Pause until a human approves the auto-created Actions-queue task; resume merges userInput into this block's output | `{ title, description?, originKind?, priority?, assigneeUserId?, proposedParams? }` |
+| `invoke-workflow` | Run another workflow as a sub-routine; child block outputs merged into this block's output | `{ workflowId, payload?, triggerType? }` |
 
 ### Why Pattern A (store first, then agent)?
 
@@ -1420,14 +1425,13 @@ Workflows are DAGs (directed acyclic graphs) of blocks connected by edges. They 
 
 ### Block Types (Built-in)
 
-| Type | What it does | Config |
-|------|-------------|--------|
-| `trigger` | Entry point, passes config as output | `{}` |
-| `condition` | Evaluates a condition, branches true/false | `{ field, operator, value }` |
-| `delay` | Waits for a duration | `{ durationMs }` |
-| `transform` | Maps data | `{ mappings: { key: value } }` |
-| `wake-agent` | Wakes an agent | `{ agentId, reason?, taskId? }` |
-| `connector-action` | Calls a connector action | `{ connectorKind, action, inputs? }` |
+The full catalog is in the workflow handlers table earlier in this guide (search for `query-database`). Quick orientation:
+
+- **Triggers / control flow:** `trigger`, `condition`, `for-each`, `delay`, `transform`
+- **Connectors:** `connector-action`, `create-inbox-item`, `emit-event`
+- **Database (tenant-isolated):** `query-database`, `update-row`, `create-task`
+- **Agents & humans:** `wake-agent`, `wait-for-human`
+- **Composition:** `invoke-workflow`
 
 ### Condition Operators
 
