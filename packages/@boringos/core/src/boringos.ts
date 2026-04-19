@@ -21,6 +21,7 @@ import { and, eq as eqOp } from "drizzle-orm";
 import { createAgentEngine, ContextPipeline } from "@boringos/agent";
 import type { AgentEngine, ContextProvider, AgentRunJob } from "@boringos/agent";
 import type { QueueAdapter } from "@boringos/pipeline";
+import { createInProcessQueue } from "@boringos/pipeline";
 import {
   createWorkflowEngine,
   createWorkflowStore,
@@ -246,6 +247,13 @@ export class BoringOS {
         .filter((r) => r.agentDocs)
         .map((r) => ({ path: r.path, agentDocs: r.agentDocs! }));
 
+    // If the app didn't register a queue adapter, spin up the default
+    // in-process one here so we can honor `config.queue.concurrency`. The
+    // engine's own fallback doesn't know about app config.
+    const resolvedQueue =
+      this.queueAdapter ??
+      createInProcessQueue<AgentRunJob>({ concurrency: this.config.queue?.concurrency });
+
     const agentEngine = createAgentEngine({
       db: dbConn.db,
       runtimes,
@@ -254,7 +262,7 @@ export class BoringOS {
       pipeline,
       callbackUrl,
       jwtSecret,
-      queue: this.queueAdapter,
+      queue: resolvedQueue,
       apiCatalog,
     });
 

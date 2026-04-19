@@ -1,27 +1,48 @@
 import type { QueueAdapter } from "./types.js";
 import { generateId } from "@boringos/shared";
 
-export function createInProcessQueue<T>(): QueueAdapter<T> {
+export interface InProcessQueueOptions {
+  /**
+   * Maximum number of jobs to process in parallel. Each slot runs one drain
+   * loop; setting N > 1 means up to N agent subprocesses run simultaneously.
+   *
+   * Pick based on machine size and API rate limits — unbounded is a foot-gun
+   * (spawns N subprocesses, hits Anthropic rate caps, exhausts DB pool).
+   * Default is 1 (serial) to preserve legacy behavior.
+   */
+  concurrency?: number;
+}
+
+export function createInProcessQueue<T>(options: InProcessQueueOptions = {}): QueueAdapter<T> {
+  const concurrency = Math.max(1, Math.floor(options.concurrency ?? 1));
   const jobs: T[] = [];
   let handler: ((job: T) => Promise<void>) | null = null;
-  let processing = false;
+  let running = 0;
   let closed = false;
 
-  async function drain(): Promise<void> {
-    if (processing || !handler) return;
-    processing = true;
-
-    while (jobs.length > 0 && !closed) {
-      const job = jobs.shift()!;
-      try {
-        await handler(job);
-      } catch {
-        // In-process queue has no retry — errors are swallowed.
-        // Use BullMQ for production retry semantics.
-      }
+  // Spawn up to `concurrency` drain loops. Each loop pulls jobs until the
+  // queue drains. We increment `running` synchronously before scheduling the
+  // setImmediate so the cap is never breached under bursty enqueue.
+  function tryStartWorkers(): void {
+    if (!handler) return;
+    while (running < concurrency && jobs.length > 0 && !closed) {
+      running++;
+      setImmediate(async () => {
+        try {
+          while (jobs.length > 0 && !closed && handler) {
+            const job = jobs.shift()!;
+            try {
+              await handler(job);
+            } catch {
+              // In-process queue has no retry — errors are swallowed.
+              // Use BullMQ for production retry semantics.
+            }
+          }
+        } finally {
+          running--;
+        }
+      });
     }
-
-    processing = false;
   }
 
   return {
@@ -31,14 +52,14 @@ export function createInProcessQueue<T>(): QueueAdapter<T> {
       if (closed) throw new Error("Queue is closed");
       const id = generateId();
       jobs.push(job);
-      setImmediate(() => drain());
+      tryStartWorkers();
       return id;
     },
 
     process(fn: (job: T) => Promise<void>): void {
       handler = fn;
       // Drain any jobs that were enqueued before handler was set
-      if (jobs.length > 0) setImmediate(() => drain());
+      tryStartWorkers();
     },
 
     async close(): Promise<void> {

@@ -15,6 +15,19 @@ export interface BoringOSConfig {
   auth?: AuthConfig;
   drive?: DriveAppConfig;
   logging?: LogConfig;
+  queue?: QueueConfig;
+}
+
+export interface QueueConfig {
+  /**
+   * Max agent runs processed in parallel by the default in-process queue.
+   * Higher = more throughput, but each concurrent slot spawns its own agent
+   * subprocess (RAM, FDs, Anthropic tokens, DB connections). Pick based on
+   * machine size and API rate limits. Default: 1.
+   *
+   * Ignored if you pass a custom queue via `app.queue(...)`.
+   */
+  concurrency?: number;
 }
 
 export interface AuthConfig {
