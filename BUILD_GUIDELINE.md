@@ -506,6 +506,16 @@ Agents are **not running continuously**. They're CLI processes that start, do wo
 
 Between runs, agents are just rows in the database with `status: "idle"`.
 
+### Fault tolerance — auto-rewake, crash recovery, queue concurrency
+
+Three behaviors the framework gives you for free:
+
+**Auto-rewake after successful runs.** When an agent finishes a run (exit 0) and still has `todo` tasks assigned to it, the engine wakes it again to drain them. Crucially, this only fires on success — a failed run does NOT rewake itself. This was an explicit fix: a broken agent (credits exhausted, API outage, bad prompt) otherwise spun in a tight ~3-second loop, observed once at ~500 wakes in 30 min. The next user-initiated / routine / event wake will retry once the underlying issue clears.
+
+**Crash recovery (`engine.recoverPending()`).** On startup, the engine sweeps the DB: any `agent_run` still marked `running` is closed as `failed` (its process died mid-execution), and its wake request moves to `abandoned`. Any `pending` wake requests that never produced a run are re-enqueued so the new process picks them up. Called automatically from `BoringOS.listen()`.
+
+**Queue concurrency.** The default in-process queue runs serially (`concurrency: 1`). For apps where multiple agents can run independently — e.g. enrichment + analysis firing off a single event — pass `BoringOS({ queue: { concurrency: 4 } })` (or a custom number). Each slot is an independent drain loop, so parallel subprocesses up to the cap. Unbounded is a foot-gun (API rate limits, RAM, DB pool) — so set the number deliberately. Ordering constraints between agents belong in a workflow, not in the queue.
+
 ### What the agent sees when it wakes
 
 The context pipeline injects:

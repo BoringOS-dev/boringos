@@ -58,6 +58,7 @@ import { createAgentFromTemplate, createTeam, findDelegateForTask } from "@borin
 | `createAgentEngine(config)` | Main orchestrator with lifecycle hooks |
 | `ContextPipeline` | Composable pipeline of context providers |
 | `createWakeup(db, request)` | Wakeup coalescing (prevents duplicate runs) |
+| `engine.recoverPending()` | Boot-time recovery: close stale `running` runs + re-enqueue orphaned `pending` wakes after a crash/restart. Called automatically by `BoringOS.listen()`. |
 | `createRunLifecycle(db)` | Run status tracking and log appending |
 
 ### Built-in Context Providers (12)

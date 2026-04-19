@@ -127,9 +127,11 @@ The execution engine — the core of the framework.
   - System: header, persona, tenant guidelines, drive skill, memory skill, agent instructions, execution protocol
   - Context: session (3 modes), task, comments, memory context, approval
 - **`createWakeup(db, request)`** — wakeup coalescing (prevents duplicate runs)
+- **`engine.recoverPending()`** — boot-time sweep: closes stale `running` runs as failed (process died mid-run), re-enqueues orphaned `pending` wakes (queued in the old process's memory, never actually ran). Called automatically during `BoringOS.listen()`.
 - **`createRunLifecycle(db)`** — run status tracking, log appending
 - **Persona system:** 12 persona bundles (34 markdown files), role resolution with 30+ aliases
 - **Pluggable job queue** — in-process default (no Redis), BullMQ opt-in via `@boringos/pipeline`
+- **Auto-rewake discipline** — after every run, if the agent still has `todo` tasks assigned, the engine wakes it again *only if the current run succeeded*. A failed run (credits exhausted, subprocess crashed, API error) does NOT rewake — prevents tight loops where a broken agent re-queues itself until it exhausts credits or tokens. The next user/routine/event wake retries normally.
 
 ### `@boringos/workflow`
 
@@ -155,7 +157,7 @@ DAG-based workflow engine with typed block handlers and condition branching.
 Pluggable job queue for agent execution.
 
 - **`QueueAdapter<T>`** interface: `enqueue(job)`, `process(handler)`, `close()`
-- **`createInProcessQueue()`** — default, zero-config, no Redis. Jobs process sequentially via event loop. No persistence or retries.
+- **`createInProcessQueue(options?)`** — default, zero-config, no Redis. Default is serial (`concurrency: 1`); pass `{ concurrency: N }` to run up to N agents in parallel. Each slot spawns its own subprocess, so raise with care (RAM, Anthropic rate limits, DB pool). No persistence or retries. Bump via `BoringOS({ queue: { concurrency: N } })` config — no need to construct a queue yourself just to pick a number.
 - **`createBullMQQueue({ redis, queueName?, concurrency? })`** — opt-in production queue backed by Redis. Persistent jobs, automatic retries, configurable concurrency.
 - Default: in-process (no Redis required). Opt-in BullMQ via `.queue()` on `BoringOS` builder.
 
