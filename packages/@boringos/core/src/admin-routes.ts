@@ -1120,10 +1120,14 @@ export function createAdminRoutes(
   app.post("/workflows/:id/execute", async (c) => {
     if (!workflowEngine) return c.json({ error: "workflow engine not available" }, 503);
     const body = await c.req.json().catch(() => ({})) as Record<string, unknown>;
+    // Background mode so the HTTP response returns the runId immediately
+    // and the user can navigate to the run detail page mid-execution.
+    // Without this, a long-running workflow blocks the response and the
+    // user only ever sees the final state.
     const result = await workflowEngine.execute(c.req.param("id"), {
       type: "manual",
       data: (body.payload as Record<string, unknown> | undefined) ?? {},
-    });
+    }, { background: true });
     return c.json({
       runId: result.runId,
       status: result.status,
@@ -1228,7 +1232,7 @@ export function createAdminRoutes(
     const result = await workflowEngine.execute(original.workflowId, {
       type: triggerType,
       data: (original.triggerPayload as Record<string, unknown> | null) ?? {},
-    });
+    }, { background: true });
     return c.json({
       runId: result.runId,
       status: result.status,

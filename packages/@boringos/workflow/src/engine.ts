@@ -258,7 +258,7 @@ export function createWorkflowEngine(config: WorkflowEngineConfig): WorkflowEngi
   // ── Public API ─────────────────────────────────────────────────────────────
 
   return {
-    async execute(workflowId: string, trigger?: TriggerPayload): Promise<WorkflowRunResult> {
+    async execute(workflowId: string, trigger?: TriggerPayload, opts?: { background?: boolean }): Promise<WorkflowRunResult> {
       const workflow = await store.get(workflowId);
       if (!workflow) throw new Error(`Workflow not found: ${workflowId}`);
 
@@ -313,6 +313,29 @@ export function createWorkflowEngine(config: WorkflowEngineConfig): WorkflowEngi
       });
 
       const initialFrontier = getActivatedBlocks(dag.startNodeId, null, dag);
+
+      // Background mode: walk the DAG in a microtask so the HTTP caller can
+      // return immediately with the runId. Live updates flow through SSE.
+      // Without this, a 10s delay block blocks the HTTP response for 10s
+      // and the user never gets to see the run while it's actually running.
+      if (opts?.background) {
+        Promise.resolve().then(async () => {
+          const outcome = await walk({
+            workflowRunId: persistedRunId,
+            workflow, dag, nameToId, state, completed, failed, blockResults,
+            frontier: initialFrontier,
+          });
+          await finalizeRun(persistedRunId, runStartedAt, outcome, blockResults);
+        }).catch((err) => {
+          console.warn(`[workflow] background execute failed for run ${persistedRunId ?? "?"}:`, err);
+        });
+        return {
+          runId: persistedRunId ?? "",
+          status: "running",
+          blockResults: new Map(),
+        };
+      }
+
       const outcome = await walk({
         workflowRunId: persistedRunId,
         workflow, dag, nameToId, state, completed, failed, blockResults,

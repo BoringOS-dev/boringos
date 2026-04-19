@@ -140,8 +140,21 @@ export interface UpdateWorkflowInput {
 
 // ── Workflow engine ──────────────────────────────────────────────────────────
 
+export interface ExecuteOptions {
+  /**
+   * When true, persist the run row + emit run_started, then return early
+   * with status "running". The DAG walk continues in the background.
+   * SSE consumers see live block events as they fire.
+   *
+   * Defaults to false — execute() awaits the full run and returns the
+   * final WorkflowRunResult. Internal callers that need the result
+   * (e.g., invoke-workflow) keep the sync behavior.
+   */
+  background?: boolean;
+}
+
 export interface WorkflowEngine {
-  execute(workflowId: string, trigger?: TriggerPayload): Promise<WorkflowRunResult>;
+  execute(workflowId: string, trigger?: TriggerPayload, opts?: ExecuteOptions): Promise<WorkflowRunResult>;
   /**
    * Resume a paused workflow run. Reloads the persisted execution state
    * (completed block outputs) from `workflow_block_runs`, marks the
@@ -159,7 +172,12 @@ export interface TriggerPayload {
 
 export interface WorkflowRunResult {
   runId: string;
-  status: "completed" | "failed" | "cancelled" | "waiting_for_human";
+  /**
+   * `running` indicates the engine has persisted the run row and the DAG
+   * walk is happening in the background — only returned from
+   * execute(opts.background=true). All other statuses are terminal.
+   */
+  status: "running" | "completed" | "failed" | "cancelled" | "waiting_for_human";
   blockResults: Map<string, BlockHandlerResult>;
   error?: string;
   /** When status=waiting_for_human, the task the user must act on to resume. */
