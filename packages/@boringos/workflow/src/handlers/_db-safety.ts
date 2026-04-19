@@ -103,12 +103,18 @@ export function ident(name: string) {
 }
 
 /**
- * Builds a parameterized WHERE fragment from a shallow equality/IN map, AND-ed
- * with the tenant filter. Returns an SQL chunk ready to splice.
+ * Builds a parameterized WHERE fragment from a shallow equality/IN/op map,
+ * AND-ed with the tenant filter. Returns an SQL chunk ready to splice.
  *
  * Supported value shapes per column:
  *   - string | number | boolean | null → equality (`col = value`, or `col IS NULL`)
  *   - (string | number)[]              → IN list (empty array → always-false)
+ *   - { op: "like", value: "%foo%" }   → `col LIKE value`
+ *   - { op: "ilike", value: "%foo%" }  → `col ILIKE value` (case-insensitive)
+ *   - { op: "ne", value }              → `col <> value` (or IS NOT NULL when value is null)
+ *
+ * Operator object form is intentionally explicit (`{op, value}`) instead of a
+ * shorthand like `{like: "..."}` so the discriminator is clear at the call site.
  */
 export function buildWhereFragment(
   tenantId: string,
@@ -127,10 +133,27 @@ export function buildWhereFragment(
       if (value.length === 0) {
         clause = sql`${clause} AND FALSE`;
       } else {
-        // Join the parameterized values with commas
         const placeholders = value.map((v) => sql`${v}`);
         const joined = sql.join(placeholders, sql`, `);
         clause = sql`${clause} AND ${ident(c)} IN (${joined})`;
+      }
+    } else if (typeof value === "object" && value !== null && "op" in value) {
+      // Operator object form. Validate discriminator + value type.
+      const obj = value as Record<string, unknown>;
+      const op = obj.op;
+      const v = obj.value;
+      if (op === "like" || op === "ilike") {
+        if (typeof v !== "string") throw new Error(`${op} value must be a string for column "${c}"`);
+        clause = op === "like"
+          ? sql`${clause} AND ${ident(c)} LIKE ${v}`
+          : sql`${clause} AND ${ident(c)} ILIKE ${v}`;
+      } else if (op === "ne") {
+        if (v === null) clause = sql`${clause} AND ${ident(c)} IS NOT NULL`;
+        else if (typeof v === "string" || typeof v === "number" || typeof v === "boolean") {
+          clause = sql`${clause} AND ${ident(c)} <> ${v}`;
+        } else throw new Error(`Unsupported ne value for column "${c}": ${JSON.stringify(v)}`);
+      } else {
+        throw new Error(`Unsupported operator "${String(op)}" for column "${c}"`);
       }
     } else if (typeof value === "string" || typeof value === "number" || typeof value === "boolean") {
       clause = sql`${clause} AND ${ident(c)} = ${value}`;

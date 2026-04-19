@@ -44,6 +44,13 @@ export const createTaskHandler: BlockHandler = {
       assigneeUserId?: string;
       parentId?: string;
       proposedParams?: Record<string, unknown> | string;
+      /**
+       * When true, skip insert if a non-terminal task with the same
+       * (tenant_id, origin_kind, origin_id) already exists. Lets event-
+       * driven workflows fire on every event without piling up duplicates.
+       * Requires originKind + originId to be set.
+       */
+      dedup?: boolean;
     };
 
     if (!cfg.title || typeof cfg.title !== "string") {
@@ -58,6 +65,25 @@ export const createTaskHandler: BlockHandler = {
       let proposedParams = cfg.proposedParams;
       if (typeof proposedParams === "string") {
         try { proposedParams = JSON.parse(proposedParams); } catch { proposedParams = undefined; }
+      }
+
+      // Dedup check — query for an existing task with the same originKind +
+      // originId in this tenant that hasn't been completed/cancelled. Skip
+      // insert if one exists. Treat missing originKind/Id as an
+      // unconditional insert (caller didn't ask for dedup semantics).
+      if (cfg.dedup && cfg.originKind && cfg.originId) {
+        const { sql: rawSql } = await import("drizzle-orm");
+        const existing = await db.execute(rawSql`
+          SELECT id FROM tasks
+          WHERE tenant_id = ${ctx.tenantId}
+            AND origin_kind = ${cfg.originKind}
+            AND origin_id = ${cfg.originId}
+            AND status NOT IN ('done', 'cancelled')
+          LIMIT 1
+        `) as unknown as Array<{ id: string }>;
+        if (existing[0]) {
+          return { output: { taskId: existing[0].id, title: cfg.title, deduped: true } };
+        }
       }
 
       const id = generateId();
@@ -76,7 +102,7 @@ export const createTaskHandler: BlockHandler = {
         proposedParams: proposedParams as Record<string, unknown> | undefined,
       });
 
-      return { output: { taskId: id, title: cfg.title } };
+      return { output: { taskId: id, title: cfg.title, deduped: false } };
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
       return { output: { error: msg, taskId: null } };
