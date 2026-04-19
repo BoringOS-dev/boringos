@@ -530,27 +530,35 @@ export class BoringOS {
       }
 
       // Auto-re-wake: if agent has remaining 'todo' tasks assigned to it, wake again
-      try {
-        const { sql } = await import("drizzle-orm");
-        const pendingTasks = await dbConn.db.execute(sql`
-          SELECT count(*) as c FROM tasks
-          WHERE assignee_agent_id = ${event.agentId}
-            AND tenant_id = ${event.tenantId}
-            AND status = 'todo'
-        `);
-        const pendingCount = Number((pendingTasks as any)[0]?.c ?? 0);
-        if (pendingCount > 0) {
-          const outcome = await agentEngine.wake({
-            agentId: event.agentId,
-            tenantId: event.tenantId,
-            reason: "comment_posted", // re-wake reason
-          });
-          if (outcome.kind === "created") {
-            await agentEngine.enqueue(outcome.wakeupRequestId);
+      // — but ONLY when the current run succeeded. Rewaking after a failed run
+      // just replays the same failure: the pending task count is unchanged,
+      // so we'd spin in a tight loop (observed: a broken agent + 1 stale todo
+      // = ~500 wakes in 30 min). The next user-initiated wake (comment, routine,
+      // assignment) will pick up the todos normally once the underlying issue
+      // clears.
+      if (event.result.exitCode === 0) {
+        try {
+          const { sql } = await import("drizzle-orm");
+          const pendingTasks = await dbConn.db.execute(sql`
+            SELECT count(*) as c FROM tasks
+            WHERE assignee_agent_id = ${event.agentId}
+              AND tenant_id = ${event.tenantId}
+              AND status = 'todo'
+          `);
+          const pendingCount = Number((pendingTasks as any)[0]?.c ?? 0);
+          if (pendingCount > 0) {
+            const outcome = await agentEngine.wake({
+              agentId: event.agentId,
+              tenantId: event.tenantId,
+              reason: "comment_posted", // re-wake reason
+            });
+            if (outcome.kind === "created") {
+              await agentEngine.enqueue(outcome.wakeupRequestId);
+            }
           }
+        } catch {
+          // Non-fatal
         }
-      } catch {
-        // Non-fatal
       }
     });
 
