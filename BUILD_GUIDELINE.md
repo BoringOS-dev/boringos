@@ -2103,6 +2103,8 @@ await client.deleteTask(taskId);
 
 Workflows need a richer UI than simple CRUD. They need a **visual DAG editor**.
 
+> **Use `@boringos/workflow-ui` instead of rolling your own.** The package ships `WorkflowCanvas` (xyflow + dagre auto-layout, view/edit modes), `BlockPalette` (all 14 block types), `BlockConfigForm` (per-block-type config editor with JSON fallback), `RunDiffView` (replay historical runs), and SSE-driven hooks (`useWorkflow`, `useWorkflowRun`). The inline examples below are retained as reference for how the pieces compose and for apps that need to customize beyond the defaults — but for the common case, `import { WorkflowCanvas, BlockPalette, BlockConfigForm } from "@boringos/workflow-ui"` is the right starting point.
+
 **List** (`/workflows`):
 - Card per workflow showing: name, status, block count, block flow preview
 - Block flow preview: horizontal chain of colored pills (trigger → action → condition → ...)

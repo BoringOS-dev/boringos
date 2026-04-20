@@ -170,6 +170,17 @@ import { createBullMQQueue } from "@boringos/pipeline";
 app.queue(createBullMQQueue({ redis: "redis://localhost:6379" }));
 ```
 
+### `@boringos/workflow-ui` — React canvas + editor
+
+React components for visualizing, editing, and observing workflows. Drop-in companion to `@boringos/workflow` — the engine ships the DAG runtime; this ships the UI. Used by the CRM's Workflows page and any BoringOS app that wants a visual workflow editor.
+
+- **`WorkflowCanvas`** — `@xyflow/react` DAG renderer with auto-layout via dagre. `mode="view"` (live run status) or `mode="edit"` (drag/connect/delete with `onGraphChange`).
+- **`BlockPalette`** — categorized list of all 14 block types with one-click add.
+- **`BlockConfigForm`** — per-block-type config editor; dispatches to specialized forms (Trigger, Condition, ForEach, WakeAgent, …) with a JSON fallback for unknown types.
+- **`RunDiffView`** — side-by-side replay of a historical workflow run (config + input + output per block).
+- **Hooks:** `useWorkflows`, `useWorkflow`, `useCreateWorkflow`, `useUpdateWorkflow`, `useWorkflowRuns`, `useWorkflowRun` (subscribes to `/workflow-runs/:id/events` SSE for live block status).
+- **Peer deps:** `react@>=18`, `@tanstack/react-query@>=5`. Bundles `@xyflow/react` + `@dagrejs/dagre`. Styling assumes Tailwind utility classes.
+
 ### `@boringos/connector` — SDK
 
 The connector framework — implement this interface to integrate any external service.

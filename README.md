@@ -124,6 +124,7 @@ await createTeam(db, "engineering", { tenantId });
 | `@boringos/drive` | `StorageBackend` interface + local filesystem implementation |
 | `@boringos/db` | Drizzle schema (17 tables) + embedded Postgres + migration manager |
 | `@boringos/workflow` | DAG workflow engine + block handlers + workflow store |
+| `@boringos/workflow-ui` | React components for visualizing + editing workflows — DAG canvas, block palette, config forms, run-diff view |
 | `@boringos/pipeline` | Pluggable job queue — in-process (default) or BullMQ (opt-in) |
 | `@boringos/connector` | Connector SDK — interfaces, registry, OAuth, EventBus, test harness |
 | `@boringos/connector-slack` | Slack reference connector (messages, threads, reactions) |
