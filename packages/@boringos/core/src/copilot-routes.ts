@@ -137,6 +137,29 @@ export function createCopilotRoutes(db: Db, engine: AgentEngine): Hono<CopilotEn
       body: message,
     });
 
+    // Auto-rename sessions created with a placeholder title — sessions opened
+    // via the "New conversation" button land with a generic name, and the
+    // first real message is a much better handle for the sidebar list.
+    // Only rename on the first user message (commentCount <= 1 after insert,
+    // since the insert above is the one we're processing).
+    const GENERIC_TITLES = [
+      /^new conversation$/i,
+      /^copilot\b/i,        // "Copilot — 4/16/2026" style
+    ];
+    const title = taskRows[0].title;
+    if (title && GENERIC_TITLES.some((re) => re.test(title))) {
+      const commentCount = await db.select().from(taskComments)
+        .where(eq(taskComments.taskId, sessionId));
+      if (commentCount.length <= 1) {
+        const newTitle = message.trim().replace(/\s+/g, " ").slice(0, 60);
+        if (newTitle) {
+          await db.update(tasks)
+            .set({ title: newTitle, updatedAt: new Date() })
+            .where(eq(tasks.id, sessionId));
+        }
+      }
+    }
+
     const copilotId = await getCopilotAgentId(tenantId);
     if (!copilotId) {
       return c.json({ id: commentId, error: "Copilot agent not found" }, 201);
