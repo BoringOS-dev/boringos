@@ -1,0 +1,778 @@
+{
+  "version": "1.0.0",
+  "generated": "2026-05-03",
+  "phase": "phase-1",
+  "description": "Phase 1 tasks for BusinessOS v1. Each task is a self-contained Claude Code session (~1-3 hours). Sequence per docs/phases/phase-1.md.",
+  "repoRoot": "/Users/paragarora/Documents/Workspace/research/hebbs-clients/boringos-framework",
+  "tasks": [
+    {
+      "id": "B1",
+      "workstream": "App SDK",
+      "name": "Create @businessos/app-sdk package skeleton",
+      "goal": "Bootstrap the public SDK package so subsequent tasks have somewhere to land code.",
+      "readFirst": [
+        "docs/overview.md",
+        "docs/app-sdk.md",
+        "package.json",
+        "pnpm-workspace.yaml",
+        "packages/@boringos/shared/package.json"
+      ],
+      "touch": [
+        "packages/@businessos/app-sdk/package.json",
+        "packages/@businessos/app-sdk/tsconfig.json",
+        "packages/@businessos/app-sdk/src/index.ts",
+        "packages/@businessos/app-sdk/LICENSE",
+        "packages/@businessos/app-sdk/README.md"
+      ],
+      "acceptance": [
+        "Package compiles via `pnpm -F @businessos/app-sdk build`",
+        "License file is MIT (matches package.json license field)",
+        "Empty index.ts exports placeholder (no errors)",
+        "pnpm-workspace.yaml already includes @businessos/* (verify)"
+      ],
+      "doNot": [
+        "Add functional types yet — that is B2",
+        "Publish to npm — that is B5"
+      ],
+      "estimateHours": 1,
+      "dependsOn": []
+    },
+    {
+      "id": "B2",
+      "workstream": "App SDK",
+      "name": "Define ConnectorManifest and AppManifest types",
+      "goal": "Codify the manifest contract per Phase 0 naming decisions (kind, id, type, name).",
+      "readFirst": [
+        "docs/app-sdk.md",
+        "docs/capabilities.md",
+        "docs/developer/building-connectors.md",
+        "docs/developer/building-apps.md",
+        "packages/@boringos/connector/src/types.ts"
+      ],
+      "touch": [
+        "packages/@businessos/app-sdk/src/manifest.ts",
+        "packages/@businessos/app-sdk/src/index.ts"
+      ],
+      "acceptance": [
+        "Exports `Manifest`, `ConnectorManifest`, `AppManifest`, `PublisherInfo`, `EntityTypeDeclaration`, `UIManifest`",
+        "Field naming matches Phase 0: extension uses `kind`, instance uses `id`, events use `type`, actions use `name`",
+        "AppManifest includes hosting field as `hosting: \"in-process\"` (no remote in v1)",
+        "Capabilities declared as string array; full catalog cross-referenced to capabilities.md"
+      ],
+      "doNot": [
+        "Validate manifests at runtime yet — that is C4",
+        "Define helper functions (defineApp etc.) — that is B3"
+      ],
+      "estimateHours": 2,
+      "dependsOn": ["B1"]
+    },
+    {
+      "id": "B3",
+      "workstream": "App SDK",
+      "name": "Implement defineApp, defineConnector, defineUI helpers",
+      "goal": "Provide ergonomic builders that produce typed AppDefinition / ConnectorDefinition / UIDefinition values.",
+      "readFirst": [
+        "docs/app-sdk.md",
+        "packages/@businessos/app-sdk/src/manifest.ts",
+        "packages/@boringos/connector-slack/src/connector.ts"
+      ],
+      "touch": [
+        "packages/@businessos/app-sdk/src/define-app.ts",
+        "packages/@businessos/app-sdk/src/define-connector.ts",
+        "packages/@businessos/app-sdk/src/define-ui.ts",
+        "packages/@businessos/app-sdk/src/index.ts"
+      ],
+      "acceptance": [
+        "`defineApp({...})` returns typed AppDefinition",
+        "`defineConnector({...})` returns typed ConnectorDefinition (matches existing @boringos/connector shape)",
+        "`defineUI({...})` returns typed UIDefinition with slot contributions",
+        "Type errors when required fields missing"
+      ],
+      "doNot": [
+        "Implement runtime that consumes these — that's the install pipeline (C5)"
+      ],
+      "estimateHours": 2,
+      "dependsOn": ["B2"]
+    },
+    {
+      "id": "B4",
+      "workstream": "App SDK",
+      "name": "Define slot types and lifecycle context types",
+      "goal": "Surface the slot APIs and runtime contexts apps will use inside their handlers.",
+      "readFirst": [
+        "docs/app-sdk.md",
+        "docs/shell-screens.md",
+        "docs/coordination.md"
+      ],
+      "touch": [
+        "packages/@businessos/app-sdk/src/slots.ts",
+        "packages/@businessos/app-sdk/src/lifecycle.ts",
+        "packages/@businessos/app-sdk/src/context.ts",
+        "packages/@businessos/app-sdk/src/index.ts"
+      ],
+      "acceptance": [
+        "Exports: NavSlot, DashboardWidget, EntityAction, EntityDetailPanel, SettingsPanel, CommandAction, CopilotTool, InboxHandler",
+        "InboxHandler typed as UI-only (no agent wake fields)",
+        "Exports: LifecycleContext, ContextBuildContext, ActionContext, ToolContext",
+        "All types compile cleanly"
+      ],
+      "doNot": [
+        "Implement slot rendering in shell — that is A6",
+        "Implement context building runtime — separate Phase 2 work"
+      ],
+      "estimateHours": 2,
+      "dependsOn": ["B2"]
+    },
+    {
+      "id": "B5",
+      "workstream": "App SDK",
+      "name": "Publish @businessos/app-sdk@1.0.0-alpha.0 + @businessos/connector-sdk@1.0.0-alpha.0",
+      "goal": "Make the SDK installable from npm under the @businessos scope.",
+      "readFirst": [
+        "package.json",
+        "packages/@businessos/app-sdk/package.json"
+      ],
+      "touch": [
+        "packages/@businessos/app-sdk/package.json",
+        "packages/@businessos/connector-sdk/package.json",
+        "packages/@businessos/connector-sdk/src/index.ts"
+      ],
+      "acceptance": [
+        "Both packages published to npm at 1.0.0-alpha.0",
+        "@businessos/connector-sdk re-exports from @businessos/app-sdk (or contains connector-only types)",
+        "Tagged as alpha (npm dist-tag: alpha)"
+      ],
+      "doNot": [
+        "Bump to stable 1.0.0 — that happens after Phase 2 CRM port validates the contract"
+      ],
+      "estimateHours": 1,
+      "dependsOn": ["B3", "B4"]
+    },
+
+    {
+      "id": "D1",
+      "workstream": "Connector migration",
+      "name": "Define businessos.json manifest JSON Schema",
+      "goal": "Provide a machine-readable schema validating connector and app manifests.",
+      "readFirst": [
+        "docs/developer/migrate-existing-connectors.md",
+        "docs/capabilities.md",
+        "packages/@businessos/app-sdk/src/manifest.ts"
+      ],
+      "touch": [
+        "packages/@businessos/app-sdk/schemas/manifest.schema.json",
+        "packages/@businessos/app-sdk/src/validate.ts"
+      ],
+      "acceptance": [
+        "JSON Schema validates the same shapes the TypeScript types describe",
+        "validate() function returns structured errors",
+        "Tests cover both connector and app manifest variants"
+      ],
+      "doNot": [
+        "Validate against real connectors yet — that is D2"
+      ],
+      "estimateHours": 2,
+      "dependsOn": ["B2"]
+    },
+    {
+      "id": "D2",
+      "workstream": "Connector migration",
+      "name": "Migrate @boringos/connector-slack to manifest format",
+      "goal": "Add businessos.json + JSON Schema action I/O + capability declarations to Slack connector. **This is the contract validation gate.**",
+      "readFirst": [
+        "docs/developer/migrate-existing-connectors.md",
+        "docs/capabilities.md",
+        "packages/@boringos/connector-slack/src/connector.ts",
+        "packages/@boringos/connector-slack/src/client.ts"
+      ],
+      "touch": [
+        "packages/@boringos/connector-slack/businessos.json",
+        "packages/@boringos/connector-slack/schemas/send_message.input.json",
+        "packages/@boringos/connector-slack/schemas/send_message.output.json",
+        "packages/@boringos/connector-slack/schemas/reply_in_thread.input.json",
+        "packages/@boringos/connector-slack/schemas/add_reaction.input.json",
+        "packages/@boringos/connector-slack/schemas/message_received.event.json",
+        "packages/@boringos/connector-slack/schemas/mention.event.json",
+        "packages/@boringos/connector-slack/schemas/reaction_added.event.json"
+      ],
+      "acceptance": [
+        "businessos.json present at package root",
+        "Manifest validates against D1 schema",
+        "Capabilities declared: auth:oauth:slack, events:emit:slack.*, actions:expose:3, webhooks:receive:/events, network:outbound:slack.com",
+        "Existing TS factory function unchanged (must be backwards compatible)",
+        "Slack connector still works in existing tests"
+      ],
+      "doNot": [
+        "Touch the runtime behavior",
+        "Migrate Google yet (D3) — surface format issues first"
+      ],
+      "estimateHours": 3,
+      "dependsOn": ["D1"],
+      "criticalGate": "If this task is hard or the SDK has to change to make it work, fix B before continuing. Do not merge a hacky D2."
+    },
+    {
+      "id": "D3",
+      "workstream": "Connector migration",
+      "name": "Migrate @boringos/connector-google (Gmail + Calendar combined)",
+      "goal": "Same migration as D2 but for the larger combined Google connector.",
+      "readFirst": [
+        "docs/developer/migrate-existing-connectors.md",
+        "packages/@boringos/connector-google/src/connector.ts",
+        "packages/@boringos/connector-slack/businessos.json"
+      ],
+      "touch": [
+        "packages/@boringos/connector-google/businessos.json",
+        "packages/@boringos/connector-google/schemas/*"
+      ],
+      "acceptance": [
+        "Manifest covers both Gmail and Calendar event/action surfaces",
+        "Two outbound network domains declared: googleapis.com, accounts.google.com",
+        "All actions migrated to JSON Schema",
+        "Skill files referenced via skills field in manifest"
+      ],
+      "doNot": [
+        "Split into two packages (connector-gmail + connector-calendar) — keep combined for now"
+      ],
+      "estimateHours": 4,
+      "dependsOn": ["D2"]
+    },
+    {
+      "id": "D4",
+      "workstream": "Connector migration",
+      "name": "CI verification job for connector manifests",
+      "goal": "Make CI fail when a connector's manifest claims diverge from its code.",
+      "readFirst": [
+        "docs/developer/migrate-existing-connectors.md",
+        ".github/workflows/ (or wherever CI lives)"
+      ],
+      "touch": [
+        ".github/workflows/connector-verify.yml",
+        "scripts/verify-connector.ts"
+      ],
+      "acceptance": [
+        "Job runs on every PR touching packages/@boringos/connector-*/",
+        "Verifies: manifest validity (D1 schema), event types match TS, action count matches, OAuth scopes consistent, outbound network honesty",
+        "Fails build with actionable error messages",
+        "Slack and Google connectors pass"
+      ],
+      "doNot": [
+        "Run on app packages yet — that comes later"
+      ],
+      "estimateHours": 3,
+      "dependsOn": ["D3"]
+    },
+
+    {
+      "id": "A1",
+      "workstream": "Shell extraction",
+      "name": "Create @businessos/shell package skeleton",
+      "goal": "Bootstrap the shell SPA package so screens can be moved into it.",
+      "readFirst": [
+        "docs/shell-screens.md",
+        "../boringos-crm/packages/web/package.json",
+        "../boringos-crm/packages/web/vite.config.ts"
+      ],
+      "touch": [
+        "packages/@businessos/shell/package.json",
+        "packages/@businessos/shell/vite.config.ts",
+        "packages/@businessos/shell/tsconfig.json",
+        "packages/@businessos/shell/src/main.tsx",
+        "packages/@businessos/shell/src/App.tsx",
+        "packages/@businessos/shell/index.html",
+        "packages/@businessos/shell/LICENSE"
+      ],
+      "acceptance": [
+        "`pnpm -F @businessos/shell dev` boots a blank React app",
+        "License is BSL 1.1",
+        "Depends on @boringos/ui and @businessos/app-sdk"
+      ],
+      "doNot": [
+        "Move CRM screens yet — those come in A3-A5"
+      ],
+      "estimateHours": 2,
+      "dependsOn": []
+    },
+    {
+      "id": "A2",
+      "workstream": "Shell extraction",
+      "name": "Define slot type contracts in the shell",
+      "goal": "Implement the slot-rendering side of the slot types defined in B4 — the shell's runtime contract for app contributions.",
+      "readFirst": [
+        "docs/shell-screens.md",
+        "docs/app-sdk.md",
+        "packages/@businessos/app-sdk/src/slots.ts"
+      ],
+      "touch": [
+        "packages/@businessos/shell/src/slots/registry.ts",
+        "packages/@businessos/shell/src/slots/SlotRenderer.tsx"
+      ],
+      "acceptance": [
+        "Slot registry tracks which apps contributed to which slots",
+        "SlotRenderer renders all contributions for a given slot id",
+        "Type-safe: rendering an EntityAction slot only accepts EntityAction contributions"
+      ],
+      "doNot": [
+        "Wire to real install pipeline yet — that is A6"
+      ],
+      "estimateHours": 2,
+      "dependsOn": ["A1", "B4"]
+    },
+    {
+      "id": "A3",
+      "workstream": "Shell extraction",
+      "name": "Move Layout, Sidebar, CommandBar from CRM web to shell",
+      "goal": "Lift the shell chrome into @businessos/shell. Components are CRM-shaped today; generalize as part of the move.",
+      "readFirst": [
+        "../boringos-crm/packages/web/src/components/Layout.tsx",
+        "../boringos-crm/packages/web/src/components/Sidebar.tsx",
+        "../boringos-crm/packages/web/src/components/CommandBar.tsx"
+      ],
+      "touch": [
+        "packages/@businessos/shell/src/chrome/Layout.tsx",
+        "packages/@businessos/shell/src/chrome/Sidebar.tsx",
+        "packages/@businessos/shell/src/chrome/CommandBar.tsx"
+      ],
+      "acceptance": [
+        "Files copied (not deleted from CRM yet — A8 strips CRM)",
+        "CRM-specific nav entries removed; sidebar reads nav contributions from slot registry",
+        "CommandBar reads command actions from slot registry",
+        "Compiles with no errors when used by @businessos/shell App.tsx"
+      ],
+      "doNot": [
+        "Delete from CRM — A8 does that",
+        "Hard-code any nav entries — they all come from slot contributions"
+      ],
+      "estimateHours": 3,
+      "dependsOn": ["A2"]
+    },
+    {
+      "id": "A4",
+      "workstream": "Shell extraction",
+      "name": "Move auth screens (Login, Signup) from CRM to shell",
+      "goal": "Authentication UI lives in the shell, not in apps.",
+      "readFirst": [
+        "../boringos-crm/packages/web/src/pages/Login.tsx",
+        "../boringos-crm/packages/web/src/pages/Signup.tsx",
+        "../boringos-crm/packages/web/src/lib/auth.ts"
+      ],
+      "touch": [
+        "packages/@businessos/shell/src/auth/Login.tsx",
+        "packages/@businessos/shell/src/auth/Signup.tsx",
+        "packages/@businessos/shell/src/auth/AuthProvider.tsx"
+      ],
+      "acceptance": [
+        "Login + Signup work against /api/auth/* endpoints (existing framework auth)",
+        "AuthProvider hooks usable by all shell screens",
+        "Signup with tenantName creates new tenant; signup with inviteCode joins existing"
+      ],
+      "doNot": [
+        "Build SSO yet (Phase 5)"
+      ],
+      "estimateHours": 2,
+      "dependsOn": ["A3"]
+    },
+    {
+      "id": "A5",
+      "workstream": "Shell extraction",
+      "name": "Move shared screens (Home, Copilot, Inbox, Tasks, Agents, Workflows, Settings)",
+      "goal": "Lift the framework-level screens into the shell. Domain-specific screens stay in CRM (until Phase 2 strips them).",
+      "readFirst": [
+        "docs/shell-screens.md",
+        "../boringos-crm/packages/web/src/pages/Brief.tsx",
+        "../boringos-crm/packages/web/src/pages/Copilot.tsx",
+        "../boringos-crm/packages/web/src/pages/Inbox.tsx",
+        "../boringos-crm/packages/web/src/pages/Tasks.tsx",
+        "../boringos-crm/packages/web/src/pages/Agents.tsx",
+        "../boringos-crm/packages/web/src/pages/Workflows.tsx",
+        "../boringos-crm/packages/web/src/pages/Settings.tsx"
+      ],
+      "touch": [
+        "packages/@businessos/shell/src/screens/Home.tsx",
+        "packages/@businessos/shell/src/screens/Copilot.tsx",
+        "packages/@businessos/shell/src/screens/Inbox.tsx",
+        "packages/@businessos/shell/src/screens/Tasks.tsx",
+        "packages/@businessos/shell/src/screens/Agents.tsx",
+        "packages/@businessos/shell/src/screens/Workflows.tsx",
+        "packages/@businessos/shell/src/screens/Settings.tsx"
+      ],
+      "acceptance": [
+        "Each screen functions on a fresh tenant with zero apps installed",
+        "Brief renamed to Home; layout adapted to read dashboard.widget contributions from slot registry",
+        "Copilot reads copilot.tool contributions from slot registry",
+        "Settings reads settings.panel contributions from slot registry"
+      ],
+      "doNot": [
+        "Move Pipeline, Contacts, Deals, Companies, KnowledgeBase — those are CRM-specific and stay in CRM"
+      ],
+      "estimateHours": 4,
+      "dependsOn": ["A4"]
+    },
+    {
+      "id": "A6",
+      "workstream": "Shell extraction",
+      "name": "Implement slot registration runtime",
+      "goal": "Wire the slot registry to the install pipeline so installed apps' slot contributions appear in the shell.",
+      "readFirst": [
+        "docs/coordination.md",
+        "docs/shell-screens.md",
+        "packages/@businessos/shell/src/slots/registry.ts"
+      ],
+      "touch": [
+        "packages/@businessos/shell/src/runtime/install-runtime.ts",
+        "packages/@businessos/shell/src/slots/registry.ts"
+      ],
+      "acceptance": [
+        "When an app is installed, its UI definition's slot contributions are added to the registry",
+        "When uninstalled, removed",
+        "Slot renderer hot-updates without a page reload (event-driven)"
+      ],
+      "doNot": [
+        "Implement actual install pipeline — that is C5",
+        "Handle remote apps — v1 is in-process only"
+      ],
+      "estimateHours": 3,
+      "dependsOn": ["A5"]
+    },
+    {
+      "id": "A7",
+      "workstream": "Shell extraction",
+      "name": "Build the Apps screen (Browse, Installed, Updates, Install from URL)",
+      "goal": "The wp-admin Plugins page. The killer screen of v1.",
+      "readFirst": [
+        "docs/shell-screens.md",
+        "docs/developer/publishing-and-install.md"
+      ],
+      "touch": [
+        "packages/@businessos/shell/src/screens/Apps/index.tsx",
+        "packages/@businessos/shell/src/screens/Apps/Browse.tsx",
+        "packages/@businessos/shell/src/screens/Apps/Installed.tsx",
+        "packages/@businessos/shell/src/screens/Apps/InstallFromUrl.tsx",
+        "packages/@businessos/shell/src/screens/Apps/PermissionPrompt.tsx"
+      ],
+      "acceptance": [
+        "Browse tab shows curated marketplace listings (mock data acceptable in v1; backend deferred)",
+        "Installed tab lists tenant_apps with status and capabilities",
+        "Install from URL accepts a GitHub URL, fetches manifest, shows permission prompt",
+        "Permission prompt renders manifest capabilities grouped by category"
+      ],
+      "doNot": [
+        "Build the actual install transaction — that is C5",
+        "Build a marketplace backend — Phase 4"
+      ],
+      "estimateHours": 4,
+      "dependsOn": ["A6", "C7"]
+    },
+    {
+      "id": "A8",
+      "workstream": "Shell extraction",
+      "name": "Strip CRM web of all moved code",
+      "goal": "One PR in boringos-crm that removes the chrome and shared screens that now live in @businessos/shell.",
+      "readFirst": [
+        "../boringos-crm/packages/web/src/App.tsx",
+        "packages/@businessos/shell/src/App.tsx"
+      ],
+      "touch": [
+        "../boringos-crm/packages/web/src/components/Layout.tsx [DELETE]",
+        "../boringos-crm/packages/web/src/components/Sidebar.tsx [DELETE]",
+        "../boringos-crm/packages/web/src/components/CommandBar.tsx [DELETE]",
+        "../boringos-crm/packages/web/src/pages/Login.tsx [DELETE]",
+        "../boringos-crm/packages/web/src/pages/Signup.tsx [DELETE]",
+        "../boringos-crm/packages/web/src/pages/Brief.tsx [DELETE]",
+        "../boringos-crm/packages/web/src/pages/Copilot.tsx [DELETE]",
+        "../boringos-crm/packages/web/src/pages/Inbox.tsx [DELETE]",
+        "../boringos-crm/packages/web/src/pages/Tasks.tsx [DELETE]",
+        "../boringos-crm/packages/web/src/pages/Agents.tsx [DELETE]",
+        "../boringos-crm/packages/web/src/pages/Workflows.tsx [DELETE]",
+        "../boringos-crm/packages/web/src/pages/Settings.tsx [DELETE]",
+        "../boringos-crm/packages/web/src/App.tsx [MODIFY]"
+      ],
+      "acceptance": [
+        "boringos-crm/packages/web no longer renders shell chrome",
+        "Domain components (DealForm, DossierView, ContactForm etc.) survive",
+        "CRM still builds (will not run as a standalone SPA — that is by design; full Phase 2 port restores it as an installable app)"
+      ],
+      "doNot": [
+        "Touch CRM server — that is Phase 2 work"
+      ],
+      "estimateHours": 2,
+      "dependsOn": ["A5"],
+      "repoOverride": "../boringos-crm"
+    },
+
+    {
+      "id": "C1",
+      "workstream": "Apps lifecycle",
+      "name": "Migration: tenant_apps table",
+      "goal": "Add the table that records which apps are installed in which tenants.",
+      "readFirst": [
+        "docs/developer/publishing-and-install.md",
+        "packages/@boringos/db/src/schema/index.ts"
+      ],
+      "touch": [
+        "packages/@boringos/db/src/schema/tenant-apps.ts",
+        "packages/@boringos/db/src/schema/index.ts"
+      ],
+      "acceptance": [
+        "Columns: id (uuid), tenant_id (uuid, FK), app_id (text), version (text), status (enum: active/paused/uninstalling), capabilities (jsonb), manifest_hash (text), installed_at (timestamp), updated_at (timestamp)",
+        "Index on (tenant_id, app_id)",
+        "Migration applies cleanly forward"
+      ],
+      "doNot": [
+        "Add cross-app links — that is C2"
+      ],
+      "estimateHours": 1,
+      "dependsOn": []
+    },
+    {
+      "id": "C2",
+      "workstream": "Apps lifecycle",
+      "name": "Migration: tenant_app_links table",
+      "goal": "Record cross-app dependency approvals (app B reads app A's entities).",
+      "readFirst": [
+        "docs/capabilities.md"
+      ],
+      "touch": [
+        "packages/@boringos/db/src/schema/tenant-app-links.ts",
+        "packages/@boringos/db/src/schema/index.ts"
+      ],
+      "acceptance": [
+        "Columns: id, tenant_id, source_app_id, target_app_id, capability (e.g. entities.crm:read), approved_at",
+        "Unique index on (tenant_id, source_app_id, target_app_id, capability)"
+      ],
+      "doNot": [
+        "Implement enforcement — that lives in the SDK runtime checks (separate work)"
+      ],
+      "estimateHours": 1,
+      "dependsOn": []
+    },
+    {
+      "id": "C3",
+      "workstream": "Apps lifecycle",
+      "name": "Manifest fetcher (GitHub URL → businessos.json + bundle)",
+      "goal": "Resolve a GitHub URL to a fetchable, validatable manifest + bundle artifact.",
+      "readFirst": [
+        "docs/developer/publishing-and-install.md"
+      ],
+      "touch": [
+        "packages/@businessos/control-plane/package.json",
+        "packages/@businessos/control-plane/src/fetcher.ts",
+        "packages/@businessos/control-plane/LICENSE"
+      ],
+      "acceptance": [
+        "Accepts: github.com/org/repo, github.com/org/repo@vX.Y.Z, github.com/org/repo#branch",
+        "Resolves to latest tagged release if no version specified",
+        "Returns: { manifest, bundleUrl, hash }",
+        "License is BSL 1.1"
+      ],
+      "doNot": [
+        "Validate the manifest — that is C4",
+        "Run the install — that is C5"
+      ],
+      "estimateHours": 2,
+      "dependsOn": ["B5"]
+    },
+    {
+      "id": "C4",
+      "workstream": "Apps lifecycle",
+      "name": "Manifest validator (schema + capability honesty)",
+      "goal": "Validate fetched manifests before any install begins.",
+      "readFirst": [
+        "docs/capabilities.md",
+        "packages/@businessos/app-sdk/schemas/manifest.schema.json",
+        "packages/@businessos/app-sdk/src/validate.ts"
+      ],
+      "touch": [
+        "packages/@businessos/control-plane/src/validator.ts"
+      ],
+      "acceptance": [
+        "Validates against D1 schema",
+        "Enforces capability honesty: declared capabilities must match what the bundle actually does (parse bundle for SDK calls)",
+        "Returns structured errors with actionable messages"
+      ],
+      "doNot": [
+        "Run the install — that is C5"
+      ],
+      "estimateHours": 3,
+      "dependsOn": ["C3", "D1"]
+    },
+    {
+      "id": "C5",
+      "workstream": "Apps lifecycle",
+      "name": "Install pipeline (atomic transaction)",
+      "goal": "Take a validated manifest + bundle and install the app fully or roll back on any failure.",
+      "readFirst": [
+        "docs/developer/publishing-and-install.md",
+        "docs/developer/building-apps.md"
+      ],
+      "touch": [
+        "packages/@businessos/control-plane/src/install.ts"
+      ],
+      "acceptance": [
+        "Steps run inside a DB transaction: create tenant_apps row, run schema migrations, register agents, register workflow templates, mount routes, register slot contributions, run onTenantCreated",
+        "Any failure rolls back the entire transaction",
+        "Emits app.installed event on success",
+        "Updates slot registry (A6) so UI updates immediately"
+      ],
+      "doNot": [
+        "Implement remote-app dispatch — v1 is in-process only",
+        "Handle billing — Phase 5"
+      ],
+      "estimateHours": 4,
+      "dependsOn": ["C1", "C2", "C4", "A6"]
+    },
+    {
+      "id": "C6",
+      "workstream": "Apps lifecycle",
+      "name": "Uninstall pipeline (soft + hard)",
+      "goal": "Reverse an install cleanly. Two modes: soft (retain data 30d), hard (drop everything).",
+      "readFirst": [
+        "docs/developer/publishing-and-install.md"
+      ],
+      "touch": [
+        "packages/@businessos/control-plane/src/uninstall.ts"
+      ],
+      "acceptance": [
+        "Soft: routes unmount, agents pause, slots unregister, tenant_apps marked uninstalling, data retained 30 days",
+        "Hard: soft steps + immediate drop of namespaced tables + delete files + remove agents",
+        "Cascade: if uninstalling app A and another app B has tenant_app_links to A, surface warning before proceeding",
+        "Emits app.uninstalled event"
+      ],
+      "doNot": [
+        "Implement automatic retention sweep cron — separate work"
+      ],
+      "estimateHours": 3,
+      "dependsOn": ["C5"]
+    },
+    {
+      "id": "C7",
+      "workstream": "Apps lifecycle",
+      "name": "Permission prompt component",
+      "goal": "OAuth-style consent UI shown before any install completes.",
+      "readFirst": [
+        "docs/capabilities.md",
+        "docs/developer/building-apps.md"
+      ],
+      "touch": [
+        "packages/@businessos/shell/src/components/PermissionPrompt.tsx"
+      ],
+      "acceptance": [
+        "Renders manifest capabilities grouped by category (Data, Agents & Workflows, UI, Integrations, Memory)",
+        "Shows verified-publisher badge when applicable",
+        "Shows 'Unverified publisher' warning for GitHub-direct installs",
+        "Approve button triggers C5 install pipeline; Cancel aborts cleanly"
+      ],
+      "doNot": [
+        "Allow individual capability dropping in v1 — all-or-nothing approval"
+      ],
+      "estimateHours": 2,
+      "dependsOn": ["C5"]
+    },
+
+    {
+      "id": "E1",
+      "workstream": "Default apps",
+      "name": "Build apps/generic-triage using @businessos/app-sdk",
+      "goal": "First-party default app that classifies inbox items.",
+      "readFirst": [
+        "docs/coordination.md",
+        "../boringos-crm/packages/server/src/agents/email-triage.ts"
+      ],
+      "touch": [
+        "apps/generic-triage/businessos.json",
+        "apps/generic-triage/package.json",
+        "apps/generic-triage/src/index.ts",
+        "apps/generic-triage/src/agents/triage.ts",
+        "apps/generic-triage/LICENSE"
+      ],
+      "acceptance": [
+        "Built using only the public @businessos/app-sdk (no shell internals)",
+        "Subscribes to inbox.item_created via workflow",
+        "Classifies items, scores importance, attaches metadata to inbox item",
+        "Does NOT draft replies (that is generic-replier's job)",
+        "Does NOT create entities (that is what apps like CRM do)"
+      ],
+      "doNot": [
+        "Hardcode CRM-specific logic — this is the generic version"
+      ],
+      "estimateHours": 3,
+      "dependsOn": ["B5"]
+    },
+    {
+      "id": "E2",
+      "workstream": "Default apps",
+      "name": "Build apps/generic-replier using @businessos/app-sdk",
+      "goal": "First-party default app that drafts a generic reply suggestion.",
+      "readFirst": [
+        "docs/coordination.md"
+      ],
+      "touch": [
+        "apps/generic-replier/businessos.json",
+        "apps/generic-replier/package.json",
+        "apps/generic-replier/src/index.ts",
+        "apps/generic-replier/src/agents/replier.ts",
+        "apps/generic-replier/LICENSE"
+      ],
+      "acceptance": [
+        "Built using only the public @businessos/app-sdk",
+        "Subscribes to inbox.item_created",
+        "Drafts a generic reply suggestion and appends to the inbox item's suggestions list",
+        "Multiple suggestions coexist (does not overwrite suggestions from other apps)"
+      ],
+      "doNot": [
+        "Take ownership of an item — coexists with domain-specific repliers"
+      ],
+      "estimateHours": 3,
+      "dependsOn": ["B5"]
+    },
+    {
+      "id": "E3",
+      "workstream": "Default apps",
+      "name": "Pre-install Generic Triage and Generic Replier at tenant provision",
+      "goal": "A fresh tenant has both default apps installed automatically.",
+      "readFirst": [
+        "packages/@boringos/core/src/index.ts",
+        "apps/generic-triage/businessos.json",
+        "apps/generic-replier/businessos.json"
+      ],
+      "touch": [
+        "packages/@boringos/core/src/tenant-provisioning.ts (or equivalent)",
+        "packages/@businessos/control-plane/src/default-apps.ts"
+      ],
+      "acceptance": [
+        "On signup with tenantName, both apps are pre-installed via the regular install pipeline (C5)",
+        "Tenant can disable or uninstall either app — they follow the regular lifecycle",
+        "If pre-install fails, signup still succeeds; tenant is told one or both default apps could not be installed"
+      ],
+      "doNot": [
+        "Mark default apps as undeletable — they are uninstallable like any other app"
+      ],
+      "estimateHours": 2,
+      "dependsOn": ["E1", "E2", "C5"]
+    },
+    {
+      "id": "E4",
+      "workstream": "Default apps",
+      "name": "Migrate CRM Email Triage logic into Generic Triage where appropriate",
+      "goal": "Apply the layered split: generic classification stays in shell-default app; CRM-specific interpretation stays in CRM (Phase 2).",
+      "readFirst": [
+        "docs/coordination.md",
+        "../boringos-crm/packages/server/src/agents/email-triage.ts",
+        "apps/generic-triage/src/agents/triage.ts"
+      ],
+      "touch": [
+        "apps/generic-triage/src/agents/triage.ts",
+        "(Phase 2 will handle the corresponding CRM side)"
+      ],
+      "acceptance": [
+        "Generic Triage handles: classification (lead/reply/internal/newsletter/spam), importance scoring, metadata attachment",
+        "Generic Triage does NOT: link to CRM Contacts, create Deals, draft CRM-aware replies (those are CRM's responsibilities, addressed in Phase 2)",
+        "Documented split is consistent with coordination.md"
+      ],
+      "doNot": [
+        "Touch CRM server code — that is Phase 2"
+      ],
+      "estimateHours": 2,
+      "dependsOn": ["E1"]
+    }
+  ]
+}

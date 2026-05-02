@@ -1,3 +1,5 @@
 packages:
   - 'packages/@boringos/*'
+  - 'packages/@businessos/*'
+  - 'apps/*'
   - 'examples/*'
