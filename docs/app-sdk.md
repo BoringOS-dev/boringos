@@ -2,7 +2,7 @@
 
 > The published, versioned contract every connector and app builds against.
 
-This is the reference documentation for `@businessos/app-sdk` and `@businessos/connector-sdk`. It defines every type, every slot, every lifecycle hook, and every helper available to an extension.
+This is the reference documentation for `@boringos/app-sdk` and `@boringos/connector-sdk`. It defines every type, every slot, every lifecycle hook, and every helper available to an extension.
 
 **Audience:** Developers building extensions; reviewers verifying capability declarations.
 **Read first:** [Overview](./overview.md), [Building Apps](./developer/building-apps.md), [Building Connectors](./developer/building-connectors.md).
@@ -14,7 +14,7 @@ This is the reference documentation for `@businessos/app-sdk` and `@businessos/c
 The SDK follows date-based versioning, like Stripe's API:
 
 ```
-@businessos/app-sdk@2026-04-30
+@boringos/app-sdk@2026-04-30
 ```
 
 Each version is supported for a minimum of 2 years after release. Breaking changes always go in a new version; old versions keep working for installed extensions until end-of-support.
@@ -28,7 +28,7 @@ Extensions declare which SDK version they target via `minRuntime` in the manifes
 The single source of truth for what an extension declares. Both connectors and apps share a base type with `kind` discriminating.
 
 ```ts
-// @businessos/app-sdk
+// @boringos/app-sdk
 
 export type Manifest = ConnectorManifest | AppManifest;
 
@@ -82,7 +82,7 @@ export interface AppManifest extends BaseManifest {
 ### `defineConnector`
 
 ```ts
-import { defineConnector } from "@businessos/connector-sdk";
+import { defineConnector } from "@boringos/connector-sdk";
 
 export default defineConnector({
   id: "stripe",
@@ -177,7 +177,7 @@ interface WebhookDefinition {
 ### `defineApp`
 
 ```ts
-import { defineApp } from "@businessos/app-sdk";
+import { defineApp } from "@boringos/app-sdk";
 
 export default defineApp({
   id: "crm",
@@ -296,7 +296,7 @@ The `agentDocs` field is critical — it's what makes the app discoverable to co
 ### `defineUI`
 
 ```ts
-import { defineUI } from "@businessos/app-sdk/ui";
+import { defineUI } from "@boringos/app-sdk/ui";
 
 export default defineUI({
   pages: { ... },
@@ -390,7 +390,7 @@ Apps that want to interpret inbox items (an email is a CRM lead, an email is a s
 ## 6. Database Access (In-Process Apps Only)
 
 ```ts
-import { defineSchema } from "@businessos/app-sdk/db";
+import { defineSchema } from "@boringos/app-sdk/db";
 
 // In a migration file:
 export const up = defineSchema((t) => {
@@ -440,7 +440,7 @@ Events are typed per declaration. Emitting without a matching `events:emit:*` ca
 ## 8. Memory API
 
 ```ts
-import { useMemory } from "@businessos/app-sdk/memory";
+import { useMemory } from "@boringos/app-sdk/memory";
 
 const memory = useMemory(ctx);
 await memory.write("user-preference", { ... }, { scope: "tenant" });
@@ -454,7 +454,7 @@ Memory is per-tenant, scoped, and pluggable (Hebbs by default). Apps with `memor
 ## 9. Test Harness
 
 ```ts
-import { createTestTenant } from "@businessos/app-test-harness";
+import { createTestTenant } from "@boringos/app-test-harness";
 
 test("creates contact on email triage", async () => {
   const t = await createTestTenant({ install: ["crm"] });

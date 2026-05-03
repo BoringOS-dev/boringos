@@ -201,7 +201,7 @@ A manifest that claims more than the code does = warning (declared-but-unused ca
 
 Execute in this order. Each step gates the next.
 
-1. **Define the manifest schema.** Publish `@businessos/connector-manifest-schema` (a JSON Schema for the manifest itself). Without this, no manifest can be validated.
+1. **Define the manifest schema.** Publish `@boringos/connector-manifest-schema` (a JSON Schema for the manifest itself). Without this, no manifest can be validated.
 2. **Add manifest verification CI job.** New connector packages must pass it; existing ones get a warning until migrated.
 3. **Migrate `connector-slack`.** Smallest surface. Use it to discover format issues.
 4. **Address discovered issues.** Iterate the manifest schema based on what slack migration revealed. Re-verify.
@@ -218,7 +218,7 @@ Estimated calendar time: 2–3 weeks for steps 1–7 with a single engineer; fas
 
 Today, `connector-slack` and `connector-google` live inside `boringos-framework/packages/`. They ship and version with the framework.
 
-In the third-party world, every connector is its own repo, its own release cadence, its own publisher. **Eventually, first-party connectors should look the same** — independent repos consuming the published `@businessos/connector-sdk`, distributed through the marketplace like any third party would distribute. Same principle as first-party apps.
+In the third-party world, every connector is its own repo, its own release cadence, its own publisher. **Eventually, first-party connectors should look the same** — independent repos consuming the published `@boringos/connector-sdk`, distributed through the marketplace like any third party would distribute. Same principle as first-party apps.
 
 **But not yet.** Extracting connectors into their own repos before the marketplace exists adds operational overhead with no immediate payoff. The right sequencing:
 

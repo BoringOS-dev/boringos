@@ -8,7 +8,7 @@
     {
       "id": "B1",
       "workstream": "App SDK",
-      "name": "Create @businessos/app-sdk package skeleton",
+      "name": "Create @boringos/app-sdk package skeleton",
       "goal": "Bootstrap the public SDK package so subsequent tasks have somewhere to land code.",
       "readFirst": [
         "docs/overview.md",
@@ -18,17 +18,17 @@
         "packages/@boringos/shared/package.json"
       ],
       "touch": [
-        "packages/@businessos/app-sdk/package.json",
-        "packages/@businessos/app-sdk/tsconfig.json",
-        "packages/@businessos/app-sdk/src/index.ts",
-        "packages/@businessos/app-sdk/LICENSE",
-        "packages/@businessos/app-sdk/README.md"
+        "packages/@boringos/app-sdk/package.json",
+        "packages/@boringos/app-sdk/tsconfig.json",
+        "packages/@boringos/app-sdk/src/index.ts",
+        "packages/@boringos/app-sdk/LICENSE",
+        "packages/@boringos/app-sdk/README.md"
       ],
       "acceptance": [
-        "Package compiles via `pnpm -F @businessos/app-sdk build`",
+        "Package compiles via `pnpm -F @boringos/app-sdk build`",
         "License file is MIT (matches package.json license field)",
         "Empty index.ts exports placeholder (no errors)",
-        "pnpm-workspace.yaml already includes @businessos/* (verify)"
+        "pnpm-workspace.yaml already includes @boringos/* (verify)"
       ],
       "doNot": [
         "Add functional types yet — that is B2",
@@ -50,8 +50,8 @@
         "packages/@boringos/connector/src/types.ts"
       ],
       "touch": [
-        "packages/@businessos/app-sdk/src/manifest.ts",
-        "packages/@businessos/app-sdk/src/index.ts"
+        "packages/@boringos/app-sdk/src/manifest.ts",
+        "packages/@boringos/app-sdk/src/index.ts"
       ],
       "acceptance": [
         "Exports `Manifest`, `ConnectorManifest`, `AppManifest`, `PublisherInfo`, `EntityTypeDeclaration`, `UIManifest`",
@@ -73,14 +73,14 @@
       "goal": "Provide ergonomic builders that produce typed AppDefinition / ConnectorDefinition / UIDefinition values.",
       "readFirst": [
         "docs/app-sdk.md",
-        "packages/@businessos/app-sdk/src/manifest.ts",
+        "packages/@boringos/app-sdk/src/manifest.ts",
         "packages/@boringos/connector-slack/src/connector.ts"
       ],
       "touch": [
-        "packages/@businessos/app-sdk/src/define-app.ts",
-        "packages/@businessos/app-sdk/src/define-connector.ts",
-        "packages/@businessos/app-sdk/src/define-ui.ts",
-        "packages/@businessos/app-sdk/src/index.ts"
+        "packages/@boringos/app-sdk/src/define-app.ts",
+        "packages/@boringos/app-sdk/src/define-connector.ts",
+        "packages/@boringos/app-sdk/src/define-ui.ts",
+        "packages/@boringos/app-sdk/src/index.ts"
       ],
       "acceptance": [
         "`defineApp({...})` returns typed AppDefinition",
@@ -105,10 +105,10 @@
         "docs/coordination.md"
       ],
       "touch": [
-        "packages/@businessos/app-sdk/src/slots.ts",
-        "packages/@businessos/app-sdk/src/lifecycle.ts",
-        "packages/@businessos/app-sdk/src/context.ts",
-        "packages/@businessos/app-sdk/src/index.ts"
+        "packages/@boringos/app-sdk/src/slots.ts",
+        "packages/@boringos/app-sdk/src/lifecycle.ts",
+        "packages/@boringos/app-sdk/src/context.ts",
+        "packages/@boringos/app-sdk/src/index.ts"
       ],
       "acceptance": [
         "Exports: NavSlot, DashboardWidget, EntityAction, EntityDetailPanel, SettingsPanel, CommandAction, CopilotTool, InboxHandler",
@@ -126,20 +126,20 @@
     {
       "id": "B5",
       "workstream": "App SDK",
-      "name": "Publish @businessos/app-sdk@1.0.0-alpha.0 + @businessos/connector-sdk@1.0.0-alpha.0",
-      "goal": "Make the SDK installable from npm under the @businessos scope.",
+      "name": "Publish @boringos/app-sdk@1.0.0-alpha.0 + @boringos/connector-sdk@1.0.0-alpha.0",
+      "goal": "Make the SDK installable from npm under the @boringos scope.",
       "readFirst": [
         "package.json",
-        "packages/@businessos/app-sdk/package.json"
+        "packages/@boringos/app-sdk/package.json"
       ],
       "touch": [
-        "packages/@businessos/app-sdk/package.json",
-        "packages/@businessos/connector-sdk/package.json",
-        "packages/@businessos/connector-sdk/src/index.ts"
+        "packages/@boringos/app-sdk/package.json",
+        "packages/@boringos/connector-sdk/package.json",
+        "packages/@boringos/connector-sdk/src/index.ts"
       ],
       "acceptance": [
         "Both packages published to npm at 1.0.0-alpha.0",
-        "@businessos/connector-sdk re-exports from @businessos/app-sdk (or contains connector-only types)",
+        "@boringos/connector-sdk re-exports from @boringos/app-sdk (or contains connector-only types)",
         "Tagged as alpha (npm dist-tag: alpha)"
       ],
       "doNot": [
@@ -157,11 +157,11 @@
       "readFirst": [
         "docs/developer/migrate-existing-connectors.md",
         "docs/capabilities.md",
-        "packages/@businessos/app-sdk/src/manifest.ts"
+        "packages/@boringos/app-sdk/src/manifest.ts"
       ],
       "touch": [
-        "packages/@businessos/app-sdk/schemas/manifest.schema.json",
-        "packages/@businessos/app-sdk/src/validate.ts"
+        "packages/@boringos/app-sdk/schemas/manifest.schema.json",
+        "packages/@boringos/app-sdk/src/validate.ts"
       ],
       "acceptance": [
         "JSON Schema validates the same shapes the TypeScript types describe",
@@ -265,7 +265,7 @@
     {
       "id": "A1",
       "workstream": "Shell extraction",
-      "name": "Create @businessos/shell package skeleton",
+      "name": "Create @boringos/shell package skeleton",
       "goal": "Bootstrap the shell SPA package so screens can be moved into it.",
       "readFirst": [
         "docs/shell-screens.md",
@@ -273,18 +273,18 @@
         "../boringos-crm/packages/web/vite.config.ts"
       ],
       "touch": [
-        "packages/@businessos/shell/package.json",
-        "packages/@businessos/shell/vite.config.ts",
-        "packages/@businessos/shell/tsconfig.json",
-        "packages/@businessos/shell/src/main.tsx",
-        "packages/@businessos/shell/src/App.tsx",
-        "packages/@businessos/shell/index.html",
-        "packages/@businessos/shell/LICENSE"
+        "packages/@boringos/shell/package.json",
+        "packages/@boringos/shell/vite.config.ts",
+        "packages/@boringos/shell/tsconfig.json",
+        "packages/@boringos/shell/src/main.tsx",
+        "packages/@boringos/shell/src/App.tsx",
+        "packages/@boringos/shell/index.html",
+        "packages/@boringos/shell/LICENSE"
       ],
       "acceptance": [
-        "`pnpm -F @businessos/shell dev` boots a blank React app",
+        "`pnpm -F @boringos/shell dev` boots a blank React app",
         "License is BSL 1.1",
-        "Depends on @boringos/ui and @businessos/app-sdk"
+        "Depends on @boringos/ui and @boringos/app-sdk"
       ],
       "doNot": [
         "Move CRM screens yet — those come in A3-A5"
@@ -300,11 +300,11 @@
       "readFirst": [
         "docs/shell-screens.md",
         "docs/app-sdk.md",
-        "packages/@businessos/app-sdk/src/slots.ts"
+        "packages/@boringos/app-sdk/src/slots.ts"
       ],
       "touch": [
-        "packages/@businessos/shell/src/slots/registry.ts",
-        "packages/@businessos/shell/src/slots/SlotRenderer.tsx"
+        "packages/@boringos/shell/src/slots/registry.ts",
+        "packages/@boringos/shell/src/slots/SlotRenderer.tsx"
       ],
       "acceptance": [
         "Slot registry tracks which apps contributed to which slots",
@@ -321,22 +321,22 @@
       "id": "A3",
       "workstream": "Shell extraction",
       "name": "Move Layout, Sidebar, CommandBar from CRM web to shell",
-      "goal": "Lift the shell chrome into @businessos/shell. Components are CRM-shaped today; generalize as part of the move.",
+      "goal": "Lift the shell chrome into @boringos/shell. Components are CRM-shaped today; generalize as part of the move.",
       "readFirst": [
         "../boringos-crm/packages/web/src/components/Layout.tsx",
         "../boringos-crm/packages/web/src/components/Sidebar.tsx",
         "../boringos-crm/packages/web/src/components/CommandBar.tsx"
       ],
       "touch": [
-        "packages/@businessos/shell/src/chrome/Layout.tsx",
-        "packages/@businessos/shell/src/chrome/Sidebar.tsx",
-        "packages/@businessos/shell/src/chrome/CommandBar.tsx"
+        "packages/@boringos/shell/src/chrome/Layout.tsx",
+        "packages/@boringos/shell/src/chrome/Sidebar.tsx",
+        "packages/@boringos/shell/src/chrome/CommandBar.tsx"
       ],
       "acceptance": [
         "Files copied (not deleted from CRM yet — A8 strips CRM)",
         "CRM-specific nav entries removed; sidebar reads nav contributions from slot registry",
         "CommandBar reads command actions from slot registry",
-        "Compiles with no errors when used by @businessos/shell App.tsx"
+        "Compiles with no errors when used by @boringos/shell App.tsx"
       ],
       "doNot": [
         "Delete from CRM — A8 does that",
@@ -356,9 +356,9 @@
         "../boringos-crm/packages/web/src/lib/auth.ts"
       ],
       "touch": [
-        "packages/@businessos/shell/src/auth/Login.tsx",
-        "packages/@businessos/shell/src/auth/Signup.tsx",
-        "packages/@businessos/shell/src/auth/AuthProvider.tsx"
+        "packages/@boringos/shell/src/auth/Login.tsx",
+        "packages/@boringos/shell/src/auth/Signup.tsx",
+        "packages/@boringos/shell/src/auth/AuthProvider.tsx"
       ],
       "acceptance": [
         "Login + Signup work against /api/auth/* endpoints (existing framework auth)",
@@ -387,13 +387,13 @@
         "../boringos-crm/packages/web/src/pages/Settings.tsx"
       ],
       "touch": [
-        "packages/@businessos/shell/src/screens/Home.tsx",
-        "packages/@businessos/shell/src/screens/Copilot.tsx",
-        "packages/@businessos/shell/src/screens/Inbox.tsx",
-        "packages/@businessos/shell/src/screens/Tasks.tsx",
-        "packages/@businessos/shell/src/screens/Agents.tsx",
-        "packages/@businessos/shell/src/screens/Workflows.tsx",
-        "packages/@businessos/shell/src/screens/Settings.tsx"
+        "packages/@boringos/shell/src/screens/Home.tsx",
+        "packages/@boringos/shell/src/screens/Copilot.tsx",
+        "packages/@boringos/shell/src/screens/Inbox.tsx",
+        "packages/@boringos/shell/src/screens/Tasks.tsx",
+        "packages/@boringos/shell/src/screens/Agents.tsx",
+        "packages/@boringos/shell/src/screens/Workflows.tsx",
+        "packages/@boringos/shell/src/screens/Settings.tsx"
       ],
       "acceptance": [
         "Each screen functions on a fresh tenant with zero apps installed",
@@ -415,11 +415,11 @@
       "readFirst": [
         "docs/coordination.md",
         "docs/shell-screens.md",
-        "packages/@businessos/shell/src/slots/registry.ts"
+        "packages/@boringos/shell/src/slots/registry.ts"
       ],
       "touch": [
-        "packages/@businessos/shell/src/runtime/install-runtime.ts",
-        "packages/@businessos/shell/src/slots/registry.ts"
+        "packages/@boringos/shell/src/runtime/install-runtime.ts",
+        "packages/@boringos/shell/src/slots/registry.ts"
       ],
       "acceptance": [
         "When an app is installed, its UI definition's slot contributions are added to the registry",
@@ -443,11 +443,11 @@
         "docs/developer/publishing-and-install.md"
       ],
       "touch": [
-        "packages/@businessos/shell/src/screens/Apps/index.tsx",
-        "packages/@businessos/shell/src/screens/Apps/Browse.tsx",
-        "packages/@businessos/shell/src/screens/Apps/Installed.tsx",
-        "packages/@businessos/shell/src/screens/Apps/InstallFromUrl.tsx",
-        "packages/@businessos/shell/src/screens/Apps/PermissionPrompt.tsx"
+        "packages/@boringos/shell/src/screens/Apps/index.tsx",
+        "packages/@boringos/shell/src/screens/Apps/Browse.tsx",
+        "packages/@boringos/shell/src/screens/Apps/Installed.tsx",
+        "packages/@boringos/shell/src/screens/Apps/InstallFromUrl.tsx",
+        "packages/@boringos/shell/src/screens/Apps/PermissionPrompt.tsx"
       ],
       "acceptance": [
         "Browse tab shows curated marketplace listings (mock data acceptable in v1; backend deferred)",
@@ -466,10 +466,10 @@
       "id": "A8",
       "workstream": "Shell extraction",
       "name": "Strip CRM web of all moved code",
-      "goal": "One PR in boringos-crm that removes the chrome and shared screens that now live in @businessos/shell.",
+      "goal": "One PR in boringos-crm that removes the chrome and shared screens that now live in @boringos/shell.",
       "readFirst": [
         "../boringos-crm/packages/web/src/App.tsx",
-        "packages/@businessos/shell/src/App.tsx"
+        "packages/@boringos/shell/src/App.tsx"
       ],
       "touch": [
         "../boringos-crm/packages/web/src/components/Layout.tsx [DELETE]",
@@ -554,9 +554,9 @@
         "docs/developer/publishing-and-install.md"
       ],
       "touch": [
-        "packages/@businessos/control-plane/package.json",
-        "packages/@businessos/control-plane/src/fetcher.ts",
-        "packages/@businessos/control-plane/LICENSE"
+        "packages/@boringos/control-plane/package.json",
+        "packages/@boringos/control-plane/src/fetcher.ts",
+        "packages/@boringos/control-plane/LICENSE"
       ],
       "acceptance": [
         "Accepts: github.com/org/repo, github.com/org/repo@vX.Y.Z, github.com/org/repo#branch",
@@ -578,11 +578,11 @@
       "goal": "Validate fetched manifests before any install begins.",
       "readFirst": [
         "docs/capabilities.md",
-        "packages/@businessos/app-sdk/schemas/manifest.schema.json",
-        "packages/@businessos/app-sdk/src/validate.ts"
+        "packages/@boringos/app-sdk/schemas/manifest.schema.json",
+        "packages/@boringos/app-sdk/src/validate.ts"
       ],
       "touch": [
-        "packages/@businessos/control-plane/src/validator.ts"
+        "packages/@boringos/control-plane/src/validator.ts"
       ],
       "acceptance": [
         "Validates against D1 schema",
@@ -605,7 +605,7 @@
         "docs/developer/building-apps.md"
       ],
       "touch": [
-        "packages/@businessos/control-plane/src/install.ts"
+        "packages/@boringos/control-plane/src/install.ts"
       ],
       "acceptance": [
         "Steps run inside a DB transaction: create tenant_apps row, run schema migrations, register agents, register workflow templates, mount routes, register slot contributions, run onTenantCreated",
@@ -629,7 +629,7 @@
         "docs/developer/publishing-and-install.md"
       ],
       "touch": [
-        "packages/@businessos/control-plane/src/uninstall.ts"
+        "packages/@boringos/control-plane/src/uninstall.ts"
       ],
       "acceptance": [
         "Soft: routes unmount, agents pause, slots unregister, tenant_apps marked uninstalling, data retained 30 days",
@@ -653,7 +653,7 @@
         "docs/developer/building-apps.md"
       ],
       "touch": [
-        "packages/@businessos/shell/src/components/PermissionPrompt.tsx"
+        "packages/@boringos/shell/src/components/PermissionPrompt.tsx"
       ],
       "acceptance": [
         "Renders manifest capabilities grouped by category (Data, Agents & Workflows, UI, Integrations, Memory)",
@@ -671,7 +671,7 @@
     {
       "id": "E1",
       "workstream": "Default apps",
-      "name": "Build apps/generic-triage using @businessos/app-sdk",
+      "name": "Build apps/generic-triage using @boringos/app-sdk",
       "goal": "First-party default app that classifies inbox items.",
       "readFirst": [
         "docs/coordination.md",
@@ -685,7 +685,7 @@
         "apps/generic-triage/LICENSE"
       ],
       "acceptance": [
-        "Built using only the public @businessos/app-sdk (no shell internals)",
+        "Built using only the public @boringos/app-sdk (no shell internals)",
         "Subscribes to inbox.item_created via workflow",
         "Classifies items, scores importance, attaches metadata to inbox item",
         "Does NOT draft replies (that is generic-replier's job)",
@@ -700,7 +700,7 @@
     {
       "id": "E2",
       "workstream": "Default apps",
-      "name": "Build apps/generic-replier using @businessos/app-sdk",
+      "name": "Build apps/generic-replier using @boringos/app-sdk",
       "goal": "First-party default app that drafts a generic reply suggestion.",
       "readFirst": [
         "docs/coordination.md"
@@ -713,7 +713,7 @@
         "apps/generic-replier/LICENSE"
       ],
       "acceptance": [
-        "Built using only the public @businessos/app-sdk",
+        "Built using only the public @boringos/app-sdk",
         "Subscribes to inbox.item_created",
         "Drafts a generic reply suggestion and appends to the inbox item's suggestions list",
         "Multiple suggestions coexist (does not overwrite suggestions from other apps)"
@@ -736,7 +736,7 @@
       ],
       "touch": [
         "packages/@boringos/core/src/tenant-provisioning.ts (or equivalent)",
-        "packages/@businessos/control-plane/src/default-apps.ts"
+        "packages/@boringos/control-plane/src/default-apps.ts"
       ],
       "acceptance": [
         "On signup with tenantName, both apps are pre-installed via the regular install pipeline (C5)",

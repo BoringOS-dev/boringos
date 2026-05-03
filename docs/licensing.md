@@ -24,8 +24,8 @@ This follows the **Sentry / MariaDB / CockroachDB / HashiCorp** pattern, not the
 | -------------------------------------- | ------------------ | --------------- | ------------------------------------------------------------------------------------ |
 | `boringos-framework` (runtime)         | MIT                | `MIT`           | Maximize adoption; SDKs and primitives win by being everywhere                       |
 | `@boringos/connector-*` (built-in connectors) | MIT         | `MIT`           | Same reasoning; community-friendly                                                   |
-| `@businessos/connector-sdk`            | MIT                | `MIT`           | The contract third parties build connectors against                                  |
-| `@businessos/app-sdk`                  | Apache 2.0         | `Apache-2.0`    | Includes patent grant; the contract third parties build apps against                 |
+| `@boringos/connector-sdk`            | MIT                | `MIT`           | The contract third parties build connectors against                                  |
+| `@boringos/app-sdk`                  | Apache 2.0         | `Apache-2.0`    | Includes patent grant; the contract third parties build apps against                 |
 | `@boringos/shell` (the wp-admin)       | BSL 1.1, converts to Apache 2.0 after 4 years | `BUSL-1.1`      | Commercial surface; competitors blocked from hosting; sunsets to permissive            |
 | First-party apps (CRM, Accounts, etc.) | BSL 1.1, converts to Apache 2.0 after 4 years | `BUSL-1.1`      | Sold products; same model as shell                                                   |
 | Hosted control plane (marketplace, billing, ops) | Closed source | n/a            | No reason to publish; pure operational layer                                         |

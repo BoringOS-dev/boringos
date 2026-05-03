@@ -53,7 +53,7 @@ CRM exists as a proof of concept domain app on top of this runtime — but it cu
 - `shell-screens-1` — Implement the 13 shell-owned screens (Home, Copilot, Inbox, Tasks, Agents, Workflows, Drive, Connectors, Apps, Team, Settings, Activity, Approvals)
 - `shell-screens-2` — Build the **Apps screen** (the killer screen): Browse / Installed / Updates / Install from URL
 - `tenant-apps-registry` — `tenant_apps` and `tenant_connectors` tables; install / activate / upgrade / uninstall lifecycle; capability storage and runtime checks
-- `app-sdk-v1` — Publish `@businessos/app-sdk` and `@businessos/connector-sdk` v1; freeze the manifest contract
+- `app-sdk-v1` — Publish `@boringos/app-sdk` and `@boringos/connector-sdk` v1; freeze the manifest contract
 - `default-apps` — Build **Generic Inbox Triage** and **Generic Email Replier** as pre-installed first-party default apps using the public SDK. Without these, a fresh tenant has nothing useful out of the box. They follow the regular install / disable / uninstall lifecycle (uninstallable, not shell core). See [coordination.md](../coordination.md) for the rationale.
 - `connector-migration` — Migrate `connector-slack`, `connector-google` to the new manifest + capability format. Migrate action I/O from `ActionFieldDef` to JSON Schema. Add CI verification job. **Phase 1 cannot exit until existing connectors pass the same checks third-party connectors will pass.** See [migrate-existing-connectors.md](./developer/migrate-existing-connectors.md).
 - `dev-tooling` — `create-businessos-app` and `create-businessos-connector` scaffolders; local dev sandbox; test harness packages

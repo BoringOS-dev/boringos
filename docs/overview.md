@@ -188,7 +188,7 @@ Open the SDK to third-party developers only after CRM and Accounts run side-by-s
 1. **Shell extraction.** Move the shared chrome out of `boringos-crm/packages/web` into `@boringos/shell`. Define slot APIs.
 2. **App SDK v1.** Manifest type, capability scopes, lifecycle hooks, slot contributions. Publish to npm.
 3. **Apps screen + registry.** `tenant_apps` table; install / activate / upgrade / uninstall lifecycle.
-4. **Port CRM.** Rebuild as a manifest-driven app consuming `@boringos/shell` + `@businessos/app-sdk`.
+4. **Port CRM.** Rebuild as a manifest-driven app consuming `@boringos/shell` + `@boringos/app-sdk`.
 5. **Second app (Accounts).** Built from scratch against the SDK. Promotes `entity_refs` to first-class.
 6. **Public marketplace.** SDK + dev portal + signed bundles + billing rails.
 
@@ -204,7 +204,7 @@ boringos-framework/                ← THIS REPO. The whole platform.
     @boringos/                       Existing kernel packages (MIT)
       agent/ db/ connector/ connector-slack/ connector-google/
       core/ drive/ memory/ runtime/ shared/ ui/ workflow/ workflow-ui/
-    @businessos/                     New platform packages (mixed licenses)
+    @boringos/                     New platform packages (mixed licenses)
       app-sdk/                       MIT — the public SDK contract
       connector-sdk/                 MIT — connector authoring contract
       shell/                         BSL — the user-facing UI (wp-admin)
@@ -220,7 +220,7 @@ boringos-framework/                ← THIS REPO. The whole platform.
 boringos-crm/                      ← Phase 2 target.
                                      Consumer of the platform. Will be ported
                                      to the manifest-driven app model in Phase 2.
-                                     Consumes @businessos/app-sdk from registry.
+                                     Consumes @boringos/app-sdk from registry.
 ```
 
 Future first-party apps (Sales, Accounts, Finance) get their own repos *when they're built*, not preemptively. Third-party developers build their own repos.
@@ -230,9 +230,9 @@ Each package has its own license:
 | Layer                 | License              | Reason |
 | --------------------- | -------------------- | ------ |
 | `@boringos/*` (kernel) | MIT (Apache 2.0 OK) | Maximize adoption; SDKs win by being everywhere |
-| `@businessos/shell` | BSL 1.1 (auto-converts to Apache 2.0 in 4 yr) | Commercial moat; competitors blocked from hosting it |
-| `@businessos/control-plane` | BSL 1.1 (auto-converts to Apache 2.0 in 4 yr) | Same reasoning as the shell |
-| `@businessos/app-sdk`, `@businessos/connector-sdk` | MIT / Apache 2.0 | The contract third-party devs build against |
+| `@boringos/shell` | BSL 1.1 (auto-converts to Apache 2.0 in 4 yr) | Commercial moat; competitors blocked from hosting it |
+| `@boringos/control-plane` | BSL 1.1 (auto-converts to Apache 2.0 in 4 yr) | Same reasoning as the shell |
+| `@boringos/app-sdk`, `@boringos/connector-sdk` | MIT / Apache 2.0 | The contract third-party devs build against |
 | First-party apps (`apps/*`) | BSL or proprietary | Sold products |
 | Third-party apps & connectors | Author's choice | Each external repo decides |
 

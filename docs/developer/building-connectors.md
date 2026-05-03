@@ -117,14 +117,14 @@ my-stripe-connector/
     create_invoice.input.json
     create_invoice.output.json
   test/
-    connector.test.ts          ← uses @businessos/connector-test-harness
+    connector.test.ts          ← uses @boringos/connector-test-harness
   dist/                        ← built output (gitignored, generated on publish)
 ```
 
 The exported `ConnectorDefinition`:
 
 ```ts
-import { defineConnector } from "@businessos/connector-sdk";
+import { defineConnector } from "@boringos/connector-sdk";
 import { stripeAuth } from "./auth";
 import { createInvoice } from "./actions/create_invoice";
 import { paymentReceived } from "./events/payment_received";
@@ -181,7 +181,7 @@ The dev sandbox spins up a local BusinessOS shell with your connector pre-instal
 pnpm test
 ```
 
-Uses `@businessos/connector-test-harness` to:
+Uses `@boringos/connector-test-harness` to:
 
 - Stub OAuth, fire fake events, assert action behavior
 - Validate every emitted event against its schema

@@ -173,13 +173,13 @@ my-crm-app/
         types.ts                  ← TypeScript types shared between server + web
         constants.ts
   test/
-    integration/                  ← uses @businessos/app-test-harness
+    integration/                  ← uses @boringos/app-test-harness
 ```
 
 The exported `AppDefinition` (server side):
 
 ```ts
-import { defineApp } from "@businessos/app-sdk";
+import { defineApp } from "@boringos/app-sdk";
 import * as agents from "./agents";
 import * as workflows from "./workflows";
 import * as routes from "./routes";
@@ -200,7 +200,7 @@ export default defineApp({
 The UI half exports slot contributions:
 
 ```ts
-import { defineUI } from "@businessos/app-sdk/ui";
+import { defineUI } from "@boringos/app-sdk/ui";
 import { PipelinePage, ContactsPage } from "./pages";
 import { OpenDealsWidget, StalledDealsWidget } from "./slots/dashboard-widgets";
 import { SendFollowupAction } from "./slots/entity-actions";
@@ -271,7 +271,7 @@ You can iterate on a slot component and see it update live without re-installing
 pnpm test
 ```
 
-Uses `@businessos/app-test-harness`:
+Uses `@boringos/app-test-harness`:
 
 - Spawns an isolated test tenant per test
 - Lets you assert against agent runs, workflow executions, route responses, slot rendering

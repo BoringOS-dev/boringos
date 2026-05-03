@@ -14,10 +14,10 @@ For the full reasoning, see [`docs/licensing.md`](./docs/licensing.md).
 |---|---|---|
 | `packages/@boringos/*` (kernel) | `MIT` | Maximize adoption; SDKs and primitives win by being everywhere |
 | `packages/@boringos/connector-*` (Slack, Google) | `MIT` | Same reasoning; community-friendly |
-| `packages/@businessos/app-sdk` | `MIT` | The contract third-party developers build apps against |
-| `packages/@businessos/connector-sdk` | `MIT` | The contract third-party developers build connectors against |
-| `packages/@businessos/shell` | `BUSL-1.1` (auto-converts to `Apache-2.0` after 4 yr) | Commercial surface; competitors blocked from hosting |
-| `packages/@businessos/control-plane` | `BUSL-1.1` (auto-converts to `Apache-2.0` after 4 yr) | Same reasoning as shell |
+| `packages/@boringos/app-sdk` | `MIT` | The contract third-party developers build apps against |
+| `packages/@boringos/connector-sdk` | `MIT` | The contract third-party developers build connectors against |
+| `packages/@boringos/shell` | `BUSL-1.1` (auto-converts to `Apache-2.0` after 4 yr) | Commercial surface; competitors blocked from hosting |
+| `packages/@boringos/control-plane` | `BUSL-1.1` (auto-converts to `Apache-2.0` after 4 yr) | Same reasoning as shell |
 | `apps/*` (first-party default apps) | `BUSL-1.1` (auto-converts to `Apache-2.0` after 4 yr) | Commercial product layer |
 
 The repo-default `LICENSE` file at the root is **MIT** (the kernel's license, applies to anything not otherwise marked). Each package directory contains its own `LICENSE` file that overrides the root for that package.

@@ -48,13 +48,13 @@ The contract everything else depends on. Build first.
 
 | Task | Goal |
 |---|---|
-| **B1** | Create `packages/@businessos/app-sdk/` skeleton (package.json, tsconfig, build) |
+| **B1** | Create `packages/@boringos/app-sdk/` skeleton (package.json, tsconfig, build) |
 | **B2** | Define `ConnectorManifest` and `AppManifest` types per Phase 0 naming (`kind`, `id`, `type`, `name`) |
 | **B3** | Implement `defineApp`, `defineConnector`, `defineUI` helpers |
 | **B4** | Define slot type interfaces, `ContextBuildContext`, `LifecycleContext` |
-| **B5** | Publish `@businessos/app-sdk@1.0.0-alpha.0` and `@businessos/connector-sdk@1.0.0-alpha.0` |
+| **B5** | Publish `@boringos/app-sdk@1.0.0-alpha.0` and `@boringos/connector-sdk@1.0.0-alpha.0` |
 
-**Acceptance:** Both packages compile, type-check, and are publishable. A consumer can `import { defineApp } from "@businessos/app-sdk"` and get a fully-typed builder.
+**Acceptance:** Both packages compile, type-check, and are publishable. A consumer can `import { defineApp } from "@boringos/app-sdk"` and get a fully-typed builder.
 
 ---
 
@@ -81,11 +81,11 @@ Validates the SDK against real existing code. **Don't proceed past D2 if migrati
 
 ## Workstream A — Shell extraction (8 tasks)
 
-The biggest workstream by volume. Lift the shell out of `boringos-crm/packages/web` into `@businessos/shell`.
+The biggest workstream by volume. Lift the shell out of `boringos-crm/packages/web` into `@boringos/shell`.
 
 | Task | Goal |
 |---|---|
-| **A1** | Create `packages/@businessos/shell/` skeleton (package.json, vite, React) |
+| **A1** | Create `packages/@boringos/shell/` skeleton (package.json, vite, React) |
 | **A2** | Define slot type contracts (`NavSlot`, `DashboardWidget`, `EntityAction`, `EntityDetailPanel`, `SettingsPanel`, `CommandAction`, `CopilotTool`, `InboxHandler`) |
 | **A3** | Move `Layout`, `Sidebar`, `CommandBar` from CRM web → shell |
 | **A4** | Move `Login`, `Signup`, auth screens |
@@ -94,7 +94,7 @@ The biggest workstream by volume. Lift the shell out of `boringos-crm/packages/w
 | **A7** | Implement Apps screen (Browse + Installed + Updates + Install from URL tabs) |
 | **A8** | Strip CRM web of all moved code (one PR in `boringos-crm`) |
 
-**Acceptance:** `pnpm dev` in `packages/@businessos/shell` boots a usable shell with no apps installed. Sidebar, Copilot, Inbox, Tasks, Workflows, Settings all work. Apps screen renders empty installed list and supports Install from URL.
+**Acceptance:** `pnpm dev` in `packages/@boringos/shell` boots a usable shell with no apps installed. Sidebar, Copilot, Inbox, Tasks, Workflows, Settings all work. Apps screen renders empty installed list and supports Install from URL.
 
 ---
 
@@ -122,7 +122,7 @@ Without these, the shell is empty out of the box.
 
 | Task | Goal |
 |---|---|
-| **E1** | Build `apps/generic-triage/` using `@businessos/app-sdk`. Subscribes to `inbox.item_created`, classifies, scores, attaches metadata |
+| **E1** | Build `apps/generic-triage/` using `@boringos/app-sdk`. Subscribes to `inbox.item_created`, classifies, scores, attaches metadata |
 | **E2** | Build `apps/generic-replier/` using same SDK. Drafts a generic reply suggestion when no domain-specific app does |
 | **E3** | Pre-install both at tenant provision (via existing `onTenantCreated` hook) |
 | **E4** | Migrate CRM Email Triage logic out of CRM into Generic Triage where appropriate (the generic split discussed in coordination.md) |
@@ -135,7 +135,7 @@ Without these, the shell is empty out of the box.
 
 All four hold:
 
-1. **`@businessos/app-sdk@1.0.0-alpha.0`** published to npm
+1. **`@boringos/app-sdk@1.0.0-alpha.0`** published to npm
 2. **Slack and Google connectors** migrated, CI verification passes
 3. **Shell boots usably** with zero apps; with both default apps pre-installed
 4. **GitHub-URL install** works end-to-end for a hypothetical third-party app
