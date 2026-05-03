@@ -451,6 +451,32 @@ Memory is per-tenant, scoped, and pluggable (Hebbs by default). Apps with `memor
 
 ---
 
+## 8b. Branding API
+
+Apps can read the tenant's current brand to keep their UI in sync with the rest of the shell. Defaults flow through if the tenant has not customized.
+
+```tsx
+import { useBrand } from "@boringos/app-sdk/branding";
+
+function MyAppHeader() {
+  const { productName, logoUrl, primaryColor } = useBrand();
+  return (
+    <header style={{ background: primaryColor }}>
+      <img src={logoUrl} alt={productName} />
+      <h1>{productName} — My App</h1>
+    </header>
+  );
+}
+```
+
+The `useBrand()` hook returns: `productName`, `productTagline`, `logoUrl`, `faviconUrl`, `primaryColor`, `secondaryColor`, `loginBackground`, `emailFromName`. Backed by the shell's `BrandProvider`, which loads tenant settings at auth time.
+
+Apps with their own visual identity (a domain-specific app that wants to look distinct from the shell) can simply not call this hook and use their own design tokens. Most apps should call it to inherit the tenant's brand by default.
+
+See [shell-screens.md § 13](./shell-screens.md#13-settings) for the editing UI and the full list of brand fields.
+
+---
+
 ## 9. Test Harness
 
 ```ts

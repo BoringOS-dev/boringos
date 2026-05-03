@@ -1,4 +1,4 @@
-# BusinessOS
+# BoringOS
 ### The harness is the brain. Everything else is a plugin.
 
 ---
@@ -25,7 +25,7 @@ A task is created. Instead of a human opening an app to work on it — the task 
 
 The harness is not locked to one model. Businesses choose theirs — Claude, Codex, Gemini, Ollama, their own. The harness is swappable. What is not swappable is the infrastructure that connects the harness to the business: the sessions, the memory, the workflows, the event bus, the app context.
 
-**That infrastructure is BusinessOS.**
+**That infrastructure is BoringOS.**
 
 ```
 Business process
@@ -69,13 +69,13 @@ The incumbents cannot respond. Salesforce cannot strip out Salesforce and lead w
 
 ## What We Are Building
 
-BusinessOS is the operating layer that connects harnesses to business operations.
+BoringOS is the operating layer that connects harnesses to business operations.
 
 - **Runtime:** Any harness — Claude CLI, Codex, Gemini, Ollama, custom — plugs in as an adapter. Businesses are not locked to one model.
 - **Sessions:** Every task becomes a harness session with full persistent context. Memory survives across runs.
 - **Orchestration:** DAG workflows sequence multi-step, multi-harness processes. Events trigger sessions automatically. Approvals surface only when human judgment is required.
 - **Apps as plugins:** CRM, Accounts, Finance, HR — each is a context provider and action surface for the harness. They install into the OS, not the other way around.
-- **Hosted platform:** BusinessOS ships as a hosted product. Shell live. Apps install from a marketplace. Third-party developers build on the same SDK.
+- **Hosted platform:** BoringOS ships as a hosted product. Shell live. Apps install from a marketplace. Third-party developers build on the same SDK.
 
 ---
 
@@ -102,7 +102,7 @@ All others are focused on niche. Nobody is focused on the layer beneath the nich
 
 Raising **$[X]M seed.** Ship the shell (Q2). CRM public beta (Q3). Two additional plugins (Q4). Open marketplace (Q1 next year).
 
-Goal by end of year: **businesses running BusinessOS as their primary operating layer** — not as one tool among many, but as the OS the harness runs on.
+Goal by end of year: **businesses running BoringOS as their primary operating layer** — not as one tool among many, but as the OS the harness runs on.
 
 ---
 
@@ -112,8 +112,8 @@ Windows did not compete with Word. Word ran on Windows.
 
 iOS did not compete with Instagram. Instagram ran on iOS.
 
-**BusinessOS does not compete with Salesforce. Salesforce runs on BusinessOS.**
+**BoringOS does not compete with Salesforce. Salesforce runs on BoringOS.**
 
 ---
 
-*BusinessOS — parag@dpsn.org*
+*BoringOS — parag@dpsn.org*

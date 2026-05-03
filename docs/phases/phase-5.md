@@ -17,7 +17,7 @@
 | **W** | Enterprise tier | SSO, SCIM, audit log retention, IP allowlist, custom roles, private app registry |
 | **X** | Marketplace categories | Curated categories, featured listings, editorial reviews |
 | **Y** | App trials | Free trial mechanics; auto-conversion or auto-disable on expiry |
-| **Z** | App bundles | "BusinessOS Suite" first-party bundle (CRM + Accounts + Sales) at a discount |
+| **Z** | App bundles | "BoringOS Suite" first-party bundle (CRM + Accounts + Sales) at a discount |
 
 Detail comes when Phase 4 is closed.
 

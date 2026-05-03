@@ -2,7 +2,7 @@
 
 > The build sequence — what ships when, and the reasoning behind each phase.
 
-This is the public roadmap for BusinessOS. It captures the order, the gates between phases, and the goals at each milestone. It is updated as the platform progresses, but the **principles** (Section 1) do not change without explicit team review.
+This is the public roadmap for BoringOS. It captures the order, the gates between phases, and the goals at each milestone. It is updated as the platform progresses, but the **principles** (Section 1) do not change without explicit team review.
 
 **Audience:** Contributors, partners, investors, third-party developers planning when to build.
 **Read first:** [Overview](./overview.md) — especially Section 6 (Build Approach).
@@ -73,7 +73,7 @@ CRM exists as a proof of concept domain app on top of this runtime — but it cu
 - `crm-port-1` — Strip the CRM SPA's chrome (router root, sidebar, top bar, auth, copilot host); domain components (DealForm, DossierView, PipelinePage) survive
 - `crm-port-2` — Re-register all UI contributions through manifest slots: Pipeline → `nav`; DossierView → `entity.detail` for `crm_contact`; "Send follow-up" → `entity.action` on Deal
 - `crm-port-3` — Server-side: `defineApp` registration, schema migrations, `onTenantCreated` provisioning
-- `crm-marketplace-listing` — First marketplace listing (single app: CRM by BusinessOS)
+- `crm-marketplace-listing` — First marketplace listing (single app: CRM by BoringOS)
 - `crm-public-beta` — Public beta of CRM running on the shell; design partners migrated
 
 **Phase 2 Gate:** A fresh tenant can install CRM from the shell's Apps screen in under 30 seconds. CRM nav entries appear; agents seed; copilot picks up CRM context. **If the port required modifying the SDK, the contract is wrong — fix and re-port.**
@@ -130,7 +130,7 @@ CRM exists as a proof of concept domain app on top of this runtime — but it cu
 - `enterprise-tier` — SSO, SCIM, audit log retention, IP allowlist, custom roles, private app registry for internal-only apps
 - `marketplace-categories` — Curated categories, featured listings, editorial reviews
 - `app-trials` — Free trial mechanics for paid apps; auto-conversion or auto-disable on expiry
-- `app-bundles` — "BusinessOS Suite" first-party bundle (CRM + Accounts + Sales) at a discount
+- `app-bundles` — "BoringOS Suite" first-party bundle (CRM + Accounts + Sales) at a discount
 
 **Phase 5 Gate:** First paying customers on the shell; first paying installs of paid apps; first revenue-share payouts to third-party publishers.
 

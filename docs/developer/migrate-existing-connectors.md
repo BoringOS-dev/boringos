@@ -56,7 +56,7 @@ app.connector(slack({ signingSecret: process.env.SLACK_SIGNING_SECRET }))
 
 What does **not** exist today:
 
-- A `businessos.json` manifest at the connector package root
+- A `boringos.json` manifest at the connector package root
 - Capability declarations
 - JSON Schema for action inputs/outputs (uses framework's own `ActionFieldDef`)
 - Multiple auth types (only OAuth)
@@ -73,7 +73,7 @@ Two layers, clean separation:
 
 The factory function and `ConnectorDefinition` shape survive intact. This is what the framework runtime consumes.
 
-### Layer 2 — `businessos.json` manifest (new, additive)
+### Layer 2 — `boringos.json` manifest (new, additive)
 
 A JSON manifest at the connector package root, parsed by the shell at install time. Declares identity, version, publisher, capabilities, and references the compiled bundle that exports the `ConnectorDefinition`.
 
@@ -84,7 +84,7 @@ A JSON manifest at the connector package root, parsed by the shell at install ti
   "version": "1.0.0",
   "name": "Slack",
   "description": "Send and receive messages in Slack channels and threads.",
-  "publisher": { "name": "BusinessOS", "verified": true },
+  "publisher": { "name": "BoringOS", "verified": true },
   "entry": "dist/index.js",
   "capabilities": [
     "auth:oauth:slack",
@@ -112,7 +112,7 @@ The manifest is a **verifiable projection** of the `ConnectorDefinition`. At bui
 | Single `handleWebhook` method (internal routing) | ✓ |  |
 | OAuth as primary auth path | ✓ |  |
 | Consumer API (`app.connector(slack({...}))`) | ✓ |  |
-| `businessos.json` at package root |  | **New** |
+| `boringos.json` at package root |  | **New** |
 | Capability declarations |  | **New** |
 | Action input/output schemas |  | Migrate `ActionFieldDef` → JSON Schema (or accept both) |
 | Webhook paths in manifest |  | **New** (metadata only; routing stays in `handleWebhook`) |
@@ -135,7 +135,7 @@ The manifest is a **verifiable projection** of the `ConnectorDefinition`. At bui
 
 **Specific work:**
 
-1. Add `packages/@boringos/connector-slack/businessos.json`
+1. Add `packages/@boringos/connector-slack/boringos.json`
 2. Declare capabilities: `auth:oauth:slack`, `events:emit:slack.*`, `actions:expose:3`, `webhooks:receive:/events`, `network:outbound:slack.com`
 3. Migrate the 3 actions' `inputs`/`outputs` from `ActionFieldDef` shape to JSON Schemas in `schemas/`
 4. Declare webhook paths in manifest (purely metadata; `handleWebhook` continues to route internally)
@@ -156,7 +156,7 @@ The manifest is a **verifiable projection** of the `ConnectorDefinition`. At bui
 
 **Specific work:**
 
-1. Add `packages/@boringos/connector-google/businessos.json`
+1. Add `packages/@boringos/connector-google/boringos.json`
 2. Declare capabilities for both Gmail + Calendar event/action sets
 3. Migrate all action I/O to JSON Schema
 4. Two outbound network domains declared: `googleapis.com`, `accounts.google.com`
@@ -184,7 +184,7 @@ The migration is only complete when CI verifies, on every push to a connector pa
 
 | Check | What it verifies |
 |---|---|
-| Manifest validity | `businessos.json` is well-formed, all referenced files exist |
+| Manifest validity | `boringos.json` is well-formed, all referenced files exist |
 | Events match | Manifest's declared event types match `ConnectorDefinition.events[].type` |
 | Actions match | Manifest's declared action count matches `ConnectorDefinition.actions.length` |
 | Auth match | `ConnectorDefinition.oauth?.scopes` ⊆ what `auth:oauth:{provider}` capability implies |
@@ -252,8 +252,8 @@ The Phase 1 migration is the **format change**. The Phase 4 extraction is the **
 
 The migration is complete when:
 
-- [ ] `connector-slack` ships with `businessos.json`, all CI checks pass
-- [ ] `connector-google` ships with `businessos.json`, all CI checks pass
+- [ ] `connector-slack` ships with `boringos.json`, all CI checks pass
+- [ ] `connector-google` ships with `boringos.json`, all CI checks pass
 - [ ] GitHub plugin's classification (connector vs plugin) is decided and acted on
 - [ ] CI verification job is mandatory (error level) for every connector package
 - [ ] At least one third-party developer (could be internal, simulating third-party) successfully scaffolds and publishes a connector using only the public manifest format and SDK — proving the contract works end-to-end

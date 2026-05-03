@@ -1,14 +1,14 @@
-# BusinessOS — Overview & Approach
+# BoringOS — Overview & Approach
 
 > The harness is the brain. Everything else is a plugin.
 
-This document orients you on what BusinessOS is, how it is structured, and the reasoning behind the build sequence. Read this before reading any other doc in this repo.
+This document orients you on what BoringOS is, how it is structured, and the reasoning behind the build sequence. Read this before reading any other doc in this repo.
 
 ---
 
-## 1. What Is BusinessOS
+## 1. What Is BoringOS
 
-BusinessOS is the operating layer that connects AI harnesses (Claude CLI, Codex, Gemini, Ollama, custom) to the operations of a business.
+BoringOS is the operating layer that connects AI harnesses (Claude CLI, Codex, Gemini, Ollama, custom) to the operations of a business.
 
 It is not a CRM. It is not a workflow tool. It is not a chatbot. It is the OS that makes harnesses safe, persistent, auditable, and useful for real business work — so that every task in the business runs as a harness session, with full memory, full context, and full control.
 
@@ -18,7 +18,7 @@ Apps — CRM, Accounts, Sales, Finance, HR — are plugins that provide context 
 
 ## 2. The Architecture
 
-BusinessOS has four layers. Each layer is independent, swappable, and built to a stable contract.
+BoringOS has four layers. Each layer is independent, swappable, and built to a stable contract.
 
 ```
 ┌─────────────────────────────────────────────────────────────┐
@@ -93,6 +93,8 @@ The shell is what a user sees on day one, before any app is installed. It is ful
 The shell is agentic without any app. A user can connect Gmail, build a workflow that wakes an agent on incoming email, and ship work — with zero apps installed. Apps make the shell domain-specific; they do not make it useful.
 
 **Default behaviors ship as first-party default apps, not as shell logic.** What look like shell features (email triage, generic reply drafting, default inbox routing) are pre-installed first-party apps following the regular install / disable / uninstall lifecycle. The shell core itself owns only structural surfaces — auth, tenancy, the inbox table, the event bus, the workflow runtime, the agent runtime. This is how the shell stays agnostic to which apps a tenant has installed. See [coordination.md](./coordination.md) for the full pattern.
+
+**Branding is fully configurable per-tenant.** Product name, tagline, logo, favicon, primary/secondary colors, login screen background, email sender name — all live in tenant settings and can be edited via Settings → Branding. The shell uses BoringOS branding by default; every customer can completely white-label without forking. All shell chrome reads from a `BrandProvider`; apps can opt into the tenant brand via the same `useBrand()` hook (default) or use their own visual identity. See [shell-screens.md § 13](./shell-screens.md#13-settings) for the editing UI.
 
 ---
 

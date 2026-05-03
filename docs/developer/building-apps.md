@@ -1,6 +1,6 @@
 # Building Apps
 
-> An app is a domain-specific plugin that turns BusinessOS into a vertical-aware operating system — a CRM, an Accounts package, a HR system, anything.
+> An app is a domain-specific plugin that turns BoringOS into a vertical-aware operating system — a CRM, an Accounts package, a HR system, anything.
 
 This guide walks through what an app is, what it can do, how to build one, and how to publish it for one-click install.
 
@@ -11,7 +11,7 @@ This guide walks through what an app is, what it can do, how to build one, and h
 
 ## 1. What an App Is
 
-An app is the highest-level extension in BusinessOS. It does what a connector does — and far more:
+An app is the highest-level extension in BoringOS. It does what a connector does — and far more:
 
 - Defines its own data (schema, entities)
 - Registers its own agents and workflow templates
@@ -51,7 +51,7 @@ Reference implementation: [`@boringos-crm`](../../../hebbs-clients/boringos-crm)
 
 ## 3. The Manifest
 
-`businessos.json` at the app's repo root:
+`boringos.json` at the app's repo root:
 
 ```json
 {
@@ -61,8 +61,8 @@ Reference implementation: [`@boringos-crm`](../../../hebbs-clients/boringos-crm)
   "name": "CRM",
   "description": "Contacts, companies, deals, pipeline.",
   "publisher": {
-    "name": "BusinessOS",
-    "homepage": "https://businessos.com",
+    "name": "BoringOS",
+    "homepage": "https://boringos.dev",
     "verified": true
   },
   "hosting": "in-process",
@@ -125,7 +125,7 @@ An app is split into server and UI halves, plus a shared types package. Mirrors 
 
 ```
 my-crm-app/
-  businessos.json                 ← manifest (root, required)
+  boringos.json                 ← manifest (root, required)
   README.md
   LICENSE
   package.json
@@ -258,7 +258,7 @@ pnpm dev
 
 This:
 
-1. Spins up a local BusinessOS shell sandbox
+1. Spins up a local BoringOS shell sandbox
 2. Provisions a fresh tenant
 3. Installs your app (running migrations, seeding agents, mounting routes, loading UI slots)
 4. Watches for changes — schema, server, UI all hot-reload independently
@@ -291,7 +291,7 @@ Two paths, same as connectors. Reference: [Publishing & Install](./publishing-an
 For private apps, internal-only builds, beta releases.
 
 1. Push to GitHub, tag `v1.0.0`
-2. Release artifact must include `businessos.json`, server `dist/`, UI `dist/`, and `schema/migrations/`
+2. Release artifact must include `boringos.json`, server `dist/`, UI `dist/`, and `schema/migrations/`
 3. Tenant pastes the GitHub URL → shell fetches manifest → permission prompt → install
 
 GitHub-direct apps always run **remote**. In-process hosting requires marketplace approval.
@@ -320,7 +320,7 @@ Apps requesting `entities.{other_app}:read` go through human review of the cross
 When a user installs CRM:
 
 ```
-CRM by BusinessOS · verified
+CRM by BoringOS · verified
 
 This app requests permission to:
   ✦ Create and manage its own data (3 entity types: contacts, companies, deals)

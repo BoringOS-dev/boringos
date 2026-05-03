@@ -45,7 +45,7 @@ CI fails any new file without a header. CI also verifies the header matches the 
 Packages licensed under BSL 1.1:
 
 - **Allow:** read, audit, modify, use in production for non-competing use cases (including running internally for your organization)
-- **Prohibit:** offer the code as a competing managed service (e.g. "BusinessOS-as-a-Service")
+- **Prohibit:** offer the code as a competing managed service (e.g. "BoringOS-as-a-Service")
 - **Auto-convert:** four years after a version's release, that version becomes Apache 2.0
 
 If you have a use case that may fall on the edge of "competing managed service," contact us. Additional grants are routinely available.

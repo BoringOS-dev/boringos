@@ -1,8 +1,8 @@
 # Building Connectors
 
-> A connector turns an external service into something agents in BusinessOS can read from and act on.
+> A connector turns an external service into something agents in BoringOS can read from and act on.
 
-This guide walks through what a connector is, what it can do, how to build one, and how to publish it so any BusinessOS tenant can install it with one click.
+This guide walks through what a connector is, what it can do, how to build one, and how to publish it so any BoringOS tenant can install it with one click.
 
 **Audience:** Developers building integrations to external SaaS or APIs.
 **Read first:** [Overview](../overview.md) — especially the architecture and core concepts.
@@ -11,7 +11,7 @@ This guide walks through what a connector is, what it can do, how to build one, 
 
 ## 1. What a Connector Is
 
-A connector is the adapter layer between an external service (Stripe, HubSpot, Zendesk, Notion, your internal API) and the BusinessOS runtime. It does three things:
+A connector is the adapter layer between an external service (Stripe, HubSpot, Zendesk, Notion, your internal API) and the BoringOS runtime. It does three things:
 
 1. **Handles authentication** — OAuth flow, API keys, or whatever the service requires.
 2. **Emits events** — translates external service events into typed events on the shell's event bus.
@@ -50,7 +50,7 @@ Concrete examples:
 
 ## 3. The Manifest
 
-Every connector ships a `businessos.json` at its repo root. This is the contract the shell reads at install time.
+Every connector ships a `boringos.json` at its repo root. This is the contract the shell reads at install time.
 
 ```json
 {
@@ -98,7 +98,7 @@ The `entry` field points at the bundled module exporting the `ConnectorDefinitio
 
 ```
 my-stripe-connector/
-  businessos.json              ← manifest (root, required)
+  boringos.json              ← manifest (root, required)
   README.md                    ← marketplace description
   LICENSE
   package.json
@@ -173,7 +173,7 @@ pnpm install
 pnpm dev          # builds, links into a local shell sandbox
 ```
 
-The dev sandbox spins up a local BusinessOS shell with your connector pre-installed. OAuth flow is mocked unless you provide credentials in `.env.local`. Hot reload triggers a connector re-registration on file change.
+The dev sandbox spins up a local BoringOS shell with your connector pre-installed. OAuth flow is mocked unless you provide credentials in `.env.local`. Hot reload triggers a connector re-registration on file change.
 
 ### Testing
 
@@ -200,7 +200,7 @@ There are two distribution paths. Same artifact; different trust models.
 
 1. Push the repo to GitHub (public or private).
 2. Tag a release matching the manifest version: `git tag v1.0.0 && git push --tags`.
-3. The release artifact must include `businessos.json`, `dist/`, and `schemas/`.
+3. The release artifact must include `boringos.json`, `dist/`, and `schemas/`.
 
 That's it. Any tenant can now install your connector by pasting the GitHub URL into the shell's "Install from URL" flow. No review, no wait, no listing.
 
@@ -214,7 +214,7 @@ GitHub URL installs always show the user an **"unverified publisher"** warning a
 
 ### Path B — Marketplace listing (vetted)
 
-Submit the connector to the BusinessOS marketplace:
+Submit the connector to the BoringOS marketplace:
 
 ```
 npx businessos publish
@@ -267,7 +267,7 @@ What the user sees when installing a connector:
 
 1. Opens **Connectors** screen → **Install from URL**
 2. Pastes `github.com/acme/my-stripe-connector` (or a release URL)
-3. Shell fetches `businessos.json` from the repo
+3. Shell fetches `boringos.json` from the repo
 4. Same permission prompt, but with **"Unverified publisher"** banner at top
 5. User confirms → install proceeds the same way
 

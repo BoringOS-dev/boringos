@@ -2,7 +2,7 @@
   "version": "1.0.0",
   "generated": "2026-05-03",
   "phase": "phase-1",
-  "description": "Phase 1 tasks for BusinessOS v1. Each task is a self-contained Claude Code session (~1-3 hours). Sequence per docs/phases/phase-1.md.",
+  "description": "Phase 1 tasks for BoringOS v1. Each task is a self-contained Claude Code session (~1-3 hours). Sequence per docs/phases/phase-1.md.",
   "repoRoot": "/Users/paragarora/Documents/Workspace/research/hebbs-clients/boringos-framework",
   "tasks": [
     {
@@ -152,7 +152,7 @@
     {
       "id": "D1",
       "workstream": "Connector migration",
-      "name": "Define businessos.json manifest JSON Schema",
+      "name": "Define boringos.json manifest JSON Schema",
       "goal": "Provide a machine-readable schema validating connector and app manifests.",
       "readFirst": [
         "docs/developer/migrate-existing-connectors.md",
@@ -178,7 +178,7 @@
       "id": "D2",
       "workstream": "Connector migration",
       "name": "Migrate @boringos/connector-slack to manifest format",
-      "goal": "Add businessos.json + JSON Schema action I/O + capability declarations to Slack connector. **This is the contract validation gate.**",
+      "goal": "Add boringos.json + JSON Schema action I/O + capability declarations to Slack connector. **This is the contract validation gate.**",
       "readFirst": [
         "docs/developer/migrate-existing-connectors.md",
         "docs/capabilities.md",
@@ -186,7 +186,7 @@
         "packages/@boringos/connector-slack/src/client.ts"
       ],
       "touch": [
-        "packages/@boringos/connector-slack/businessos.json",
+        "packages/@boringos/connector-slack/boringos.json",
         "packages/@boringos/connector-slack/schemas/send_message.input.json",
         "packages/@boringos/connector-slack/schemas/send_message.output.json",
         "packages/@boringos/connector-slack/schemas/reply_in_thread.input.json",
@@ -196,7 +196,7 @@
         "packages/@boringos/connector-slack/schemas/reaction_added.event.json"
       ],
       "acceptance": [
-        "businessos.json present at package root",
+        "boringos.json present at package root",
         "Manifest validates against D1 schema",
         "Capabilities declared: auth:oauth:slack, events:emit:slack.*, actions:expose:3, webhooks:receive:/events, network:outbound:slack.com",
         "Existing TS factory function unchanged (must be backwards compatible)",
@@ -218,10 +218,10 @@
       "readFirst": [
         "docs/developer/migrate-existing-connectors.md",
         "packages/@boringos/connector-google/src/connector.ts",
-        "packages/@boringos/connector-slack/businessos.json"
+        "packages/@boringos/connector-slack/boringos.json"
       ],
       "touch": [
-        "packages/@boringos/connector-google/businessos.json",
+        "packages/@boringos/connector-google/boringos.json",
         "packages/@boringos/connector-google/schemas/*"
       ],
       "acceptance": [
@@ -498,6 +498,42 @@
       "dependsOn": ["A5"],
       "repoOverride": "../boringos-crm"
     },
+    {
+      "id": "A9",
+      "workstream": "Shell extraction",
+      "name": "Build BrandProvider + useBrand hook + Settings → Branding panel",
+      "goal": "Make every visual element of the shell tenant-configurable. White-label by default; defaults to BoringOS branding.",
+      "readFirst": [
+        "docs/shell-screens.md (Settings section, Branding subsection)",
+        "docs/app-sdk.md (8b. Branding API)",
+        "docs/overview.md (Section 4 — branding paragraph)",
+        "packages/@boringos/db/src/schema/ (existing tenant_settings table)"
+      ],
+      "touch": [
+        "packages/@boringos/shell/src/branding/BrandProvider.tsx",
+        "packages/@boringos/shell/src/branding/useBrand.ts",
+        "packages/@boringos/shell/src/branding/defaults.ts",
+        "packages/@boringos/shell/src/branding/types.ts",
+        "packages/@boringos/shell/src/screens/Settings/BrandingPanel.tsx",
+        "packages/@boringos/app-sdk/src/branding.ts"
+      ],
+      "acceptance": [
+        "BrandProvider reads tenant_settings (brand.* keys) on auth, provides via React context",
+        "useBrand() returns: productName, productTagline, logoUrl, faviconUrl, primaryColor, secondaryColor, loginBackground, emailFromName",
+        "All shell chrome (Sidebar, Layout, Login, Signup, outbound emails) uses useBrand() — no hardcoded 'BoringOS' or logo paths anywhere",
+        "Defaults to BoringOS branding when tenant has not customized any brand.* setting",
+        "Settings → Branding panel: admin-only; logo upload via Drive; live color preview; reset-to-defaults button",
+        "useBrand exported from @boringos/app-sdk so apps can inherit tenant brand",
+        "Updating any brand setting reflects in the shell immediately (no full reload)"
+      ],
+      "doNot": [
+        "Implement custom subdomain routing — Enterprise tier (Phase 5)",
+        "Implement 'Hide Powered by BoringOS' enforcement — Enterprise tier (Phase 5)",
+        "Touch app code beyond exporting useBrand from the SDK — apps adopt it on their own schedule"
+      ],
+      "estimateHours": 4,
+      "dependsOn": ["A5"]
+    },
 
     {
       "id": "C1",
@@ -548,7 +584,7 @@
     {
       "id": "C3",
       "workstream": "Apps lifecycle",
-      "name": "Manifest fetcher (GitHub URL → businessos.json + bundle)",
+      "name": "Manifest fetcher (GitHub URL → boringos.json + bundle)",
       "goal": "Resolve a GitHub URL to a fetchable, validatable manifest + bundle artifact.",
       "readFirst": [
         "docs/developer/publishing-and-install.md"
@@ -678,7 +714,7 @@
         "../boringos-crm/packages/server/src/agents/email-triage.ts"
       ],
       "touch": [
-        "apps/generic-triage/businessos.json",
+        "apps/generic-triage/boringos.json",
         "apps/generic-triage/package.json",
         "apps/generic-triage/src/index.ts",
         "apps/generic-triage/src/agents/triage.ts",
@@ -706,7 +742,7 @@
         "docs/coordination.md"
       ],
       "touch": [
-        "apps/generic-replier/businessos.json",
+        "apps/generic-replier/boringos.json",
         "apps/generic-replier/package.json",
         "apps/generic-replier/src/index.ts",
         "apps/generic-replier/src/agents/replier.ts",
@@ -731,8 +767,8 @@
       "goal": "A fresh tenant has both default apps installed automatically.",
       "readFirst": [
         "packages/@boringos/core/src/index.ts",
-        "apps/generic-triage/businessos.json",
-        "apps/generic-replier/businessos.json"
+        "apps/generic-triage/boringos.json",
+        "apps/generic-replier/boringos.json"
       ],
       "touch": [
         "packages/@boringos/core/src/tenant-provisioning.ts (or equivalent)",

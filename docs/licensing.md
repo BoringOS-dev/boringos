@@ -1,6 +1,6 @@
 # Licensing
 
-> The license matrix for BusinessOS — what's permissive, what's protected, and why.
+> The license matrix for BoringOS — what's permissive, what's protected, and why.
 
 This doc captures the licensing model across the platform, the reasoning behind each choice, and the rules contributors and third-party developers need to know.
 
@@ -12,7 +12,7 @@ This doc captures the licensing model across the platform, the reasoning behind 
 
 **Maximize adoption of the primitives. Protect the commercial surface.**
 
-Frameworks, SDKs, and connectors are permissively licensed (MIT / Apache 2.0) so the ecosystem grows. The shell, first-party apps, and hosted control plane are source-available under BSL — competitors cannot offer a managed BusinessOS-as-a-service, but the code is auditable, forkable for non-competing use, and converts to Apache 2.0 after a defined period.
+Frameworks, SDKs, and connectors are permissively licensed (MIT / Apache 2.0) so the ecosystem grows. The shell, first-party apps, and hosted control plane are source-available under BSL — competitors cannot offer a managed BoringOS-as-a-service, but the code is auditable, forkable for non-competing use, and converts to Apache 2.0 after a defined period.
 
 This follows the **Sentry / MariaDB / CockroachDB / HashiCorp** pattern, not the WordPress-everywhere-GPL pattern. We chose this because the WP route protects via brand and operational quality alone; we want the same ecosystem effect plus an explicit commercial moat.
 
@@ -50,7 +50,7 @@ After **4 years** from the release of each version, that version automatically c
 
 **Why 4 years:** long enough that the platform has time to establish a hosted lead; short enough that the community sees a real timeline to permissiveness.
 
-**Additional grants:** companies running BusinessOS internally (not as a managed service to others) are unaffected. Self-hosting for your own organization is permitted from day one.
+**Additional grants:** companies running BoringOS internally (not as a managed service to others) are unaffected. Self-hosting for your own organization is permitted from day one.
 
 ---
 
@@ -137,7 +137,7 @@ This is enforced by a license-scan job on every CI run.
 
 ## 8. Marketplace Submission Licensing
 
-Apps and connectors submitted to the BusinessOS marketplace must declare a license in their manifest:
+Apps and connectors submitted to the BoringOS marketplace must declare a license in their manifest:
 
 ```json
 { "license": "MIT" }
@@ -164,14 +164,14 @@ The framework (MIT) is freely forkable. The shell (BSL) is forkable for non-comp
 
 Examples of permitted use under BSL:
 
-- A 5,000-person company self-hosts BusinessOS for its own employees and customers' employees (not as a managed service)
+- A 5,000-person company self-hosts BoringOS for its own employees and customers' employees (not as a managed service)
 - A consultancy customizes the shell for a client and deploys to that client's infrastructure
 - A research team forks the shell to study agentic platforms
 
 Examples of prohibited use under BSL:
 
-- A SaaS startup forks the shell and launches "AcmeOS — like BusinessOS but with our spin" as a hosted product
-- A cloud provider offers "Managed BusinessOS" as part of its service catalog (without an agreement with us)
+- A SaaS startup forks the shell and launches "AcmeOS — like BoringOS but with our spin" as a hosted product
+- A cloud provider offers "Managed BoringOS" as part of its service catalog (without an agreement with us)
 
 When in doubt, contact us. We grant additional permissions liberally for non-competing edge cases.
 

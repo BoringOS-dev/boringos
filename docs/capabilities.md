@@ -146,7 +146,7 @@ Connectors must declare every domain they call. Apps cannot declare network capa
 What a user sees at install:
 
 ```
-CRM by BusinessOS · verified
+CRM by BoringOS · verified
 
 This app requests permission to:
 

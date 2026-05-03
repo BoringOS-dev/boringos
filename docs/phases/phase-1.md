@@ -1,4 +1,4 @@
-# Phase 1 — Ship BusinessOS v1
+# Phase 1 — Ship BoringOS v1
 
 > Build the platform: shell + App SDK + connector migration + apps lifecycle + default apps.
 
@@ -16,11 +16,11 @@
 |---|---|---|---|
 | **B** | App SDK | 5 (B1–B5) | 3 days |
 | **D** | Connector migration | 4 (D1–D4) | 4 days |
-| **A** | Shell extraction | 8 (A1–A8) | 2–3 weeks |
+| **A** | Shell extraction | 9 (A1–A9) | 2–3 weeks |
 | **C** | Apps lifecycle + registry | 7 (C1–C7) | 1–1.5 weeks |
 | **E** | First-party default apps | 4 (E1–E4) | 3–4 days |
 
-**Total:** 28 tasks, ~5–7 weeks of focused engineering.
+**Total:** 29 tasks, ~5–7 weeks of focused engineering.
 
 ---
 
@@ -64,8 +64,8 @@ Validates the SDK against real existing code. **Don't proceed past D2 if migrati
 
 | Task | Goal |
 |---|---|
-| **D1** | JSON Schema for the `businessos.json` manifest itself (validates connector + app manifests) |
-| **D2** | Migrate `@boringos/connector-slack` to manifest format. Add `businessos.json`, JSON Schema for actions, capability declarations |
+| **D1** | JSON Schema for the `boringos.json` manifest itself (validates connector + app manifests) |
+| **D2** | Migrate `@boringos/connector-slack` to manifest format. Add `boringos.json`, JSON Schema for actions, capability declarations |
 | **D3** | Migrate `@boringos/connector-google` (Gmail + Calendar combined) |
 | **D4** | CI verification job: manifest declarations match `ConnectorDefinition` exports; emitted events under declared namespaces; outbound network only to declared domains |
 
@@ -79,9 +79,9 @@ Validates the SDK against real existing code. **Don't proceed past D2 if migrati
 
 ---
 
-## Workstream A — Shell extraction (8 tasks)
+## Workstream A — Shell extraction (9 tasks)
 
-The biggest workstream by volume. Lift the shell out of `boringos-crm/packages/web` into `@boringos/shell`.
+The biggest workstream by volume. Lift the shell out of `boringos-crm/packages/web` into `@boringos/shell`. Includes the white-label branding system so every customer can rebrand without forking.
 
 | Task | Goal |
 |---|---|
@@ -93,8 +93,9 @@ The biggest workstream by volume. Lift the shell out of `boringos-crm/packages/w
 | **A6** | Implement slot registration runtime (apps register at install; shell renders contributions) |
 | **A7** | Implement Apps screen (Browse + Installed + Updates + Install from URL tabs) |
 | **A8** | Strip CRM web of all moved code (one PR in `boringos-crm`) |
+| **A9** | Build `BrandProvider` + `useBrand()` hook + Settings → Branding panel. All shell chrome reads from the provider; defaults to BoringOS branding; tenants white-label via UI |
 
-**Acceptance:** `pnpm dev` in `packages/@boringos/shell` boots a usable shell with no apps installed. Sidebar, Copilot, Inbox, Tasks, Workflows, Settings all work. Apps screen renders empty installed list and supports Install from URL.
+**Acceptance:** `pnpm dev` in `packages/@boringos/shell` boots a usable shell with no apps installed. Sidebar, Copilot, Inbox, Tasks, Workflows, Settings all work. Apps screen renders empty installed list and supports Install from URL. **No hardcoded "BoringOS" strings or logo paths in shell chrome — every visual element flows through `useBrand()`.**
 
 ---
 
@@ -106,7 +107,7 @@ Database tables, install pipeline, manifest validator, permission prompt.
 |---|---|
 | **C1** | Migration: `tenant_apps` table (id, tenant_id, version, status, capabilities, installed_at) |
 | **C2** | Migration: `tenant_app_links` table (cross-app dependency record) |
-| **C3** | Manifest fetcher: GitHub URL → fetch `businessos.json` + bundle |
+| **C3** | Manifest fetcher: GitHub URL → fetch `boringos.json` + bundle |
 | **C4** | Manifest validator (schema check + capability honesty check) |
 | **C5** | Install pipeline (atomic transaction: migrations, agents, routes, slots, `onTenantCreated`) |
 | **C6** | Uninstall pipeline (soft + hard variants, retention period) |

@@ -1,6 +1,6 @@
 # Shell Screens
 
-> What ships with the BusinessOS shell, screen by screen, before any app is installed.
+> What ships with the BoringOS shell, screen by screen, before any app is installed.
 
 The shell is fully usable on its own — like a vanilla WordPress install. This doc enumerates every screen, what it does, what data it surfaces, and what slots apps can contribute to.
 
@@ -292,8 +292,8 @@ Tenant configuration.
 
 **Sections:**
 
-- **General** — tenant name, logo, timezone, default currency
-- **Branding** — primary color, custom logo on shell (Pro tier)
+- **General** — tenant name, timezone, default currency
+- **Branding** — full white-label control (see below)
 - **Billing** — plan, payment method, invoices, usage metrics
 - **Security** — SSO config, audit log retention, IP allowlist
 - **API keys** — generate / rotate / revoke admin tokens
@@ -301,6 +301,31 @@ Tenant configuration.
 - **App settings** — one panel per installed app via `settings.panel` slot
 
 **Slot:** `settings.panel` — apps contribute their config UI here. CRM contributes "Pipeline configuration"; Accounts contributes "Chart of accounts."
+
+### Branding (white-label, per-tenant)
+
+Admin-only panel. Every visual element of the shell is overridable by the tenant. Defaults to BoringOS branding when nothing is customized.
+
+| Field | Default | Notes |
+|---|---|---|
+| `productName` | `"BoringOS"` | Replaces "BoringOS" in all shell chrome (top bar, page titles, emails) |
+| `productTagline` | (none) | Optional secondary text |
+| `logoUrl` | BoringOS logo | Uploaded via Drive; rendered in top-left and outbound emails |
+| `faviconUrl` | BoringOS favicon | Browser tab icon |
+| `primaryColor` | BoringOS palette | Live preview while editing |
+| `secondaryColor` | BoringOS palette | Live preview |
+| `loginBackground` | (none) | Image shown on login/signup |
+| `emailFromName` | `"BoringOS"` | Sender name on outbound notifications |
+| `customSubdomain` | (none) | Enterprise tier only — e.g. `ops.acme.com` → tenant |
+| `hidePoweredBy` | `false` | Enterprise tier only — removes "Powered by BoringOS" footer |
+
+**Storage:** existing `tenant_settings` table, key-value, namespace `brand.*` (e.g. `brand.productName`, `brand.logoUrl`).
+
+**Loading:** the shell's `BrandProvider` reads tenant settings on auth and provides via React context. All shell components consume via the `useBrand()` hook — there are no hardcoded "BoringOS" strings or logo paths anywhere in the chrome.
+
+**App access:** apps can import `useBrand()` from `@boringos/app-sdk` and inherit the tenant brand by default. Apps with their own visual identity (e.g. domain-specific apps that want a distinct header) can ignore the hook and use their own branding.
+
+**Reset:** "Reset to defaults" reverts to BoringOS branding without losing other settings.
 
 ---
 

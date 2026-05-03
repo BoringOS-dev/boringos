@@ -1,6 +1,6 @@
 # Publishing & Install
 
-> The mechanics of distributing connectors and apps to BusinessOS tenants — and what happens under the hood when a user clicks Install.
+> The mechanics of distributing connectors and apps to BoringOS tenants — and what happens under the hood when a user clicks Install.
 
 This doc is shared between connectors and apps. Both follow the same registry, signing, and install pipeline. Differences are called out where they apply.
 
@@ -22,7 +22,7 @@ Both paths produce the same install experience under the hood — only the trust
 
 ## 2. The Manifest as Discovery Contract
 
-Every published extension — connector or app — has a `businessos.json` at the repo root. This is what the shell reads first when discovering an extension.
+Every published extension — connector or app — has a `boringos.json` at the repo root. This is what the shell reads first when discovering an extension.
 
 The manifest's `kind` field determines the extension type:
 
@@ -43,7 +43,7 @@ The shell rejects manifests with unknown `kind` values. Future extension types (
 2. Commit the build output if your repo is public, or set up a release workflow that builds on tag.
 3. Tag a release matching the manifest version: `git tag v1.0.0 && git push --tags`.
 4. The release must include:
-   - `businessos.json`
+   - `boringos.json`
    - `dist/` (server bundle)
    - `web/dist/` (UI bundle, apps only)
    - `schema/migrations/` (apps only)
@@ -60,7 +60,7 @@ The user pastes a URL into "Install from URL" in the shell. Acceptable formats:
 
 Under the hood, the shell:
 
-1. Fetches `businessos.json` from the resolved release
+1. Fetches `boringos.json` from the resolved release
 2. Validates the manifest (schema-correct, capability declarations well-formed, `minRuntime` satisfied)
 3. Fetches the rest of the artifact
 4. **Computes a SHA-256 hash of the bundle** and stores it on the install record (so future updates can be diff-checked)
@@ -144,7 +144,7 @@ Once approved:
 
 - The listing goes live in the marketplace UI
 - Verified-publisher badge applied
-- Bundle is mirrored to the BusinessOS CDN with its signature
+- Bundle is mirrored to the BoringOS CDN with its signature
 - Shell registries update; tenants see the listing within minutes
 
 ---
