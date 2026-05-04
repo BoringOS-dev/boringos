@@ -35,3 +35,44 @@ export type {
   EntityActionDeclaration,
   AppDependency,
 } from "./manifest.js";
+
+/* ── Builder helpers (TASK-B3) ─────────────────────────────────────── */
+
+export { defineConnector } from "./define-connector.js";
+export type {
+  ConnectorDefinition,
+  ConnectorOAuthConfig,
+  ConnectorEventDefinition,
+  ConnectorActionDefinition,
+  ConnectorActionField,
+  ConnectorCredentials,
+  ConnectorClient,
+  ConnectorActionResult,
+  ConnectorSetupContext,
+  ConnectorWebhookRequest,
+  ConnectorWebhookResponse,
+} from "./define-connector.js";
+
+export { defineApp } from "./define-app.js";
+export type {
+  AppDefinition,
+  AgentDefinition,
+  WorkflowTemplate,
+  ContextProvider,
+  RouteRegistrar,
+  LifecycleContext,
+  LifecycleHook,
+  UpgradeHook,
+} from "./define-app.js";
+
+export { defineUI } from "./define-ui.js";
+export type {
+  UIDefinition,
+  PageComponent,
+  WidgetComponent,
+  EntityActionInvoker,
+  CopilotToolHandler,
+  CommandActionInvoker,
+  InboxItemHandler,
+  SettingsPanelComponent,
+} from "./define-ui.js";
