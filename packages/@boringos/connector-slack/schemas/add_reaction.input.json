@@ -1,0 +1,22 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://boringos.dev/connectors/slack/schemas/add_reaction.input.json",
+  "title": "Slack add_reaction input",
+  "type": "object",
+  "required": ["channel", "timestamp", "emoji"],
+  "properties": {
+    "channel": {
+      "type": "string",
+      "description": "Channel ID."
+    },
+    "timestamp": {
+      "type": "string",
+      "description": "Message timestamp."
+    },
+    "emoji": {
+      "type": "string",
+      "description": "Emoji name without colons (e.g. \"thumbsup\")."
+    }
+  },
+  "additionalProperties": false
+}

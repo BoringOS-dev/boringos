@@ -1,0 +1,16 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://boringos.dev/connectors/slack/schemas/message_received.event.json",
+  "title": "Slack message_received event",
+  "description": "Payload emitted when a non-bot message is posted in a channel the bot is in.",
+  "type": "object",
+  "required": ["channel", "user", "text", "ts"],
+  "properties": {
+    "channel": { "type": "string", "description": "Channel ID where the message was posted." },
+    "user": { "type": "string", "description": "User ID who posted the message." },
+    "text": { "type": "string", "description": "Message text." },
+    "ts": { "type": "string", "description": "Slack message timestamp." },
+    "threadTs": { "type": "string", "description": "Parent thread timestamp if part of a thread." }
+  },
+  "additionalProperties": false
+}

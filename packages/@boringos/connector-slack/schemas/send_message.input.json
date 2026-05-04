@@ -1,0 +1,18 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://boringos.dev/connectors/slack/schemas/send_message.input.json",
+  "title": "Slack send_message input",
+  "type": "object",
+  "required": ["channel", "text"],
+  "properties": {
+    "channel": {
+      "type": "string",
+      "description": "Channel ID (e.g. C01234567) or channel name."
+    },
+    "text": {
+      "type": "string",
+      "description": "Message text. Supports Slack markdown."
+    }
+  },
+  "additionalProperties": false
+}

@@ -55,6 +55,11 @@
         "license"
       ],
       "properties": {
+        "$schema": {
+          "type": "string",
+          "format": "uri",
+          "description": "Optional IDE hint pointing at this manifest schema."
+        },
         "kind": { "enum": ["connector", "app"] },
         "id": { "$ref": "#/$defs/Identifier" },
         "version": { "$ref": "#/$defs/Semver" },

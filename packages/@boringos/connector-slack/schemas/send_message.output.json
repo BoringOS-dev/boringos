@@ -1,0 +1,18 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://boringos.dev/connectors/slack/schemas/send_message.output.json",
+  "title": "Slack send_message output",
+  "type": "object",
+  "required": ["ts", "channel"],
+  "properties": {
+    "ts": {
+      "type": "string",
+      "description": "Slack message timestamp (also used as a message id)."
+    },
+    "channel": {
+      "type": "string",
+      "description": "Channel ID the message was posted to."
+    }
+  },
+  "additionalProperties": false
+}

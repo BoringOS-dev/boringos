@@ -1,0 +1,24 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://boringos.dev/connectors/slack/schemas/reaction_added.event.json",
+  "title": "Slack reaction_added event",
+  "description": "Payload emitted when a reaction is added to a message.",
+  "type": "object",
+  "required": ["user", "reaction", "item"],
+  "properties": {
+    "user": { "type": "string", "description": "User ID who added the reaction." },
+    "reaction": { "type": "string", "description": "Emoji name (e.g. \"thumbsup\")." },
+    "item": {
+      "type": "object",
+      "description": "The item that was reacted to (typically a message).",
+      "properties": {
+        "type": { "type": "string", "description": "Item type, typically \"message\"." },
+        "channel": { "type": "string", "description": "Channel ID containing the item." },
+        "ts": { "type": "string", "description": "Item timestamp." }
+      },
+      "required": ["type", "channel", "ts"],
+      "additionalProperties": true
+    }
+  },
+  "additionalProperties": false
+}

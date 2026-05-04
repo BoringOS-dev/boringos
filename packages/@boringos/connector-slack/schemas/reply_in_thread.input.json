@@ -1,0 +1,22 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://boringos.dev/connectors/slack/schemas/reply_in_thread.input.json",
+  "title": "Slack reply_in_thread input",
+  "type": "object",
+  "required": ["channel", "threadTs", "text"],
+  "properties": {
+    "channel": {
+      "type": "string",
+      "description": "Channel ID."
+    },
+    "threadTs": {
+      "type": "string",
+      "description": "Timestamp of the parent message in the thread."
+    },
+    "text": {
+      "type": "string",
+      "description": "Reply text. Supports Slack markdown."
+    }
+  },
+  "additionalProperties": false
+}

@@ -1,0 +1,15 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://boringos.dev/connectors/slack/schemas/mention.event.json",
+  "title": "Slack mention event",
+  "description": "Payload emitted when the bot is @mentioned.",
+  "type": "object",
+  "required": ["channel", "user", "text", "ts"],
+  "properties": {
+    "channel": { "type": "string", "description": "Channel ID where the mention occurred." },
+    "user": { "type": "string", "description": "User ID who mentioned the bot." },
+    "text": { "type": "string", "description": "Full message text containing the mention." },
+    "ts": { "type": "string", "description": "Slack message timestamp." }
+  },
+  "additionalProperties": false
+}

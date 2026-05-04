@@ -1,0 +1,86 @@
+{
+  "$schema": "https://boringos.dev/schemas/manifest.schema.json",
+  "kind": "connector",
+  "id": "slack",
+  "version": "0.1.8",
+  "name": "Slack",
+  "description": "Send and receive messages in Slack channels and threads.",
+  "publisher": {
+    "name": "BoringOS",
+    "homepage": "https://boringos.dev",
+    "verified": true
+  },
+  "minRuntime": "0.1.8",
+  "license": "MIT",
+  "entry": "dist/index.js",
+  "auth": {
+    "type": "oauth2",
+    "provider": "slack",
+    "authorizationUrl": "https://slack.com/oauth/v2/authorize",
+    "tokenUrl": "https://slack.com/api/oauth.v2.access",
+    "scopes": [
+      "channels:history",
+      "channels:read",
+      "chat:write",
+      "reactions:read",
+      "reactions:write",
+      "users:read"
+    ]
+  },
+  "events": [
+    {
+      "type": "message_received",
+      "description": "A message was posted in a channel the bot is in.",
+      "schema": "schemas/message_received.event.json"
+    },
+    {
+      "type": "mention",
+      "description": "The bot was @mentioned.",
+      "schema": "schemas/mention.event.json"
+    },
+    {
+      "type": "reaction_added",
+      "description": "A reaction was added to a message.",
+      "schema": "schemas/reaction_added.event.json"
+    }
+  ],
+  "actions": [
+    {
+      "name": "send_message",
+      "description": "Send a message to a Slack channel.",
+      "inputSchema": "schemas/send_message.input.json",
+      "outputSchema": "schemas/send_message.output.json"
+    },
+    {
+      "name": "reply_in_thread",
+      "description": "Reply to a message in a thread.",
+      "inputSchema": "schemas/reply_in_thread.input.json"
+    },
+    {
+      "name": "add_reaction",
+      "description": "Add an emoji reaction to a message.",
+      "inputSchema": "schemas/add_reaction.input.json"
+    }
+  ],
+  "webhooks": [
+    {
+      "event": "message_received",
+      "path": "/events"
+    },
+    {
+      "event": "mention",
+      "path": "/events"
+    },
+    {
+      "event": "reaction_added",
+      "path": "/events"
+    }
+  ],
+  "capabilities": [
+    "auth:oauth:slack",
+    "events:emit:slack.*",
+    "actions:expose:3",
+    "webhooks:receive:/events",
+    "network:outbound:slack.com"
+  ]
+}
