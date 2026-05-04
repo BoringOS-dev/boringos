@@ -19,6 +19,7 @@ export default defineConfig({
       "@boringos/ui": resolve(__dirname, "packages/@boringos/ui/src/index.ts"),
       "@boringos/app-sdk": resolve(__dirname, "packages/@boringos/app-sdk/src/index.ts"),
       "@boringos/connector-sdk": resolve(__dirname, "packages/@boringos/connector-sdk/src/index.ts"),
+      "@boringos/shell": resolve(__dirname, "packages/@boringos/shell/src"),
     },
   },
   test: {
