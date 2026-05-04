@@ -1,0 +1,46 @@
+name: Connector Manifest Verification
+
+on:
+  pull_request:
+    paths:
+      - "packages/@boringos/connector-**"
+      - "packages/@boringos/app-sdk/**"
+      - "scripts/verify-connectors.mjs"
+      - ".github/workflows/connector-verify.yml"
+  push:
+    branches: [main]
+    paths:
+      - "packages/@boringos/connector-**"
+      - "packages/@boringos/app-sdk/**"
+      - "scripts/verify-connectors.mjs"
+      - ".github/workflows/connector-verify.yml"
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    name: Verify connector manifests match runtime
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 9
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Install
+        run: pnpm install --frozen-lockfile
+
+      - name: Build app-sdk
+        run: pnpm -F @boringos/app-sdk build
+
+      - name: Build all connector packages
+        run: pnpm -F './packages/@boringos/connector-*' build
+
+      - name: Verify connector manifests
+        run: node scripts/verify-connectors.mjs

@@ -8,6 +8,7 @@
     "typecheck": "pnpm -r typecheck",
     "test": "vitest",
     "test:run": "vitest run",
+    "verify:connectors": "pnpm -F @boringos/app-sdk build && pnpm -F './packages/@boringos/connector-*' build && node scripts/verify-connectors.mjs",
     "db:generate": "pnpm --filter @boringos/db generate",
     "db:migrate": "pnpm --filter @boringos/db migrate",
     "changeset": "changeset",
