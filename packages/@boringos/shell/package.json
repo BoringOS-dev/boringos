@@ -1,0 +1,44 @@
+{
+  "name": "@boringos/shell",
+  "version": "0.0.1",
+  "private": false,
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc -b && vite build",
+    "typecheck": "tsc --noEmit",
+    "preview": "vite preview"
+  },
+  "license": "BUSL-1.1",
+  "dependencies": {
+    "@boringos/app-sdk": "workspace:^",
+    "@boringos/ui": "workspace:*",
+    "@tanstack/react-query": "^5.0.0",
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0",
+    "react-router-dom": "^7.0.0"
+  },
+  "devDependencies": {
+    "@tailwindcss/vite": "^4.0.0",
+    "@types/react": "^19.0.0",
+    "@types/react-dom": "^19.0.0",
+    "@vitejs/plugin-react": "^4.0.0",
+    "tailwindcss": "^4.0.0",
+    "typescript": "^5.7.3",
+    "vite": "^6.0.0"
+  },
+  "description": "BoringOS Shell — the user-facing OS surface (wp-admin equivalent). Hosts apps; renders slot contributions; provides Inbox, Copilot, Tasks, Workflows, Agents, Drive, Connectors, Apps, Team, Settings.",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/BoringOS-dev/boringos.git"
+  },
+  "homepage": "https://boringos.dev",
+  "author": "BoringOS Contributors",
+  "keywords": [
+    "boringos",
+    "agentic",
+    "shell",
+    "platform",
+    "wp-admin"
+  ]
+}

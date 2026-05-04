@@ -1,0 +1,28 @@
+Business Source License 1.1 (BUSL-1.1)
+
+Licensor:             BoringOS Contributors
+Licensed Work:        @boringos/shell, the BoringOS Shell
+Additional Use Grant: You may use the Licensed Work in production for
+                      non-competing internal use within your organization
+                      and on behalf of your customers.
+                      A "competing" use is offering the Licensed Work, or
+                      a substantially similar derivative, as a managed
+                      hosted service to third parties.
+Change Date:          Four years after the publication date of each
+                      released version. On the Change Date, that version
+                      is licensed under the Change License.
+Change License:       Apache License, Version 2.0
+
+The Licensed Work is provided under the terms of the Business Source
+License 1.1 published by MariaDB Corporation Ab. The full canonical
+text of the license is available at:
+
+  https://mariadb.com/bsl11/
+
+The Licensed Work is provided on an "as is" basis. The Licensor
+disclaims all warranties to the maximum extent permitted by applicable
+law.
+
+The repository's top-level LICENSE.md describes the per-package
+license matrix and the reasoning behind the split between MIT
+(kernel + SDKs) and BUSL-1.1 (shell, control plane, first-party apps).
