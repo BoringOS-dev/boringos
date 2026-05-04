@@ -1,68 +1,79 @@
 // SPDX-License-Identifier: MIT
 //
 // defineApp — produces a typed AppDefinition that the runtime can consume.
-// Identity helper that pairs with the manifest from B2.
-//
-// Several supporting types (AgentDefinition, WorkflowTemplate, ContextProvider,
-// LifecycleContext) are intentionally kept lean here; B4 expands them.
+// Pairs with the manifest from B2 and the lifecycle/context types from B4.
 
-/* ── Placeholder types (refined in B4) ─────────────────────────────── */
+import type { LifecycleHook, UpgradeHook } from "./lifecycle.js";
+import type {
+  ContextBuildContext,
+  ContextProviderOutput,
+} from "./context.js";
 
-/**
- * Lifecycle context passed to onTenantCreated, onUpgrade, onUninstall.
- * Full shape (db handle, logger, version diff, etc.) lands in B4.
- */
-export interface LifecycleContext {
-  tenantId: string;
-  /** Refined in B4. */
-  [extra: string]: unknown;
-}
-
-export type LifecycleHook = (ctx: LifecycleContext) => Promise<void>;
+/* ── Agent / workflow / context provider types ─────────────────────── */
 
 /**
- * Lifecycle hook fired on app version upgrade. Receives the version diff.
- */
-export type UpgradeHook = (
-  ctx: LifecycleContext & { fromVersion: string; toVersion: string }
-) => Promise<void>;
-
-/**
- * Agent registration shape. Refined in B4 with persona, runtime, triggers,
- * budget, contextProviders.
+ * Agent registration shape. The runtime fields (persona, runtime adapter,
+ * triggers, budget) are kept loose here; they will be refined when the
+ * runtime catches up to the SDK contract (Phase 2 / 3).
  */
 export interface AgentDefinition {
   id: string;
   name: string;
-  /** Refined in B4. */
+  /** Persona id (one of the 12 built-ins or "custom"). */
+  persona?: string;
+  /** Runtime adapter ("claude", "codex", "gemini", "ollama", "command", "webhook"). */
+  runtime?: string;
+  /** System prompt / instructions. */
+  instructions?: string;
+  /** Reserved for future fields. */
   [extra: string]: unknown;
 }
 
 /**
- * Workflow template registered at tenant provision. Refined in B4.
+ * Workflow template registered at tenant provision. The full DAG / block
+ * shape lives in @boringos/workflow; the SDK accepts it opaquely so this
+ * package does not depend on the workflow engine package.
  */
 export interface WorkflowTemplate {
   id: string;
   name: string;
-  /** Refined in B4. */
+  description?: string;
+  /** Reserved for the full DAG payload from @boringos/workflow. */
   [extra: string]: unknown;
 }
 
 /**
- * Context provider that injects information into agent prompts at runtime.
- * Refined in B4.
+ * Context provider — injects information into agent prompts at runtime.
  */
 export interface ContextProvider {
   id: string;
-  /** Refined in B4. */
-  [extra: string]: unknown;
+
+  /** Scope at which this provider runs. */
+  scope: "task" | "session" | "global";
+
+  /** Build the markdown / structured context to inject. */
+  build: (ctx: ContextBuildContext) => Promise<ContextProviderOutput>;
+
+  /** Sort priority (lower = earlier in the prompt). */
+  priority?: number;
 }
 
 /**
  * Route registrar — receives a router (Hono) and mounts routes on it.
- * The full Router shape comes from the runtime in B4 / C5.
+ * The router shape is opaque here; the install pipeline (C5) will pass
+ * a typed Hono router. The optional `agentDocs` makes the routes
+ * discoverable by the copilot's api-catalog context provider.
  */
-export type RouteRegistrar = (router: unknown) => void;
+export interface RouteRegistrar {
+  (router: unknown): void;
+
+  /**
+   * Optional: function returning a markdown blob describing the routes.
+   * Injected into agent prompts via the api-catalog provider so agents
+   * know how to call the app's API.
+   */
+  agentDocs?: (baseUrl: string) => string;
+}
 
 /* ── App runtime definition ────────────────────────────────────────── */
 
@@ -82,7 +93,7 @@ export interface AppDefinition {
   /** Run at install: seed data, register agents, etc. */
   onTenantCreated?: LifecycleHook;
 
-  /** Run on version bumps. */
+  /** Run on version bumps. Receives version diff via the context. */
   onUpgrade?: UpgradeHook;
 
   /** Run when tenant uninstalls (soft or hard). */
@@ -100,7 +111,7 @@ export interface AppDefinition {
  *   id: "crm",
  *   agents: [emailTriage, contactEnrichment],
  *   workflows: [emailIngest],
- *   onTenantCreated: async (ctx) => { ...seed default pipeline... }
+ *   onTenantCreated: async (ctx) => { ...seed default pipeline... },
  * });
  * ```
  */

@@ -60,19 +60,49 @@ export type {
   WorkflowTemplate,
   ContextProvider,
   RouteRegistrar,
-  LifecycleContext,
-  LifecycleHook,
-  UpgradeHook,
 } from "./define-app.js";
 
 export { defineUI } from "./define-ui.js";
+export type { UIDefinition } from "./define-ui.js";
+
+/* ── Lifecycle types (TASK-B4) ─────────────────────────────────────── */
+
 export type {
-  UIDefinition,
-  PageComponent,
-  WidgetComponent,
-  EntityActionInvoker,
-  CopilotToolHandler,
-  CommandActionInvoker,
-  InboxItemHandler,
-  SettingsPanelComponent,
-} from "./define-ui.js";
+  Logger,
+  Database,
+  LifecycleContext,
+  UpgradeLifecycleContext,
+  LifecycleHook,
+  UpgradeHook,
+} from "./lifecycle.js";
+
+/* ── Runtime context types (TASK-B4) ───────────────────────────────── */
+
+export type {
+  CallerIdentity,
+  ActionContext,
+  ToolContext,
+  CommandContext,
+  ContextBuildContext,
+  ContextProviderOutput,
+  StructuredContext,
+  JSONSchema,
+} from "./context.js";
+
+/* ── Slot interfaces (TASK-B4) ─────────────────────────────────────── */
+
+export type {
+  SlotComponent,
+  Entity,
+
+  NavSlot,
+  DashboardWidget,
+  EntityAction,
+  EntityDetailPanel,
+  SettingsPanel,
+  CommandAction,
+  CopilotTool,
+  InboxHandler,
+  InboxItem,
+  InboxItemAction,
+} from "./slots.js";

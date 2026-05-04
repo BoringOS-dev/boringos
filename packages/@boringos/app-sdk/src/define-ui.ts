@@ -1,61 +1,53 @@
 // SPDX-License-Identifier: MIT
 //
 // defineUI — produces a typed UIDefinition that the shell's slot runtime
-// can consume.
-//
-// The slot type interfaces (NavSlot, DashboardWidget, EntityAction,
-// CopilotTool, InboxHandler, etc.) are placeholders here; B4 fleshes them
-// out with React component types and full action signatures.
+// can consume. Maps slot ids declared in the manifest to actual slot
+// implementations from B4.
 
-/* ── Placeholder slot component types (refined in B4) ──────────────── */
-
-/**
- * Page component for a nav entry. React component in practice;
- * typed as `unknown` here to keep the SDK React-version-agnostic
- * until B4 introduces the full slot interfaces.
- */
-export type PageComponent = unknown;
-
-export type WidgetComponent = unknown;
-
-export type EntityActionInvoker = unknown;
-
-export type CopilotToolHandler = unknown;
-
-export type CommandActionInvoker = unknown;
-
-export type InboxItemHandler = unknown;
-
-export type SettingsPanelComponent = unknown;
+import type {
+  CommandAction,
+  CopilotTool,
+  DashboardWidget,
+  EntityAction,
+  EntityDetailPanel,
+  InboxHandler,
+  NavSlot,
+  SettingsPanel,
+} from "./slots.js";
 
 /* ── UI runtime definition ─────────────────────────────────────────── */
 
 /**
  * The runtime object an app's UI bundle exports.
- * Maps slot ids declared in the manifest to actual component / handler
- * implementations the shell's slot runtime mounts.
+ * Maps slot ids declared in the manifest to slot implementations.
+ *
+ * Keys must match the corresponding `manifest.ui.*[].id` entries; the
+ * shell wires them up by id at install time.
  */
 export interface UIDefinition {
-  /** Map of nav id → page component. Keys must match manifest `ui.nav[].id`. */
-  pages?: Record<string, PageComponent>;
+  /** Map of nav id → page slot. Matches manifest `ui.nav[].id`. */
+  pages?: Record<string, NavSlot>;
 
-  /** Map of widget id → component. */
-  dashboardWidgets?: Record<string, WidgetComponent>;
+  /** Map of widget id → widget slot. Matches manifest `ui.dashboardWidgets[]`. */
+  dashboardWidgets?: Record<string, DashboardWidget>;
 
-  /** Map of entity action id → handler. */
-  entityActions?: Record<string, EntityActionInvoker>;
+  /** Map of entity action id → action slot. Matches manifest `ui.entityActions[].id`. */
+  entityActions?: Record<string, EntityAction>;
 
-  /** Map of settings panel id → component. */
-  settingsPanels?: Record<string, SettingsPanelComponent>;
+  /** Map of entity detail panel id → panel slot. */
+  entityDetailPanels?: Record<string, EntityDetailPanel>;
 
-  /** Map of copilot tool name → handler (matches manifest `ui.copilotTools`). */
-  copilotTools?: Record<string, CopilotToolHandler>;
+  /** Map of settings panel id → panel slot. Matches manifest `ui.settingsPanels[]`. */
+  settingsPanels?: Record<string, SettingsPanel>;
 
-  /** Map of command action id → handler. */
-  commandActions?: Record<string, CommandActionInvoker>;
+  /** Map of copilot tool name → tool slot. Matches manifest `ui.copilotTools[]`. */
+  copilotTools?: Record<string, CopilotTool>;
 
-  /** Map of inbox handler id → handler. */
-  inboxHandlers?: Record<string, InboxItemHandler>;
+  /** Map of command action id → action slot. Matches manifest `ui.commandActions[]`. */
+  commandActions?: Record<string, CommandAction>;
+
+  /** Map of inbox handler id → handler slot (UI rendering only — see slots.ts). */
+  inboxHandlers?: Record<string, InboxHandler>;
 }
 
 /* ── Helper ────────────────────────────────────────────────────────── */
@@ -66,9 +58,18 @@ export interface UIDefinition {
  * @example
  * ```ts
  * export default defineUI({
- *   pages: { pipeline: PipelinePage, contacts: ContactsPage },
- *   dashboardWidgets: { "open-deals": OpenDealsWidget },
- *   entityActions: { "send-followup": sendFollowup },
+ *   pages: { pipeline: { id: "pipeline", component: PipelinePage } },
+ *   dashboardWidgets: {
+ *     "open-deals": { id: "open-deals", size: "medium", component: OpenDealsWidget },
+ *   },
+ *   entityActions: {
+ *     "send-followup": {
+ *       id: "send-followup",
+ *       entity: "crm_deal",
+ *       label: "Send follow-up",
+ *       invoke: async (deal, ctx) => { ... },
+ *     },
+ *   },
  * });
  * ```
  */
