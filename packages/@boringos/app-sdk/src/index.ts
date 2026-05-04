@@ -4,9 +4,10 @@
 
 /**
  * SDK version. Bumped per Phase 1 / Phase 2 / Phase 3 contract changes.
- * The first published alpha is 1.0.0-alpha.0 (see TASK-B5).
+ * Stays in alpha until Phase 2 (CRM port) validates the contract; promotes
+ * to beta once a second app validates it; goes to stable 1.0.0 thereafter.
  */
-export const SDK_VERSION = "0.0.1" as const;
+export const SDK_VERSION = "1.0.0-alpha.0" as const;
 
 /* ── Manifest types (TASK-B2) ──────────────────────────────────────── */
 

@@ -12,7 +12,7 @@ This package is the contract third-party developers build against. It exposes:
 
 ## Status
 
-**Pre-alpha skeleton.** This package was scaffolded by TASK-B1 of Phase 1 and currently exports a placeholder only. Functional types and helpers land in B2–B4. The first publishable alpha (`1.0.0-alpha.0`) ships in B5.
+**`1.0.0-alpha.0`** — first publishable alpha. The contract may change before `1.0.0` based on what we learn migrating the first connectors (Phase 1 task D2) and porting CRM (Phase 2). Pin to `1.0.0-alpha.0` if you need stability against in-progress refinements.
 
 See [`docs/phases/phase-1.md`](../../../docs/phases/phase-1.md) and [`docs/build/tasks-phase-1.json`](../../../docs/build/tasks-phase-1.json) for the build sequence.
 

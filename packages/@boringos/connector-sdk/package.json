@@ -1,5 +1,5 @@
 {
-  "name": "@boringos/app-sdk",
+  "name": "@boringos/connector-sdk",
   "version": "1.0.0-alpha.0",
   "type": "module",
   "main": "dist/index.js",
@@ -15,11 +15,14 @@
     "typecheck": "tsc --noEmit"
   },
   "license": "MIT",
+  "dependencies": {
+    "@boringos/app-sdk": "workspace:^"
+  },
   "devDependencies": {
     "@types/node": "^22.0.0",
     "typescript": "^5.7.3"
   },
-  "description": "Public SDK for building apps and connectors on BoringOS — manifest types, defineApp/defineConnector helpers, slot APIs, lifecycle hooks, useBrand hook.",
+  "description": "Focused entry point for building BoringOS connectors. Re-exports the connector-relevant subset of @boringos/app-sdk.",
   "repository": {
     "type": "git",
     "url": "https://github.com/BoringOS-dev/boringos.git"
@@ -36,8 +39,8 @@
     "ai-agents",
     "framework",
     "sdk",
-    "plugins",
-    "apps"
+    "connectors",
+    "integrations"
   ],
   "publishConfig": {
     "access": "public",
