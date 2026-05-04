@@ -1,0 +1,303 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://boringos.dev/schemas/manifest.schema.json",
+  "title": "BoringOS Manifest",
+  "description": "Contract for boringos.json — the manifest a connector or app ships at its repo root.",
+
+  "oneOf": [
+    { "$ref": "#/$defs/ConnectorManifest" },
+    { "$ref": "#/$defs/AppManifest" }
+  ],
+
+  "$defs": {
+    "Identifier": {
+      "type": "string",
+      "pattern": "^[a-z0-9][a-z0-9-]*$",
+      "description": "kebab-case lowercase identifier"
+    },
+
+    "Semver": {
+      "type": "string",
+      "pattern": "^\\d+\\.\\d+\\.\\d+(?:-[0-9A-Za-z.-]+)?(?:\\+[0-9A-Za-z.-]+)?$"
+    },
+
+    "Capability": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Capability scope. See docs/capabilities.md for the full catalog."
+    },
+
+    "PublisherInfo": {
+      "type": "object",
+      "required": ["name"],
+      "properties": {
+        "name": { "type": "string", "minLength": 1 },
+        "homepage": { "type": "string", "format": "uri" },
+        "supportEmail": { "type": "string", "format": "email" },
+        "verified": {
+          "type": "boolean",
+          "description": "Set by the marketplace, never by the publisher."
+        }
+      },
+      "additionalProperties": false
+    },
+
+    "BaseFields": {
+      "type": "object",
+      "required": [
+        "kind",
+        "id",
+        "version",
+        "name",
+        "description",
+        "publisher",
+        "minRuntime",
+        "license"
+      ],
+      "properties": {
+        "kind": { "enum": ["connector", "app"] },
+        "id": { "$ref": "#/$defs/Identifier" },
+        "version": { "$ref": "#/$defs/Semver" },
+        "name": { "type": "string", "minLength": 1 },
+        "description": { "type": "string" },
+        "publisher": { "$ref": "#/$defs/PublisherInfo" },
+        "minRuntime": { "$ref": "#/$defs/Semver" },
+        "license": {
+          "type": "string",
+          "minLength": 1,
+          "description": "SPDX identifier (e.g. MIT, BUSL-1.1, Proprietary)."
+        }
+      }
+    },
+
+    "AuthConfig": {
+      "oneOf": [
+        { "$ref": "#/$defs/OAuth2AuthConfig" },
+        { "$ref": "#/$defs/ApiKeyAuthConfig" },
+        { "$ref": "#/$defs/CustomAuthConfig" }
+      ]
+    },
+
+    "OAuth2AuthConfig": {
+      "type": "object",
+      "required": ["type", "provider", "scopes"],
+      "properties": {
+        "type": { "const": "oauth2" },
+        "provider": { "type": "string", "minLength": 1 },
+        "scopes": {
+          "type": "array",
+          "items": { "type": "string", "minLength": 1 }
+        },
+        "authorizationUrl": { "type": "string", "format": "uri" },
+        "tokenUrl": { "type": "string", "format": "uri" }
+      },
+      "additionalProperties": false
+    },
+
+    "ApiKeyAuthConfig": {
+      "type": "object",
+      "required": ["type", "fields"],
+      "properties": {
+        "type": { "const": "apikey" },
+        "fields": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["name", "label", "secret"],
+            "properties": {
+              "name": { "type": "string", "minLength": 1 },
+              "label": { "type": "string", "minLength": 1 },
+              "secret": { "type": "boolean" }
+            },
+            "additionalProperties": false
+          }
+        }
+      },
+      "additionalProperties": false
+    },
+
+    "CustomAuthConfig": {
+      "type": "object",
+      "required": ["type"],
+      "properties": {
+        "type": { "const": "custom" },
+        "description": { "type": "string" }
+      },
+      "additionalProperties": false
+    },
+
+    "EventDeclaration": {
+      "type": "object",
+      "required": ["type", "description"],
+      "properties": {
+        "type": { "type": "string", "minLength": 1 },
+        "description": { "type": "string" },
+        "schema": { "type": "string", "description": "Relative path to JSON Schema file." }
+      },
+      "additionalProperties": false
+    },
+
+    "ActionDeclaration": {
+      "type": "object",
+      "required": ["name", "description", "inputSchema"],
+      "properties": {
+        "name": { "type": "string", "minLength": 1 },
+        "description": { "type": "string" },
+        "inputSchema": { "type": "string", "description": "Relative path to JSON Schema file." },
+        "outputSchema": { "type": "string", "description": "Relative path to JSON Schema file." }
+      },
+      "additionalProperties": false
+    },
+
+    "WebhookDeclaration": {
+      "type": "object",
+      "required": ["event", "path"],
+      "properties": {
+        "event": { "type": "string", "minLength": 1 },
+        "path": { "type": "string", "pattern": "^/" }
+      },
+      "additionalProperties": false
+    },
+
+    "ConnectorManifest": {
+      "allOf": [
+        { "$ref": "#/$defs/BaseFields" },
+        {
+          "type": "object",
+          "required": ["entry", "auth", "events", "actions", "capabilities"],
+          "properties": {
+            "kind": { "const": "connector" },
+            "entry": { "type": "string", "minLength": 1 },
+            "auth": { "$ref": "#/$defs/AuthConfig" },
+            "events": {
+              "type": "array",
+              "items": { "$ref": "#/$defs/EventDeclaration" }
+            },
+            "actions": {
+              "type": "array",
+              "items": { "$ref": "#/$defs/ActionDeclaration" }
+            },
+            "webhooks": {
+              "type": "array",
+              "items": { "$ref": "#/$defs/WebhookDeclaration" }
+            },
+            "capabilities": {
+              "type": "array",
+              "items": { "$ref": "#/$defs/Capability" }
+            }
+          }
+        }
+      ],
+      "unevaluatedProperties": false
+    },
+
+    "EntityTypeDeclaration": {
+      "type": "object",
+      "required": ["id", "label"],
+      "properties": {
+        "id": { "type": "string", "pattern": "^[a-z][a-z0-9_]*$" },
+        "label": { "type": "string", "minLength": 1 },
+        "icon": { "type": "string" },
+        "shareable": { "type": "boolean" }
+      },
+      "additionalProperties": false
+    },
+
+    "NavEntryDeclaration": {
+      "type": "object",
+      "required": ["id", "label"],
+      "properties": {
+        "id": { "$ref": "#/$defs/Identifier" },
+        "label": { "type": "string", "minLength": 1 },
+        "icon": { "type": "string" },
+        "order": { "type": "number" }
+      },
+      "additionalProperties": false
+    },
+
+    "EntityActionDeclaration": {
+      "type": "object",
+      "required": ["entity", "id", "label"],
+      "properties": {
+        "entity": { "type": "string", "minLength": 1 },
+        "id": { "$ref": "#/$defs/Identifier" },
+        "label": { "type": "string", "minLength": 1 },
+        "icon": { "type": "string" }
+      },
+      "additionalProperties": false
+    },
+
+    "UIManifest": {
+      "type": "object",
+      "required": ["entry"],
+      "properties": {
+        "entry": { "type": "string", "minLength": 1 },
+        "nav": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/NavEntryDeclaration" }
+        },
+        "dashboardWidgets": { "type": "array", "items": { "type": "string" } },
+        "entityActions": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/EntityActionDeclaration" }
+        },
+        "settingsPanels": { "type": "array", "items": { "type": "string" } },
+        "copilotTools": { "type": "array", "items": { "type": "string" } },
+        "commandActions": { "type": "array", "items": { "type": "string" } },
+        "inboxHandlers": { "type": "array", "items": { "type": "string" } }
+      },
+      "additionalProperties": false
+    },
+
+    "AppDependency": {
+      "type": "object",
+      "required": ["appId", "versionRange"],
+      "properties": {
+        "appId": { "$ref": "#/$defs/Identifier" },
+        "versionRange": { "type": "string", "minLength": 1 }
+      },
+      "additionalProperties": false
+    },
+
+    "AppManifest": {
+      "allOf": [
+        { "$ref": "#/$defs/BaseFields" },
+        {
+          "type": "object",
+          "required": [
+            "hosting",
+            "entityTypes",
+            "ui",
+            "capabilities"
+          ],
+          "properties": {
+            "kind": { "const": "app" },
+            "hosting": {
+              "const": "in-process",
+              "description": "v1 only supports in-process. Remote runtime is reserved for a future release."
+            },
+            "schema": { "type": "string" },
+            "entityTypes": {
+              "type": "array",
+              "items": { "$ref": "#/$defs/EntityTypeDeclaration" }
+            },
+            "agents": { "type": "string" },
+            "workflows": { "type": "string" },
+            "contextProviders": { "type": "string" },
+            "routes": { "type": "string" },
+            "ui": { "$ref": "#/$defs/UIManifest" },
+            "capabilities": {
+              "type": "array",
+              "items": { "$ref": "#/$defs/Capability" }
+            },
+            "dependencies": {
+              "type": "array",
+              "items": { "$ref": "#/$defs/AppDependency" }
+            }
+          }
+        }
+      ],
+      "unevaluatedProperties": false
+    }
+  }
+}

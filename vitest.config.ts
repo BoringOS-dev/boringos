@@ -17,6 +17,8 @@ export default defineConfig({
       "@boringos/workflow": resolve(__dirname, "packages/@boringos/workflow/src/index.ts"),
       "@boringos/core": resolve(__dirname, "packages/@boringos/core/src/index.ts"),
       "@boringos/ui": resolve(__dirname, "packages/@boringos/ui/src/index.ts"),
+      "@boringos/app-sdk": resolve(__dirname, "packages/@boringos/app-sdk/src/index.ts"),
+      "@boringos/connector-sdk": resolve(__dirname, "packages/@boringos/connector-sdk/src/index.ts"),
     },
   },
   test: {

@@ -107,3 +107,15 @@ export type {
   InboxItem,
   InboxItemAction,
 } from "./slots.js";
+
+/* ── Manifest validation (TASK-D1) ─────────────────────────────────── */
+
+export {
+  validateManifest,
+  isValidManifest,
+  isConnectorManifest,
+  isAppManifest,
+  MANIFEST_SCHEMA,
+} from "./validate.js";
+
+export type { ValidationResult, ValidationError } from "./validate.js";
