@@ -1,0 +1,16 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://boringos.dev/connectors/google/schemas/send_email.input.json",
+  "title": "Gmail send_email input",
+  "type": "object",
+  "required": ["to", "subject", "body"],
+  "properties": {
+    "to": {
+      "type": "string",
+      "description": "Recipient email address. Comma-separate for multiple."
+    },
+    "subject": { "type": "string" },
+    "body": { "type": "string", "description": "Plain-text body." }
+  },
+  "additionalProperties": false
+}

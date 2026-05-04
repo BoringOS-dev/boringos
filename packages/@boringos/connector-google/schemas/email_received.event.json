@@ -1,0 +1,17 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://boringos.dev/connectors/google/schemas/email_received.event.json",
+  "title": "Gmail email_received event",
+  "description": "Payload emitted when a new email arrives in Gmail.",
+  "type": "object",
+  "required": ["messageId", "from", "subject", "snippet", "date"],
+  "properties": {
+    "messageId": { "type": "string" },
+    "threadId": { "type": "string" },
+    "from": { "type": "string" },
+    "subject": { "type": "string" },
+    "snippet": { "type": "string" },
+    "date": { "type": "string" }
+  },
+  "additionalProperties": true
+}

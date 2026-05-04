@@ -81,6 +81,13 @@ export interface ConnectorManifest extends BaseManifest {
 
   webhooks?: WebhookDeclaration[];
 
+  /**
+   * Relative paths to markdown skill files describing how agents should
+   * use this connector. The runtime concatenates and injects them into
+   * agent prompts.
+   */
+  skills?: string[];
+
   capabilities: Capability[];
 }
 
@@ -186,6 +193,12 @@ export interface AppManifest extends BaseManifest {
   routes?: string;
 
   ui: UIManifest;
+
+  /**
+   * Relative paths to markdown skill files describing how agents should
+   * use this app. The runtime concatenates and injects them into agent prompts.
+   */
+  skills?: string[];
 
   capabilities: Capability[];
 

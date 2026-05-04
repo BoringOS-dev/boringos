@@ -1,0 +1,104 @@
+{
+  "$schema": "https://boringos.dev/schemas/manifest.schema.json",
+  "kind": "connector",
+  "id": "google",
+  "version": "0.1.8",
+  "name": "Google Workspace",
+  "description": "Gmail and Google Calendar integration.",
+  "publisher": {
+    "name": "BoringOS",
+    "homepage": "https://boringos.dev",
+    "verified": true
+  },
+  "minRuntime": "0.1.8",
+  "license": "MIT",
+  "entry": "dist/index.js",
+  "auth": {
+    "type": "oauth2",
+    "provider": "google",
+    "authorizationUrl": "https://accounts.google.com/o/oauth2/v2/auth",
+    "tokenUrl": "https://oauth2.googleapis.com/token",
+    "scopes": [
+      "https://www.googleapis.com/auth/gmail.modify",
+      "https://www.googleapis.com/auth/gmail.send",
+      "https://www.googleapis.com/auth/calendar",
+      "https://www.googleapis.com/auth/calendar.events"
+    ]
+  },
+  "events": [
+    {
+      "type": "email_received",
+      "description": "A new email was received in Gmail.",
+      "schema": "schemas/email_received.event.json"
+    },
+    {
+      "type": "calendar_event_created",
+      "description": "A new calendar event was created.",
+      "schema": "schemas/calendar_event_created.event.json"
+    },
+    {
+      "type": "calendar_event_updated",
+      "description": "A calendar event was modified.",
+      "schema": "schemas/calendar_event_updated.event.json"
+    }
+  ],
+  "actions": [
+    {
+      "name": "list_emails",
+      "description": "List recent emails, optionally filtered by Gmail query.",
+      "inputSchema": "schemas/list_emails.input.json",
+      "outputSchema": "schemas/list_emails.output.json"
+    },
+    {
+      "name": "read_email",
+      "description": "Read the full content of an email by message ID.",
+      "inputSchema": "schemas/read_email.input.json",
+      "outputSchema": "schemas/read_email.output.json"
+    },
+    {
+      "name": "send_email",
+      "description": "Send an email.",
+      "inputSchema": "schemas/send_email.input.json"
+    },
+    {
+      "name": "search_emails",
+      "description": "Search emails with a Gmail query.",
+      "inputSchema": "schemas/search_emails.input.json",
+      "outputSchema": "schemas/search_emails.output.json"
+    },
+    {
+      "name": "list_events",
+      "description": "List upcoming calendar events.",
+      "inputSchema": "schemas/list_events.input.json",
+      "outputSchema": "schemas/list_events.output.json"
+    },
+    {
+      "name": "create_event",
+      "description": "Create a calendar event.",
+      "inputSchema": "schemas/create_event.input.json",
+      "outputSchema": "schemas/create_event.output.json"
+    },
+    {
+      "name": "update_event",
+      "description": "Update an existing calendar event.",
+      "inputSchema": "schemas/update_event.input.json"
+    },
+    {
+      "name": "find_free_slots",
+      "description": "Find available time slots in the calendar.",
+      "inputSchema": "schemas/find_free_slots.input.json",
+      "outputSchema": "schemas/find_free_slots.output.json"
+    }
+  ],
+  "skills": [
+    "skills/gmail.md",
+    "skills/calendar.md"
+  ],
+  "capabilities": [
+    "auth:oauth:google",
+    "events:emit:google.*",
+    "actions:expose:8",
+    "network:outbound:googleapis.com",
+    "network:outbound:accounts.google.com"
+  ]
+}

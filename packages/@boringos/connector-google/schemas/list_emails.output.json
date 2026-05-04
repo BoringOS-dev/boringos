@@ -1,0 +1,26 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://boringos.dev/connectors/google/schemas/list_emails.output.json",
+  "title": "Gmail list_emails output",
+  "type": "object",
+  "required": ["messages"],
+  "properties": {
+    "messages": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["id", "from", "subject", "snippet", "date"],
+        "properties": {
+          "id": { "type": "string", "description": "Gmail message id." },
+          "threadId": { "type": "string", "description": "Gmail thread id." },
+          "from": { "type": "string", "description": "Sender (raw RFC822 address)." },
+          "subject": { "type": "string" },
+          "snippet": { "type": "string", "description": "Preview snippet of the message body." },
+          "date": { "type": "string", "description": "Internal date (ISO 8601)." }
+        },
+        "additionalProperties": true
+      }
+    }
+  },
+  "additionalProperties": false
+}

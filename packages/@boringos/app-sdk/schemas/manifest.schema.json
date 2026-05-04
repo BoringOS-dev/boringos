@@ -186,6 +186,11 @@
               "type": "array",
               "items": { "$ref": "#/$defs/WebhookDeclaration" }
             },
+            "skills": {
+              "type": "array",
+              "items": { "type": "string", "minLength": 1 },
+              "description": "Relative paths to markdown skill files. The runtime concatenates and injects them into agent prompts so agents know how to use the connector."
+            },
             "capabilities": {
               "type": "array",
               "items": { "$ref": "#/$defs/Capability" }
@@ -291,6 +296,11 @@
             "contextProviders": { "type": "string" },
             "routes": { "type": "string" },
             "ui": { "$ref": "#/$defs/UIManifest" },
+            "skills": {
+              "type": "array",
+              "items": { "type": "string", "minLength": 1 },
+              "description": "Relative paths to markdown skill files. The runtime concatenates and injects them into agent prompts."
+            },
             "capabilities": {
               "type": "array",
               "items": { "$ref": "#/$defs/Capability" }

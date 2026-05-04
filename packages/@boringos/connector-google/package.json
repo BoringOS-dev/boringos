@@ -32,6 +32,9 @@
   "author": "BoringOS Contributors",
   "files": [
     "dist",
+    "schemas",
+    "skills",
+    "boringos.json",
     "README.md"
   ],
   "keywords": [
