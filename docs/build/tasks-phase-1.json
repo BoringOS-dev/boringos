@@ -705,7 +705,10 @@
       ],
       "estimateHours": 3,
       "dependsOn": ["C3", "D1"],
-      "status": "todo"
+      "status": "done",
+      "completedCommit": "7005830",
+      "completedAt": "2026-05-05",
+      "notes": "Honesty layer is greppable rules in v1 (5 patterns; warnings, not errors). Strict AST-level analysis lands in Phase 4 marketplace pipeline. 12 tests covering both schema and honesty layers."
     },
     {
       "id": "C5",
