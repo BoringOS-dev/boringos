@@ -594,7 +594,10 @@
       ],
       "estimateHours": 4,
       "dependsOn": ["A5"],
-      "status": "todo"
+      "status": "done",
+      "completedCommit": "238eb0d",
+      "completedAt": "2026-05-05",
+      "notes": "Brand type lives in @boringos/app-sdk; useBrand hook lives in @boringos/shell since it depends on a React context only the shell provides. BrandingPanel uses URL fields for logo/favicon/loginBackground; Drive-backed logo upload is a small follow-up once the Drive screen ships. Workstream A complete (9/9)."
     },
 
     {
