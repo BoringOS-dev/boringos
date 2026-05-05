@@ -554,7 +554,10 @@
       "estimateHours": 2,
       "dependsOn": ["A5"],
       "repoOverride": "../boringos-crm",
-      "status": "todo"
+      "status": "done",
+      "completedCommit": "fe2e35f (in boringos-crm, on branch feat_business_shell — not pushed)",
+      "completedAt": "2026-05-05",
+      "notes": "12 lifted files deleted, App.tsx rewritten to keep CRM-specific routes only. Pre-existing breakage in CRM (stale link path to @boringos/workflow-ui from the framework rename) is out of A8's scope; A8 introduces zero new errors and removes one. Commit lives on feat_business_shell branch in CRM repo, not pushed — awaiting user OK before merging to CRM main."
     },
     {
       "id": "A9",
