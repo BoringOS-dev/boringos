@@ -24,6 +24,7 @@ import {
   Tasks,
   Workflows,
 } from "./screens/index.js";
+import { Apps } from "./screens/Apps/index.js";
 import { SDK_VERSION } from "@boringos/app-sdk";
 
 function PlaceholderScreen({ title }: { title: string }) {
@@ -75,7 +76,7 @@ export function App() {
                 <Route path="approvals" element={<PlaceholderScreen title="Approvals" />} />
                 <Route path="drive" element={<PlaceholderScreen title="Drive" />} />
                 <Route path="connectors" element={<PlaceholderScreen title="Connectors" />} />
-                <Route path="apps" element={<PlaceholderScreen title="Apps" />} />
+                <Route path="apps" element={<Apps />} />
                 <Route path="activity" element={<PlaceholderScreen title="Activity" />} />
                 <Route path="team" element={<PlaceholderScreen title="Team" />} />
               </Route>
