@@ -7,12 +7,10 @@
 //   - The connector / app scaffolders for local dev validation
 //   - Test harnesses that want to assert manifest correctness
 
-import { readFileSync } from "node:fs";
-import { fileURLToPath } from "node:url";
-import { dirname, join } from "node:path";
 import _Ajv2020 from "ajv/dist/2020.js";
 import _addFormats from "ajv-formats";
 
+import SCHEMA from "./manifest-schema.js";
 import type { Manifest, ConnectorManifest, AppManifest } from "./manifest.js";
 
 /* ── ESM/CJS interop shims (Ajv 8.x ships CJS) ─────────────────────── */
@@ -36,21 +34,6 @@ const Ajv2020 = ((_Ajv2020 as unknown as { default?: Ajv2020Ctor }).default ??
 
 const addFormats = ((_addFormats as unknown as { default?: (a: unknown) => void }).default ??
   (_addFormats as unknown as (a: unknown) => void)) as (a: unknown) => void;
-
-/* ── Schema loading ─────────────────────────────────────────────────── */
-
-const __dirname = dirname(fileURLToPath(import.meta.url));
-
-/**
- * Resolves to the JSON Schema file at package_root/schemas/manifest.schema.json
- * regardless of whether the SDK is being consumed from source or from a
- * published tarball — both layouts have schemas/ at the package root.
- */
-const SCHEMA_PATH = join(__dirname, "..", "schemas", "manifest.schema.json");
-
-const SCHEMA: Record<string, unknown> = JSON.parse(
-  readFileSync(SCHEMA_PATH, "utf-8")
-);
 
 /* ── Validator ──────────────────────────────────────────────────────── */
 

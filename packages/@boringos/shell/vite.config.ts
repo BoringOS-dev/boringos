@@ -10,7 +10,7 @@ export default defineConfig({
     allowedHosts: ["shell.boringos.dev"],
     proxy: {
       "/api": {
-        target: "http://localhost:3000",
+        target: process.env.BORINGOS_API_TARGET ?? "http://localhost:3030",
         changeOrigin: true,
       },
     },

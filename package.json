@@ -3,7 +3,7 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "dev": "pnpm --filter @boringos/server dev",
+    "dev": "node scripts/dev-server.mjs",
     "build": "pnpm -r build",
     "typecheck": "pnpm -r typecheck",
     "test": "vitest",
@@ -20,6 +20,7 @@
   },
   "packageManager": "pnpm@9.15.4",
   "devDependencies": {
+    "@boringos/core": "workspace:*",
     "@changesets/cli": "^2.30.0",
     "drizzle-orm": "^0.41.0",
     "hono": "^4.7.0",

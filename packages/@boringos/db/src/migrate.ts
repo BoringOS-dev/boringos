@@ -580,5 +580,36 @@ async function ensureSchema(db: Db): Promise<void> {
     CREATE INDEX IF NOT EXISTS tasks_tenant_status_idx ON tasks(tenant_id, status);
     CREATE INDEX IF NOT EXISTS tasks_assignee_agent_idx ON tasks(assignee_agent_id);
     CREATE INDEX IF NOT EXISTS agent_runs_tenant_agent_idx ON agent_runs(tenant_id, agent_id);
+
+    -- Phase 2 K4: workflow rows know which app they belong to so re-install can
+    -- replace cleanly. ALTER is idempotent via IF NOT EXISTS.
+    ALTER TABLE workflows ADD COLUMN IF NOT EXISTS metadata JSONB;
+
+    -- Phase 2 K1: tenant_apps records which apps are installed in which tenants.
+    CREATE TABLE IF NOT EXISTS tenant_apps (
+      id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+      tenant_id UUID NOT NULL REFERENCES tenants(id),
+      app_id TEXT NOT NULL,
+      version TEXT NOT NULL,
+      status TEXT NOT NULL DEFAULT 'active',
+      capabilities JSONB NOT NULL DEFAULT '[]'::jsonb,
+      manifest_hash TEXT,
+      installed_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+      updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+    );
+    CREATE INDEX IF NOT EXISTS tenant_apps_tenant_app_idx ON tenant_apps(tenant_id, app_id);
+
+    -- Phase 2 K7: tenant_app_links records cross-app capability approvals,
+    -- consulted by the uninstall cascade-warning logic.
+    CREATE TABLE IF NOT EXISTS tenant_app_links (
+      id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+      tenant_id UUID NOT NULL REFERENCES tenants(id),
+      source_app_id TEXT NOT NULL,
+      target_app_id TEXT NOT NULL,
+      capability TEXT NOT NULL,
+      approved_at TIMESTAMPTZ NOT NULL DEFAULT now()
+    );
+    CREATE UNIQUE INDEX IF NOT EXISTS tenant_app_links_uniq_idx
+      ON tenant_app_links(tenant_id, source_app_id, target_app_id, capability);
   `);
 }

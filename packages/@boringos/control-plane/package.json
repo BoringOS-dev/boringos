@@ -17,7 +17,9 @@
   "license": "BUSL-1.1",
   "dependencies": {
     "@boringos/app-sdk": "workspace:^",
-    "@boringos/db": "workspace:*"
+    "@boringos/db": "workspace:*",
+    "drizzle-orm": "^0.41.0",
+    "hono": "^4.7.0"
   },
   "devDependencies": {
     "@types/node": "^22.0.0",

@@ -1,0 +1,747 @@
+{
+  "version": "1.0.0",
+  "generated": "2026-05-05",
+  "phase": "phase-2",
+  "description": "Phase 2 tasks — prove the SDK against CRM end-to-end. Per way-to-implement.md, executed sequentially because the kernel-wiring + CRM port surfaces SDK gaps that earlier tasks must learn from. Three workstreams: K (Kernel adapter — wire C5's pure-function pipeline to real Drizzle/InstallRuntime/eventBus), L (CRM port — wrap existing CRM code in a manifest + slot contributions), M (Phase 2 Gate — verify the contract holds end-to-end).",
+  "repoRoot": "/Users/paragarora/Documents/Workspace/research/hebbs-clients/boringos-framework",
+  "executionMode": "sequential",
+  "phaseGate": "A fresh tenant signs up, lands on Home with default apps + connectors, opens Apps, clicks Install on CRM, approves the permission prompt — and within 30 seconds: schema migrations run, 5 CRM agents seed, Pipeline/Deals/Contacts/Companies appear in the sidebar, default sales pipeline + 7 stages are installed, copilot answers 'what's in my pipeline?' using the new agentDocs. End-to-end with NO SDK code modifications during the port.",
+  "phaseRisk": "If the port forces an SDK change, pause CRM port immediately and fix the SDK. The port is the contract validation; bending the SDK to fit is failing the validation, not passing it.",
+  "tasks": [
+    {
+      "id": "K1",
+      "workstream": "Kernel adapter",
+      "name": "Drizzle-backed InstallPipelineDb adapter",
+      "goal": "Concrete db ops backed by tenant_apps (C1), wrapped in a Drizzle transaction that the install pipeline can use for atomic multi-step writes.",
+      "readFirst": [
+        "packages/@boringos/control-plane/src/install.ts",
+        "packages/@boringos/db/src/schema/tenant-apps.ts",
+        "packages/@boringos/db/src/index.ts"
+      ],
+      "touch": [
+        "packages/@boringos/control-plane/src/adapters/drizzle-install-db.ts",
+        "packages/@boringos/control-plane/src/adapters/index.ts"
+      ],
+      "acceptance": [
+        "createDrizzleInstallDb(db) returns an InstallPipelineDb",
+        "insertTenantApp / deleteTenantApp / getTenantApp all hit the real tenant_apps table",
+        "The factory exposes a transaction() helper so the install pipeline can wrap the full sequence inside a Drizzle txn",
+        "Integration test against embedded Postgres: install + uninstall end-to-end leaves the row count consistent"
+      ],
+      "doNot": [
+        "Modify @boringos/control-plane/src/install.ts itself — the adapter is additive",
+        "Add Drizzle as a dependency of @boringos/control-plane root if it can stay in this adapter file only"
+      ],
+      "estimateHours": 3,
+      "dependsOn": [],
+      "status": "todo"
+    },
+    {
+      "id": "K2",
+      "workstream": "Kernel adapter",
+      "name": "Schema migration runner",
+      "goal": "Read manifest.schema/*.sql files from the app's bundle and execute the DDL inside the install transaction.",
+      "readFirst": [
+        "packages/@boringos/db/src/index.ts (look for createMigrationManager)",
+        "packages/@boringos/control-plane/src/install.ts",
+        "apps/generic-triage/boringos.json"
+      ],
+      "touch": [
+        "packages/@boringos/control-plane/src/adapters/schema-migrator.ts"
+      ],
+      "acceptance": [
+        "runAppMigrations(tx, app, migrationsDir) applies SQL files in lexicographic order",
+        "Already-applied migrations (tracked in a per-app migrations table or file-naming convention) are not re-run",
+        "Inside the install transaction: a failed migration rolls back the whole install",
+        "Test: a fixture migration creates a namespaced table; install creates it, uninstall (hard) drops it"
+      ],
+      "doNot": [
+        "Build a generic ORM-agnostic migration framework — Drizzle-specific is fine for v1",
+        "Add cross-app migration ordering — apps own their own migration sequence"
+      ],
+      "estimateHours": 3,
+      "dependsOn": ["K1"],
+      "status": "todo"
+    },
+    {
+      "id": "K3",
+      "workstream": "Kernel adapter",
+      "name": "Agent registration runner",
+      "goal": "Read AppDefinition.agents from the bundle and write each into the agents table inside the install txn.",
+      "readFirst": [
+        "packages/@boringos/db/src/schema/agents.ts",
+        "packages/@boringos/agent/src/index.ts (agent creation helper)",
+        "packages/@boringos/app-sdk/src/define-app.ts"
+      ],
+      "touch": [
+        "packages/@boringos/control-plane/src/adapters/agent-registrar.ts"
+      ],
+      "acceptance": [
+        "registerAppAgents(tx, tenantId, app, definition) creates one agent per AppDefinition.agents[] entry",
+        "Agent.persona / runtime / instructions are populated from the definition",
+        "Re-installing the same app idempotently replaces prior agents (delete-by-app-id then re-insert)",
+        "Test: stub app with 2 agents installs, inspect agents table for both rows"
+      ],
+      "doNot": [
+        "Wake the agents — that is a per-trigger concern, not part of install",
+        "Implement the full agent runtime — only the registration row write"
+      ],
+      "estimateHours": 2,
+      "dependsOn": ["K1"],
+      "status": "todo"
+    },
+    {
+      "id": "K4",
+      "workstream": "Kernel adapter",
+      "name": "Workflow template registration runner",
+      "goal": "Read AppDefinition.workflows and create workflow rows + their cron/event triggers via @boringos/workflow's existing store.",
+      "readFirst": [
+        "packages/@boringos/workflow/src/store.ts",
+        "packages/@boringos/db/src/schema/workflows.ts",
+        "apps/generic-triage/src/workflows/triage-on-inbox.ts"
+      ],
+      "touch": [
+        "packages/@boringos/control-plane/src/adapters/workflow-registrar.ts"
+      ],
+      "acceptance": [
+        "registerAppWorkflows(tx, tenantId, app, definition) creates one workflow row per WorkflowTemplate",
+        "Triggers (cron / event / webhook) are wired so the framework's existing dispatcher picks them up",
+        "Re-install replaces (delete + insert by app id)",
+        "Test: install generic-triage's stub manifest, verify the triage-on-inbox workflow exists with the inbox.item_created trigger"
+      ],
+      "doNot": [
+        "Reimplement the workflow engine — call into @boringos/workflow's store",
+        "Run the workflow at install time"
+      ],
+      "estimateHours": 2,
+      "dependsOn": ["K1"],
+      "status": "todo"
+    },
+    {
+      "id": "K5",
+      "workstream": "Kernel adapter",
+      "name": "Route mounting registrar",
+      "goal": "Read AppDefinition.routes and mount the app's Hono router under /api/{appId}, with the app's agentDocs() picked up by the framework's api-catalog context provider.",
+      "readFirst": [
+        "packages/@boringos/core/src/index.ts (look for app.route)",
+        "packages/@boringos/app-sdk/src/define-app.ts"
+      ],
+      "touch": [
+        "packages/@boringos/control-plane/src/adapters/route-registrar.ts"
+      ],
+      "acceptance": [
+        "registerAppRoutes(coreApp, app, definition) mounts at /api/{appId}",
+        "agentDocs (if exported on the registrar) is registered with the framework's api-catalog provider",
+        "Auth middleware wraps the routes (createAuthMiddleware from @boringos/core)",
+        "Uninstall unmounts cleanly; subsequent requests to /api/{appId}/* return 404"
+      ],
+      "doNot": [
+        "Mount routes outside /api/{appId} — apps must stay namespaced"
+      ],
+      "estimateHours": 2,
+      "dependsOn": ["K1"],
+      "status": "todo"
+    },
+    {
+      "id": "K6",
+      "workstream": "Kernel adapter",
+      "name": "onTenantCreated invoker + ActionContext factory",
+      "goal": "After all install steps succeed, invoke the app's onTenantCreated lifecycle hook with a real LifecycleContext (db, log, tenantId). Same shape used to construct ActionContext for command/copilot tool invocations.",
+      "readFirst": [
+        "packages/@boringos/app-sdk/src/lifecycle.ts",
+        "packages/@boringos/app-sdk/src/context.ts"
+      ],
+      "touch": [
+        "packages/@boringos/control-plane/src/adapters/lifecycle.ts",
+        "packages/@boringos/control-plane/src/adapters/action-context.ts"
+      ],
+      "acceptance": [
+        "createLifecycleContext(tx, tenantId) returns a LifecycleContext satisfying the SDK type",
+        "createActionContext(tenantId, userId, role) returns an ActionContext usable by command/copilot tool handlers",
+        "Failures inside onTenantCreated propagate and trigger install rollback",
+        "Test: stub onTenantCreated that throws — install rolls back the agents/workflows/routes inserted by K3-K5"
+      ],
+      "doNot": [
+        "Spawn agents from onTenantCreated automatically — apps decide what to seed"
+      ],
+      "estimateHours": 2,
+      "dependsOn": ["K2", "K3", "K4", "K5"],
+      "status": "todo"
+    },
+    {
+      "id": "K7",
+      "workstream": "Kernel adapter",
+      "name": "End-to-end kernel install context factory",
+      "goal": "Compose K1-K6 into a single createKernelInstallContext(coreApp, db) function that returns the InstallContext (db + slotRuntime + events) the C5 install pipeline expects.",
+      "readFirst": [
+        "packages/@boringos/control-plane/src/install.ts",
+        "packages/@boringos/shell/src/runtime/install-runtime.ts"
+      ],
+      "touch": [
+        "packages/@boringos/control-plane/src/adapters/kernel-install-context.ts",
+        "packages/@boringos/control-plane/src/adapters/index.ts"
+      ],
+      "acceptance": [
+        "createKernelInstallContext returns a context that wires Drizzle, schema migrator, agent registrar, workflow registrar, route registrar, lifecycle invoker into one InstallContext",
+        "End-to-end integration test: install a stub manifest+bundle through C5's installApp() — verify all 6 effects (row, schema, agents, workflows, routes, onTenantCreated) happened",
+        "Rollback test: arrange any one step to fail, verify all prior steps undone",
+        "Slot runtime is the singleton InstallRuntime from A6"
+      ],
+      "doNot": [
+        "Add new public types to @boringos/control-plane root — this is internal wiring"
+      ],
+      "estimateHours": 3,
+      "dependsOn": ["K6"],
+      "status": "todo"
+    },
+    {
+      "id": "K8",
+      "workstream": "Kernel adapter",
+      "name": "Catalog loader from disk for default apps",
+      "goal": "Populate DEFAULT_APPS_CATALOG by reading apps/*/boringos.json + the compiled bundle text at boot.",
+      "readFirst": [
+        "packages/@boringos/control-plane/src/default-apps.ts",
+        "apps/generic-triage/boringos.json",
+        "apps/generic-replier/boringos.json"
+      ],
+      "touch": [
+        "packages/@boringos/control-plane/src/adapters/disk-catalog.ts"
+      ],
+      "acceptance": [
+        "loadCatalogFromDisk(appsDir) returns DefaultAppEntry[] for every directory with a boringos.json",
+        "Bundle text loaded from manifest.entry path",
+        "Manifest hash precomputed via SHA-256",
+        "Throws on a malformed manifest (caller decides whether to skip or fail boot)"
+      ],
+      "doNot": [
+        "Auto-include @boringos/connector-* — they're connectors, not default apps",
+        "Bake the apps/ path — accept it as an argument so deployments can configure"
+      ],
+      "estimateHours": 2,
+      "dependsOn": ["K7"],
+      "status": "todo"
+    },
+    {
+      "id": "K9",
+      "workstream": "Kernel adapter",
+      "name": "Wire installDefaultApps into framework's onTenantCreated hook",
+      "goal": "Fresh signup with tenantName auto-installs every catalog entry through the regular install pipeline.",
+      "readFirst": [
+        "packages/@boringos/core/src/index.ts (look for onTenantCreated registration)",
+        "packages/@boringos/control-plane/src/default-apps.ts"
+      ],
+      "touch": [
+        "packages/@boringos/core/src/tenant-provisioning.ts (or equivalent)"
+      ],
+      "acceptance": [
+        "After a successful signup with tenantName, generic-triage and generic-replier are installed with active status",
+        "Failure to install one default app does not block signup; an activity-log entry records the failure",
+        "Existing tenants don't double-install on framework restart",
+        "Test: signup, query /api/admin/apps?tenantId=<id>, expect 2 entries"
+      ],
+      "doNot": [
+        "Mark default apps undeletable — they follow the regular lifecycle"
+      ],
+      "estimateHours": 2,
+      "dependsOn": ["K8"],
+      "status": "todo"
+    },
+    {
+      "id": "K10",
+      "workstream": "Kernel adapter",
+      "name": "HTTP install endpoint + Apps screen wire-up",
+      "goal": "POST /api/admin/apps/install accepts a manifest URL, fetches + validates + installs, returns the install record. Shell's Apps screen Install button calls this.",
+      "readFirst": [
+        "packages/@boringos/core/src/index.ts (admin API routing)",
+        "packages/@boringos/shell/src/screens/Apps/Browse.tsx",
+        "packages/@boringos/shell/src/screens/Apps/InstallFromUrl.tsx"
+      ],
+      "touch": [
+        "packages/@boringos/core/src/admin/apps.ts",
+        "packages/@boringos/shell/src/screens/Apps/installApi.ts"
+      ],
+      "acceptance": [
+        "POST /api/admin/apps/install with { url } returns 200 + InstallRecord on success, 4xx with structured errors on validation failure",
+        "Shell's Browse tab Install button triggers fetch+validate then shows the PermissionPrompt; Approve calls the install endpoint",
+        "Install from URL tab does the same with a user-provided URL (ungated by marketplace)",
+        "Permission denied (non-admin user) returns 403"
+      ],
+      "doNot": [
+        "Allow individual capability dropping in the prompt — all-or-nothing in v1"
+      ],
+      "estimateHours": 3,
+      "dependsOn": ["K9"],
+      "status": "todo"
+    },
+    {
+      "id": "K11",
+      "workstream": "Kernel adapter",
+      "name": "HTTP uninstall endpoint + Apps screen Installed tab wire-up",
+      "goal": "DELETE /api/admin/apps/:appId?mode=soft|hard executes the C6 uninstall pipeline. Shell's Installed tab Uninstall button calls this with cascade-warning UX.",
+      "readFirst": [
+        "packages/@boringos/control-plane/src/uninstall.ts",
+        "packages/@boringos/shell/src/screens/Apps/Installed.tsx"
+      ],
+      "touch": [
+        "packages/@boringos/core/src/admin/apps.ts",
+        "packages/@boringos/shell/src/screens/Apps/Installed.tsx"
+      ],
+      "acceptance": [
+        "DELETE /api/admin/apps/:appId?mode=soft returns 200 + UninstallResult; cascade is reported in the body when force=false",
+        "Installed tab Uninstall button: shows cascade warning if non-empty; user clicks Continue → re-calls with force=true",
+        "Hard mode requires a separate confirm dialog because it is irreversible"
+      ],
+      "doNot": [
+        "Auto-uninstall dependent apps — only warn"
+      ],
+      "estimateHours": 2,
+      "dependsOn": ["K10"],
+      "status": "todo"
+    },
+    {
+      "id": "L1",
+      "workstream": "CRM port",
+      "name": "Add boringos.json at the CRM repo root",
+      "goal": "CRM gets a manifest declaring its identity, capabilities, entity types, and entry path. Validates against the @boringos/app-sdk schema.",
+      "readFirst": [
+        "../boringos-crm/packages/server/src/index.ts",
+        "../boringos-crm/packages/server/src/tenant.ts",
+        "apps/generic-triage/boringos.json (template)"
+      ],
+      "touch": [
+        "../boringos-crm/boringos.json"
+      ],
+      "acceptance": [
+        "kind: app, id: crm, version matches CRM's package version",
+        "entityTypes declares crm_contact, crm_company, crm_deal (shareable: true), crm_pipeline, crm_pipeline_stage, crm_activity",
+        "capabilities cover everything CRM does today: entities.own:write, entities.core:write, agents:register, workflows:register, contextProviders:register, routes:register, slots:nav, slots:dashboard.widget, slots:entity.detail, slots:entity.action, slots:settings.panel, slots:copilot.tool, connectors:use:google, connectors:use:slack, memory:read, memory:write",
+        "validateManifest passes; isAppManifest narrows correctly",
+        "skills field references CRM's existing agent skill markdown files"
+      ],
+      "doNot": [
+        "Touch CRM server code — manifest is purely declarative",
+        "Add capabilities CRM doesn't actually use — capability honesty matters"
+      ],
+      "estimateHours": 2,
+      "dependsOn": ["K10"],
+      "repoOverride": "../boringos-crm",
+      "status": "todo"
+    },
+    {
+      "id": "L2",
+      "workstream": "CRM port",
+      "name": "Export defineApp() from CRM server",
+      "goal": "CRM's existing server code (schema DDL, agents, workflows, routes, contextProviders, onTenantCreated) gets wrapped in a single defineApp({...}) export.",
+      "readFirst": [
+        "../boringos-crm/packages/server/src/index.ts",
+        "../boringos-crm/packages/server/src/tenant.ts",
+        "../boringos-crm/packages/server/src/agents/",
+        "packages/@boringos/app-sdk/src/define-app.ts"
+      ],
+      "touch": [
+        "../boringos-crm/packages/server/src/app.ts",
+        "../boringos-crm/packages/server/src/index.ts"
+      ],
+      "acceptance": [
+        "@boringos-crm/server exports a default defineApp({...}) bundling: schema (path), 5 agents (Email Triage, Contact Enrichment, Company Enrichment, Deal Analyst, Follow-up Writer), 2 workflow templates (Email Ingest, Calendar Check), context providers (createCompanyProfileProvider et al), routes registrar with agentDocs",
+        "onTenantCreated wraps the existing pipeline-seed logic from tenant.ts",
+        "The standalone server entry still works (boots on port 3001) — this is additive",
+        "TypeScript: AppDefinition shape is satisfied"
+      ],
+      "doNot": [
+        "Rewrite the existing server logic — wrap it",
+        "Strip the standalone server yet — that is L11"
+      ],
+      "estimateHours": 4,
+      "dependsOn": ["L1"],
+      "repoOverride": "../boringos-crm",
+      "status": "todo"
+    },
+    {
+      "id": "L3",
+      "workstream": "CRM port",
+      "name": "Validate CRM manifest end-to-end against the install pipeline",
+      "goal": "Run @boringos/control-plane's validateManifestFull against the CRM manifest + bundle. Surface any honesty warnings.",
+      "readFirst": [
+        "../boringos-crm/boringos.json",
+        "packages/@boringos/control-plane/src/validator.ts"
+      ],
+      "touch": [
+        "tests/crm-manifest-validation.test.ts"
+      ],
+      "acceptance": [
+        "Test loads CRM's manifest + compiled bundle text and runs validateManifestFull",
+        "Schema validation passes with zero errors",
+        "Capability honesty: warnings are acceptable in v1; document any unexpected ones",
+        "If schema fails, the test exits with the Phase 1 SDK gap that needs fixing — STOP and fix before proceeding"
+      ],
+      "doNot": [
+        "Suppress warnings to make the test pass — they are actionable"
+      ],
+      "estimateHours": 1,
+      "dependsOn": ["L2"],
+      "status": "todo"
+    },
+    {
+      "id": "L4",
+      "workstream": "CRM port",
+      "name": "First slot port — Pipeline page as slots.pages contribution",
+      "goal": "The single most important UI port. Lift CRM's PipelinePage into a UIDefinition slot the shell renders inside its chrome.",
+      "readFirst": [
+        "../boringos-crm/packages/web/src/pages/Pipeline.tsx",
+        "packages/@boringos/shell/src/slots/SlotRenderer.tsx",
+        "packages/@boringos/app-sdk/src/define-ui.ts"
+      ],
+      "touch": [
+        "../boringos-crm/packages/web/src/ui.ts",
+        "../boringos-crm/packages/web/src/slots/Pipeline.tsx (extracted)"
+      ],
+      "acceptance": [
+        "@boringos-crm/web exports defineUI({ pages: { pipeline: { id: 'pipeline', component: PipelinePage } } })",
+        "After installing CRM, the shell sidebar shows a 'Pipeline' nav entry; clicking it navigates to /crm/pipeline; PipelinePage renders inside the shell's Layout",
+        "Pipeline page still calls /api/crm/* routes for data; the shell's BoringOSClient passes auth headers transparently",
+        "Visual: pipeline kanban renders with all stages + deals"
+      ],
+      "doNot": [
+        "Rewrite the kanban — only repackage as a slot",
+        "Port the other CRM screens yet — vertical slice, one at a time"
+      ],
+      "estimateHours": 4,
+      "dependsOn": ["L3"],
+      "repoOverride": "../boringos-crm",
+      "status": "todo"
+    },
+    {
+      "id": "L5",
+      "workstream": "CRM port",
+      "name": "Slot port — Deals + DealDetail",
+      "goal": "DealsPage as a nav slot; DealDetailPage as the shell's entity detail route for crm_deal.",
+      "readFirst": [
+        "../boringos-crm/packages/web/src/pages/Deals.tsx",
+        "../boringos-crm/packages/web/src/pages/DealDetail.tsx"
+      ],
+      "touch": [
+        "../boringos-crm/packages/web/src/ui.ts",
+        "../boringos-crm/packages/web/src/slots/Deals.tsx",
+        "../boringos-crm/packages/web/src/slots/DealDetail.tsx"
+      ],
+      "acceptance": [
+        "Deals appears in sidebar under the 'Apps' group",
+        "Clicking a deal opens the shell's entity detail surface; DealDetail's tabs render via the shell's chrome",
+        "Existing data flows (TanStack Query against /api/crm/deals/*) keep working"
+      ],
+      "doNot": [
+        "Touch DealForm, EntityActions, ActivityTimeline components — those move with their parents in later tasks"
+      ],
+      "estimateHours": 3,
+      "dependsOn": ["L4"],
+      "repoOverride": "../boringos-crm",
+      "status": "todo"
+    },
+    {
+      "id": "L6",
+      "workstream": "CRM port",
+      "name": "Slot port — Contacts + ContactDetail",
+      "goal": "Same pattern as L5 for the Contact entity.",
+      "readFirst": [
+        "../boringos-crm/packages/web/src/pages/Contacts.tsx",
+        "../boringos-crm/packages/web/src/pages/ContactDetail.tsx"
+      ],
+      "touch": [
+        "../boringos-crm/packages/web/src/ui.ts",
+        "../boringos-crm/packages/web/src/slots/Contacts.tsx",
+        "../boringos-crm/packages/web/src/slots/ContactDetail.tsx"
+      ],
+      "acceptance": [
+        "Contacts in the sidebar; clicking opens contact detail with the Dossier view intact",
+        "DossierView renders as an entity.detail panel"
+      ],
+      "doNot": [
+        "Re-export ContactForm into the shell — modal forms are still local to CRM"
+      ],
+      "estimateHours": 2,
+      "dependsOn": ["L5"],
+      "repoOverride": "../boringos-crm",
+      "status": "todo"
+    },
+    {
+      "id": "L7",
+      "workstream": "CRM port",
+      "name": "Slot port — Companies + CompanyDetail",
+      "goal": "Same pattern for the Company entity.",
+      "readFirst": [
+        "../boringos-crm/packages/web/src/pages/Companies.tsx",
+        "../boringos-crm/packages/web/src/pages/CompanyDetail.tsx"
+      ],
+      "touch": [
+        "../boringos-crm/packages/web/src/ui.ts",
+        "../boringos-crm/packages/web/src/slots/Companies.tsx",
+        "../boringos-crm/packages/web/src/slots/CompanyDetail.tsx"
+      ],
+      "acceptance": [
+        "Companies in the sidebar; CompanyDetail with its dossier renders cleanly"
+      ],
+      "doNot": [
+        "Add cross-app entity reads yet — that's Phase 3 with Accounts"
+      ],
+      "estimateHours": 2,
+      "dependsOn": ["L6"],
+      "repoOverride": "../boringos-crm",
+      "status": "todo"
+    },
+    {
+      "id": "L8",
+      "workstream": "CRM port",
+      "name": "EntityActions for crm_deal",
+      "goal": "Lift CRM's EntityActions component into ui.entityActions slot contributions on crm_deal records.",
+      "readFirst": [
+        "../boringos-crm/packages/web/src/components/EntityActions.tsx",
+        "packages/@boringos/app-sdk/src/slots.ts"
+      ],
+      "touch": [
+        "../boringos-crm/packages/web/src/ui.ts",
+        "../boringos-crm/packages/web/src/slots/dealActions.ts"
+      ],
+      "acceptance": [
+        "Deal detail page's action bar shows: 'Send follow-up' (wakes Follow-up Writer agent), 'Run analyst' (wakes Deal Analyst), 'Mark won/lost', etc.",
+        "Each action is a typed EntityAction<crm_deal> with an invoke handler",
+        "Handlers receive ActionContext from the kernel adapter (K6) — emit events, write activity log, etc."
+      ],
+      "doNot": [
+        "Add cross-app actions (e.g. 'Send invoice' from Accounts) — that lands when Accounts ships in Phase 3"
+      ],
+      "estimateHours": 2,
+      "dependsOn": ["L7"],
+      "repoOverride": "../boringos-crm",
+      "status": "todo"
+    },
+    {
+      "id": "L9",
+      "workstream": "CRM port",
+      "name": "Settings panel — Pipeline configuration",
+      "goal": "CRM contributes a settings.panel for pipeline + stage configuration. Shell's Settings screen shows it as a tab.",
+      "readFirst": [
+        "../boringos-crm/packages/web/src/pages/Settings.tsx (the prior CRM settings)",
+        "packages/@boringos/shell/src/screens/Settings.tsx"
+      ],
+      "touch": [
+        "../boringos-crm/packages/web/src/ui.ts",
+        "../boringos-crm/packages/web/src/slots/PipelineSettings.tsx"
+      ],
+      "acceptance": [
+        "After CRM install, Settings sidebar shows a 'Pipeline configuration' tab under the per-app section",
+        "Panel allows adding/removing stages, reordering, setting probabilities",
+        "Saves go to /api/crm/pipelines via the existing routes"
+      ],
+      "doNot": [
+        "Build a full design-tokens CRM customization — that's the BrandProvider's job, not CRM's"
+      ],
+      "estimateHours": 2,
+      "dependsOn": ["L8"],
+      "repoOverride": "../boringos-crm",
+      "status": "todo"
+    },
+    {
+      "id": "L10",
+      "workstream": "CRM port",
+      "name": "Email Triage agent split — CRM Email Lens",
+      "goal": "The CRM-aware part of the existing email-triage agent moves into a new agent that subscribes to triage.classified (emitted by generic-triage) and reads metadata.triage instead of re-classifying.",
+      "readFirst": [
+        "../boringos-crm/packages/server/src/agents/email-triage.ts",
+        "apps/generic-triage/skills/triage.md",
+        "docs/coordination.md"
+      ],
+      "touch": [
+        "../boringos-crm/packages/server/src/agents/email-lens.ts",
+        "../boringos-crm/packages/server/src/agents/email-triage.ts (DELETE — replaced by generic + lens)",
+        "../boringos-crm/packages/server/src/app.ts (registers email-lens, drops email-triage)"
+      ],
+      "acceptance": [
+        "New agent crm.email-lens subscribes to triage.classified",
+        "Reads inbox item's metadata.triage; never re-classifies",
+        "Adds CRM-specific interpretation: links to a Contact, links to an active Deal, drafts a CRM-aware reply that references the deal stage",
+        "Old crm.email-triage instructions migrated where useful into email-lens; redundant general-classification logic dropped",
+        "End-to-end test: synthesize an inbox.item_created event, observe generic-triage classify, then crm.email-lens layer on top"
+      ],
+      "doNot": [
+        "Re-classify in the lens — that's generic-triage's job",
+        "Auto-archive — out of scope for v1"
+      ],
+      "estimateHours": 3,
+      "dependsOn": ["L9"],
+      "repoOverride": "../boringos-crm",
+      "status": "todo"
+    },
+    {
+      "id": "L11",
+      "workstream": "CRM port",
+      "name": "Strip CRM standalone server bits",
+      "goal": "Once CRM is fully shell-hosted, the standalone @boringos-crm/server entry that boots on :3001 is no longer needed. Delete the entry script; keep the routes/agents/etc as library exports the kernel adapter consumes.",
+      "readFirst": [
+        "../boringos-crm/packages/server/src/index.ts",
+        "../boringos-crm/packages/server/package.json"
+      ],
+      "touch": [
+        "../boringos-crm/packages/server/src/server.ts (DELETE)",
+        "../boringos-crm/packages/server/package.json (drop the dev script that booted port 3001)",
+        "../boringos-crm/README.md (update — CRM is now shell-hosted)"
+      ],
+      "acceptance": [
+        "@boringos-crm/server exports defineApp + library symbols; no longer ships a standalone HTTP server",
+        "boringos-crm/packages/web is similarly trimmed (already partially done in A8); the port-5173 dev script is removed",
+        "CRM still typechecks; CRM's published packages still build"
+      ],
+      "doNot": [
+        "Delete CRM domain code (routes, agents, schema) — those are still used as a library"
+      ],
+      "estimateHours": 2,
+      "dependsOn": ["L10"],
+      "repoOverride": "../boringos-crm",
+      "status": "todo"
+    },
+    {
+      "id": "L12",
+      "workstream": "CRM port",
+      "name": "Fix the stale @boringos/workflow-ui link in CRM",
+      "goal": "Resolve the pre-existing CRM typecheck regression from the framework rename (boringos → boringos-framework). Workflow-detail/editor/run pages depend on @boringos/workflow-ui at a stale path.",
+      "readFirst": [
+        "../boringos-crm/packages/web/package.json",
+        "packages/@boringos/workflow-ui/package.json"
+      ],
+      "touch": [
+        "../boringos-crm/packages/web/package.json"
+      ],
+      "acceptance": [
+        "boringos-crm/packages/web typecheck reports zero @boringos/workflow-ui errors (was 5)",
+        "WorkflowDetail / WorkflowEditor / WorkflowRunDetail pages still build",
+        "These pages remain in CRM as the canonical workflow editor surface (out of scope for shell port — too heavy)"
+      ],
+      "doNot": [
+        "Move workflow-ui into the shell — the editor stays a CRM-side dependency"
+      ],
+      "estimateHours": 1,
+      "dependsOn": ["L11"],
+      "repoOverride": "../boringos-crm",
+      "status": "todo"
+    },
+    {
+      "id": "M1",
+      "workstream": "Phase 2 Gate",
+      "name": "End-to-end install timing benchmark",
+      "goal": "Measure the full Apps → Install CRM → ready latency. Phase 2 Gate target: under 30 seconds.",
+      "readFirst": [
+        "docs/phases/phase-2.md (the Phase 2 Gate text)"
+      ],
+      "touch": [
+        "tests/phase2-gate-install-timing.test.ts"
+      ],
+      "acceptance": [
+        "Test boots a fresh tenant, calls POST /api/admin/apps/install with the local CRM manifest URL, polls until tenant_apps.status = 'active', records elapsed ms",
+        "Asserts elapsed < 30,000ms",
+        "Records median + p95 across 3 runs to a phase2-gate-results.md report"
+      ],
+      "doNot": [
+        "Run this against npm-published CRM — uses local file: protocol or a test fixture"
+      ],
+      "estimateHours": 2,
+      "dependsOn": ["L12"],
+      "status": "todo"
+    },
+    {
+      "id": "M2",
+      "workstream": "Phase 2 Gate",
+      "name": "Slot contributions visible after install",
+      "goal": "Verify the shell's sidebar populates with CRM's nav entries within one render after install.",
+      "readFirst": [
+        "packages/@boringos/shell/src/runtime/install-runtime.ts",
+        "packages/@boringos/shell/src/slots/registry.ts"
+      ],
+      "touch": [
+        "tests/phase2-gate-slot-visibility.test.ts"
+      ],
+      "acceptance": [
+        "After install, slotRegistry.list('pages') contains entries for crm.pipeline, crm.deals, crm.contacts, crm.companies",
+        "slotRegistry.list('entityActions', { appId: 'crm' }) contains the deal actions",
+        "slotRegistry.list('settingsPanels') contains the pipeline-config panel"
+      ],
+      "doNot": [
+        "Rely on a full DOM render harness — registry-level assertions are sufficient for Phase 2 Gate"
+      ],
+      "estimateHours": 1,
+      "dependsOn": ["M1"],
+      "status": "todo"
+    },
+    {
+      "id": "M3",
+      "workstream": "Phase 2 Gate",
+      "name": "Agent + workflow seeding verification",
+      "goal": "After CRM install, all 5 expected CRM agents and 2 workflow templates are present in the framework tables.",
+      "readFirst": [
+        "../boringos-crm/packages/server/src/tenant.ts (the original seed list)",
+        "packages/@boringos/control-plane/src/adapters/agent-registrar.ts",
+        "packages/@boringos/control-plane/src/adapters/workflow-registrar.ts"
+      ],
+      "touch": [
+        "tests/phase2-gate-seeding.test.ts"
+      ],
+      "acceptance": [
+        "After install, agents table contains 5 CRM agents (the new email-lens replacing the old email-triage, plus contact-enrichment, company-enrichment, deal-analyst, follow-up-writer)",
+        "workflows table contains the email-ingest and calendar-check templates",
+        "Default sales pipeline + 7 stages exist (from CRM's onTenantCreated)"
+      ],
+      "doNot": [
+        "Test agent execution — only registration"
+      ],
+      "estimateHours": 2,
+      "dependsOn": ["M2"],
+      "status": "todo"
+    },
+    {
+      "id": "M4",
+      "workstream": "Phase 2 Gate",
+      "name": "Copilot picks up CRM context (agentDocs)",
+      "goal": "After install, the framework's api-catalog context provider injects CRM's agentDocs into copilot prompts.",
+      "readFirst": [
+        "packages/@boringos/control-plane/src/adapters/route-registrar.ts",
+        "../boringos-crm/packages/server/src/context-providers/crm-schema.ts"
+      ],
+      "touch": [
+        "tests/phase2-gate-copilot-context.test.ts"
+      ],
+      "acceptance": [
+        "Build the api-catalog context for copilot in a tenant with CRM installed",
+        "The catalog markdown contains CRM's route descriptions (contacts, deals, etc.)",
+        "Without CRM installed, the same catalog has no CRM section"
+      ],
+      "doNot": [
+        "Spawn a real copilot session — context-provider output is enough"
+      ],
+      "estimateHours": 1,
+      "dependsOn": ["M3"],
+      "status": "todo"
+    },
+    {
+      "id": "M5",
+      "workstream": "Phase 2 Gate",
+      "name": "SDK regression check — was Phase 1 SDK code touched?",
+      "goal": "Audit the diff between Phase 1's tip and Phase 2's tip. If any file under packages/@boringos/app-sdk/ changed during the port, that's evidence the SDK contract was wrong; document why.",
+      "readFirst": [
+        "docs/phases/phase-2.md (the 'no SDK code modifications during the port' clause)"
+      ],
+      "touch": [
+        "docs/tests/phase2-gate-results.md"
+      ],
+      "acceptance": [
+        "Diff shows zero changes under packages/@boringos/app-sdk/ between Phase 1 close (commit f7e78ac at the time of Phase 2 start) and Phase 2 close",
+        "If non-zero: each change is documented with the gap it filled and the test that surfaced it",
+        "Either way, M5 outcome is appended to docs/tests/phase2-gate-results.md as the public record"
+      ],
+      "doNot": [
+        "Pretend SDK changes didn't happen — honesty about the contract validation outcome IS the Phase 2 deliverable"
+      ],
+      "estimateHours": 1,
+      "dependsOn": ["M4"],
+      "status": "todo"
+    }
+  ]
+}

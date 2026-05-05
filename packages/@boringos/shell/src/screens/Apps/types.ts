@@ -18,4 +18,10 @@ export interface MarketplaceListing {
   license: string;
   /** First-party flag — shown as a small badge in the UI. */
   firstParty?: boolean;
+  /**
+   * Source URL the install pipeline can fetch the manifest from.
+   * Set on real marketplace entries; absent on mocks so the Install
+   * button stays disabled until Phase 4 wires real listings.
+   */
+  installUrl?: string;
 }

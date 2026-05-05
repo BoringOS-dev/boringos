@@ -4,12 +4,24 @@
 // Phase 4 swaps this for a real fetch against the marketplace backend.
 
 import { useMemo, useState } from "react";
+import { validateManifest, type Manifest } from "@boringos/app-sdk";
 
 import { installRuntime } from "../../runtime/install-runtime.js";
 import { MOCK_LISTINGS } from "./mockListings.js";
 import type { MarketplaceListing } from "./types.js";
+import { PermissionPrompt } from "./PermissionPrompt.js";
+import {
+  createInstallApi,
+  InstallApiResponseError,
+  type InstallApiOptions,
+} from "./installApi.js";
 
-export function Browse() {
+export interface BrowseProps {
+  api?: InstallApiOptions;
+  onInstalled?: (record: { appId: string; version: string }) => void;
+}
+
+export function Browse(props: BrowseProps = {}) {
   const [query, setQuery] = useState("");
   const [category, setCategory] = useState<string>("All");
 
@@ -58,7 +70,12 @@ export function Browse() {
       ) : (
         <ul className="grid grid-cols-1 md:grid-cols-2 gap-3">
           {filtered.map((l) => (
-            <ListingCard key={l.id} listing={l} />
+            <ListingCard
+              key={l.id}
+              listing={l}
+              api={props.api}
+              onInstalled={props.onInstalled}
+            />
           ))}
         </ul>
       )}
@@ -66,8 +83,61 @@ export function Browse() {
   );
 }
 
-function ListingCard({ listing }: { listing: MarketplaceListing }) {
+interface ListingCardProps {
+  listing: MarketplaceListing;
+  api?: InstallApiOptions;
+  onInstalled?: (record: { appId: string; version: string }) => void;
+}
+
+function ListingCard({ listing, api, onInstalled }: ListingCardProps) {
   const installed = installRuntime.isInstalled(listing.id);
+  const [pendingManifest, setPendingManifest] = useState<Manifest | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const canInstall = !!listing.installUrl && !installed;
+
+  const handleClick = async () => {
+    if (!listing.installUrl) return;
+    setError(null);
+    setBusy(true);
+    try {
+      const res = await fetch(listing.installUrl);
+      if (!res.ok) throw new Error(`Could not fetch boringos.json (HTTP ${res.status}).`);
+      const raw = (await res.json()) as unknown;
+      const valid = validateManifest(raw);
+      if (!valid.valid) {
+        const first = valid.errors[0];
+        throw new Error(`Manifest is invalid: ${first?.path ?? "/"} ${first?.message ?? ""}`);
+      }
+      setPendingManifest(raw as Manifest);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Fetch failed.");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const handleApprove = async () => {
+    if (!listing.installUrl) return;
+    setBusy(true);
+    setError(null);
+    try {
+      const installApi = createInstallApi(api);
+      const record = await installApi.install({ url: listing.installUrl });
+      onInstalled?.({ appId: record.appId, version: record.version });
+      setPendingManifest(null);
+    } catch (e) {
+      if (e instanceof InstallApiResponseError) {
+        const detail = e.payload.detail ? `: ${e.payload.detail}` : "";
+        setError(`${e.payload.error}${detail}`);
+      } else {
+        setError(e instanceof Error ? e.message : "Install failed.");
+      }
+    } finally {
+      setBusy(false);
+    }
+  };
 
   return (
     <li className="rounded-lg border border-slate-200 bg-white p-4 flex flex-col">
@@ -93,21 +163,47 @@ function ListingCard({ listing }: { listing: MarketplaceListing }) {
         {listing.description}
       </p>
 
+      {error && (
+        <div className="rounded-md bg-red-50 border border-red-200 px-2.5 py-1.5 text-[11px] text-red-700 mb-2">
+          {error}
+        </div>
+      )}
+
       <div className="flex items-center justify-between">
         <span className="text-[11px] text-slate-400">{listing.license}</span>
         <button
           type="button"
-          disabled
-          title="Install lands in C5 (install pipeline)"
+          onClick={handleClick}
+          disabled={!canInstall || busy}
+          title={
+            installed
+              ? "Already installed"
+              : listing.installUrl
+                ? "Install"
+                : "Marketplace integration lands in Phase 4"
+          }
           className={`text-xs px-2.5 py-1 rounded-md ${
             installed
               ? "bg-emerald-50 text-emerald-700 cursor-default"
-              : "bg-slate-100 text-slate-500 cursor-not-allowed"
+              : canInstall
+                ? "bg-slate-900 text-white hover:bg-slate-800 disabled:opacity-50"
+                : "bg-slate-100 text-slate-500 cursor-not-allowed"
           }`}
         >
-          {installed ? "Installed" : "Install"}
+          {installed ? "Installed" : busy ? "Working…" : "Install"}
         </button>
       </div>
+
+      {pendingManifest && (
+        <div className="mt-3">
+          <PermissionPrompt
+            manifest={pendingManifest}
+            source="github-direct"
+            onApprove={handleApprove}
+            onCancel={() => setPendingManifest(null)}
+          />
+        </div>
+      )}
     </li>
   );
 }

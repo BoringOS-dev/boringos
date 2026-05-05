@@ -37,3 +37,15 @@ export type { NotificationService, NotificationConfig } from "./notifications.js
 
 export { nullMemory } from "@boringos/memory";
 export { createHebbsMemory } from "@boringos/memory";
+
+export {
+  provisionDefaultApps,
+  type DefaultAppCatalogEntry,
+  type ProvisionDefaultAppsArgs,
+} from "./tenant-provisioning.js";
+
+export {
+  createAppsAdminRoutes,
+  type AppsAdminAuth,
+  type CreateAppsAdminRoutesOptions,
+} from "./admin/apps.js";

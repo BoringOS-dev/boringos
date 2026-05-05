@@ -10,6 +10,11 @@ import { useState } from "react";
 import { validateManifest, type Manifest } from "@boringos/app-sdk";
 
 import { PermissionPrompt } from "./PermissionPrompt.js";
+import {
+  createInstallApi,
+  InstallApiResponseError,
+  type InstallApiOptions,
+} from "./installApi.js";
 
 const URL_PATTERN =
   /^https?:\/\/github\.com\/([^/\s]+)\/([^/\s]+?)(?:\/|$)/;
@@ -47,7 +52,14 @@ async function fetchManifest(input: string): Promise<Manifest> {
   return raw as Manifest;
 }
 
-export function InstallFromUrl() {
+export interface InstallFromUrlProps {
+  /** Forwarded to createInstallApi; lets the host configure base URL + auth headers. */
+  api?: InstallApiOptions;
+  /** Called after a successful install (Apps screen refreshes the Installed tab). */
+  onInstalled?: (record: { appId: string; version: string }) => void;
+}
+
+export function InstallFromUrl({ api, onInstalled }: InstallFromUrlProps = {}) {
   const [url, setUrl] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [manifest, setManifest] = useState<Manifest | null>(null);
@@ -67,14 +79,25 @@ export function InstallFromUrl() {
     }
   };
 
-  const handleApprove = () => {
-    // The install transaction lands in C5. For A7, approving just
-    // surfaces a clear placeholder so the UX is end-to-end testable.
-    console.warn(
-      "[InstallFromUrl] approve clicked — real install pipeline is C5.",
-    );
-    setManifest(null);
-    setUrl("");
+  const handleApprove = async () => {
+    setError(null);
+    setBusy(true);
+    try {
+      const installApi = createInstallApi(api);
+      const record = await installApi.install({ url });
+      onInstalled?.({ appId: record.appId, version: record.version });
+      setManifest(null);
+      setUrl("");
+    } catch (e) {
+      if (e instanceof InstallApiResponseError) {
+        const detail = e.payload.detail ? `: ${e.payload.detail}` : "";
+        setError(`${e.payload.error}${detail}`);
+      } else {
+        setError(e instanceof Error ? e.message : "Install failed.");
+      }
+    } finally {
+      setBusy(false);
+    }
   };
 
   return (
