@@ -912,7 +912,10 @@
       ],
       "estimateHours": 2,
       "dependsOn": ["E1"],
-      "status": "todo"
+      "status": "done",
+      "completedCommit": "59047c0",
+      "completedAt": "2026-05-05",
+      "notes": "Skill markdown + agent instructions explicitly enumerate the 5 things-NEVER-to-do, each naming the owning domain app. Score bands lifted from CRM's rubric, stripped of CRM-specific phrasing. CRM-side rewrite is Phase 2 work. Workstream E complete (4/4). PHASE 1 COMPLETE (29/29)."
     }
   ]
 }
