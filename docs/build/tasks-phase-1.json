@@ -789,7 +789,10 @@
       ],
       "estimateHours": 2,
       "dependsOn": ["C5"],
-      "status": "todo"
+      "status": "done",
+      "completedCommit": "ac70313",
+      "completedAt": "2026-05-05",
+      "notes": "Canonical at components/PermissionPrompt.tsx; A7's local screens/Apps/PermissionPrompt.tsx now re-exports. Workstream C complete (7/7)."
     },
 
     {
