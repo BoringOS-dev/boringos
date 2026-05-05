@@ -41,3 +41,11 @@ export {
   type UninstallPipelineDb,
   type AppLinkRow,
 } from "./uninstall.js";
+
+export {
+  installDefaultApps,
+  DEFAULT_APPS_CATALOG,
+  type DefaultAppEntry,
+  type DefaultAppOutcome,
+  type DefaultAppsResult,
+} from "./default-apps.js";
