@@ -734,7 +734,10 @@
       ],
       "estimateHours": 4,
       "dependsOn": ["C1", "C2", "C4", "A6"],
-      "status": "todo"
+      "status": "done",
+      "completedCommit": "2ea4029",
+      "completedAt": "2026-05-05",
+      "notes": "Pure function with injected db / slotRuntime / events. 10 tests covering happy paths, atomic rollback (slot-fail rolls back DB), idempotency (re-install uninstalls prior + reinstalls), and the don't-rollback-on-event-fail rule. TODO markers in source for kernel wiring (schema migrations, agent registration, route mounting, onTenantCreated) — C5 is the orchestrator, kernel adapter is its own task."
     },
     {
       "id": "C6",
