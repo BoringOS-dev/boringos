@@ -677,7 +677,10 @@
       ],
       "estimateHours": 2,
       "dependsOn": ["B5"],
-      "status": "todo"
+      "status": "done",
+      "completedCommit": "f2f7494",
+      "completedAt": "2026-05-05",
+      "notes": "Plus 15 fetcher tests with mocked fetch (URL parsing, latest-tag resolution, branch ref, version normalization, hashing, error paths)."
     },
     {
       "id": "C4",
