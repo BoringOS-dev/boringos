@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: BUSL-1.1
 //
-// Settings — General + per-app panels via useSlot("settingsPanels").
-// A9 BrandProvider lands the Branding tab.
+// Settings — General + Branding (A9) + per-app panels via
+// useSlot("settingsPanels").
 
 import { useState } from "react";
 
@@ -9,6 +9,7 @@ import { useAuth } from "../auth/AuthProvider.js";
 import { useSlot } from "../slots/context.js";
 import { SlotRenderer } from "../slots/SlotRenderer.js";
 import { EmptyState, ScreenBody, ScreenHeader } from "./_shared.js";
+import { BrandingPanel } from "./Settings/BrandingPanel.js";
 
 type Tab = { id: string; label: string };
 
@@ -17,6 +18,7 @@ export function Settings() {
   const panels = useSlot("settingsPanels");
   const tabs: Tab[] = [
     { id: "general", label: "General" },
+    { id: "branding", label: "Branding" },
     ...panels.map((p) => ({
       id: `app-${p.appId}-${p.slotId}`,
       label: p.slot.label,
@@ -64,11 +66,10 @@ export function Settings() {
               <Field label="Tenant name" value={user?.tenantName ?? "—"} />
               <Field label="Your role" value={user?.role ?? "—"} />
               <Field label="Email" value={user?.email ?? "—"} />
-              <p className="text-xs text-slate-400">
-                Branding (product name, logo, colors) becomes editable here in TASK-A9.
-              </p>
             </div>
           )}
+
+          {active === "branding" && <BrandingPanel />}
 
           {activePanel && (
             <SlotRenderer

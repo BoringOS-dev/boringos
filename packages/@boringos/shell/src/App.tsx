@@ -15,6 +15,7 @@ import { Layout } from "./chrome/Layout.js";
 import { SlotRegistryProvider } from "./slots/context.js";
 import { AuthProvider, Login, RequireAuth, Signup } from "./auth/index.js";
 import { BoringOSClientProvider } from "./providers/BoringOSClientProvider.js";
+import { BrandProvider } from "./branding/BrandProvider.js";
 import {
   Agents,
   Copilot,
@@ -45,6 +46,7 @@ export function App() {
   return (
     <AuthProvider>
       <BoringOSClientProvider>
+        <BrandProvider>
         <SlotRegistryProvider>
           <BrowserRouter>
             <Routes>
@@ -83,6 +85,7 @@ export function App() {
             </Routes>
           </BrowserRouter>
         </SlotRegistryProvider>
+        </BrandProvider>
       </BoringOSClientProvider>
     </AuthProvider>
   );

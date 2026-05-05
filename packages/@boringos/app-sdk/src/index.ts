@@ -119,3 +119,7 @@ export {
 } from "./validate.js";
 
 export type { ValidationResult, ValidationError } from "./validate.js";
+
+/* ── Branding (TASK-A9) ────────────────────────────────────────────── */
+
+export type { Brand, PartialBrand } from "./branding.js";

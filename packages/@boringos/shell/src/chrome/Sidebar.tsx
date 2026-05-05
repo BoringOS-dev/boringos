@@ -18,6 +18,7 @@ import { useState } from "react";
 import { NavLink } from "react-router-dom";
 
 import { useAuth } from "../auth/AuthProvider.js";
+import { useBrand } from "../branding/BrandProvider.js";
 import { useSlot } from "../slots/context.js";
 
 interface NavItem {
@@ -82,6 +83,7 @@ function GroupHeading({ children }: { children: string }) {
 
 export function Sidebar() {
   const { user, logout, switchTenant } = useAuth();
+  const { brand } = useBrand();
   const [showTenantMenu, setShowTenantMenu] = useState(false);
 
   const hasMultipleTenants = (user?.tenants?.length ?? 0) > 1;
@@ -110,11 +112,26 @@ export function Sidebar() {
             hasMultipleTenants ? "hover:bg-slate-100 cursor-pointer" : ""
           }`}
         >
-          <span className="text-lg">◉</span>
+          {brand.logoUrl ? (
+            <img
+              src={brand.logoUrl}
+              alt={brand.productName}
+              className="w-5 h-5 object-contain"
+            />
+          ) : (
+            <span className="text-lg" style={{ color: brand.primaryColor }}>
+              ◉
+            </span>
+          )}
           <div className="flex-1 min-w-0">
             <h2 className="text-sm font-semibold text-slate-900 truncate">
-              {user?.tenantName ?? "BoringOS"}
+              {user?.tenantName ?? brand.productName}
             </h2>
+            {brand.productTagline && (
+              <p className="text-[10px] text-slate-400 truncate">
+                {brand.productTagline}
+              </p>
+            )}
           </div>
           {hasMultipleTenants && (
             <span className="text-[10px] text-slate-400">▼</span>
