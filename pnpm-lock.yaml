@@ -145,6 +145,22 @@ importers:
         specifier: ^5.7.3
         version: 5.9.3
 
+  packages/@boringos/control-plane:
+    dependencies:
+      '@boringos/app-sdk':
+        specifier: workspace:^
+        version: link:../app-sdk
+      '@boringos/db':
+        specifier: workspace:*
+        version: link:../db
+    devDependencies:
+      '@types/node':
+        specifier: ^22.0.0
+        version: 22.19.17
+      typescript:
+        specifier: ^5.7.3
+        version: 5.9.3
+
   packages/@boringos/core:
     dependencies:
       '@boringos/agent':
