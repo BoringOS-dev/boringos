@@ -854,7 +854,10 @@
       ],
       "estimateHours": 3,
       "dependsOn": ["B5"],
-      "status": "todo"
+      "status": "done",
+      "completedCommit": "a8a6f9f",
+      "completedAt": "2026-05-05",
+      "notes": "Skill explicitly forbids overwriting + sending. Capability set excludes any 'take ownership' scope. Coexistence pattern from coordination.md."
     },
     {
       "id": "E3",
