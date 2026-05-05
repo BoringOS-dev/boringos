@@ -481,7 +481,10 @@
       ],
       "estimateHours": 3,
       "dependsOn": ["A5"],
-      "status": "todo"
+      "status": "done",
+      "completedCommit": "bf29aa0",
+      "completedAt": "2026-05-05",
+      "notes": "InstallRuntime wraps SlotRegistry as the canonical hook C5 calls into. 10 tests cover install/reinstall/uninstall/server-only/list/clear/hot-update."
     },
     {
       "id": "A7",
