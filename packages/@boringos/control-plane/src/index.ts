@@ -30,3 +30,14 @@ export {
   type InstallEventBus,
   type TenantAppRow,
 } from "./install.js";
+
+export {
+  uninstallApp,
+  UninstallError,
+  type UninstallContext,
+  type UninstallArgs,
+  type UninstallResult,
+  type UninstallMode,
+  type UninstallPipelineDb,
+  type AppLinkRow,
+} from "./uninstall.js";
