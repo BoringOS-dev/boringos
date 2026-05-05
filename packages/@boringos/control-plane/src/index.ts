@@ -18,3 +18,15 @@ export {
   type ManifestValidationResult,
   type ValidationIssue,
 } from "./validator.js";
+
+export {
+  installApp,
+  InstallError,
+  type InstallContext,
+  type InstallArgs,
+  type InstallRecord,
+  type InstallPipelineDb,
+  type SlotInstallRuntime,
+  type InstallEventBus,
+  type TenantAppRow,
+} from "./install.js";
