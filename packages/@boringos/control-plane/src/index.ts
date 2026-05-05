@@ -11,3 +11,10 @@ export {
   type FetchedManifest,
   type FetcherOptions,
 } from "./fetcher.js";
+
+export {
+  validateManifestFull,
+  checkCapabilityHonesty,
+  type ManifestValidationResult,
+  type ValidationIssue,
+} from "./validator.js";
