@@ -823,7 +823,10 @@
       ],
       "estimateHours": 3,
       "dependsOn": ["B5"],
-      "status": "todo"
+      "status": "done",
+      "completedCommit": "f269627",
+      "completedAt": "2026-05-05",
+      "notes": "Built using only @boringos/app-sdk; manifest passes D1 schema; skill markdown documents classification rules + the 'don't draft replies, don't create entities' boundary."
     },
     {
       "id": "E2",
