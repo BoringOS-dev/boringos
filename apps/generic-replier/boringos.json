@@ -1,0 +1,32 @@
+{
+  "$schema": "https://boringos.dev/schemas/manifest.schema.json",
+  "kind": "app",
+  "id": "generic-replier",
+  "version": "0.1.0",
+  "name": "Generic Email Replier",
+  "description": "Drafts a generic reply suggestion for incoming inbox items. Coexists with domain-specific repliers (CRM, Support, etc.) — each app contributes one suggestion to a list, the user picks which to send.",
+  "publisher": {
+    "name": "BoringOS",
+    "homepage": "https://boringos.dev",
+    "verified": true
+  },
+  "minRuntime": "1.0.0",
+  "license": "BUSL-1.1",
+  "hosting": "in-process",
+  "entityTypes": [],
+  "ui": {
+    "entry": "dist/ui.js"
+  },
+  "skills": [
+    "skills/replier.md"
+  ],
+  "capabilities": [
+    "events:subscribe:inbox.item_created",
+    "events:emit:replier.draft_appended",
+    "inbox:read",
+    "inbox:write",
+    "agents:register",
+    "workflows:register"
+  ],
+  "dependencies": []
+}
