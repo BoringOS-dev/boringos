@@ -35,7 +35,10 @@
         "Publish to npm — that is B5"
       ],
       "estimateHours": 1,
-      "dependsOn": []
+      "dependsOn": [],
+      "status": "done",
+      "completedCommit": "e6d01e3",
+      "completedAt": "2026-05-04"
     },
     {
       "id": "B2",
@@ -64,7 +67,10 @@
         "Define helper functions (defineApp etc.) — that is B3"
       ],
       "estimateHours": 2,
-      "dependsOn": ["B1"]
+      "dependsOn": ["B1"],
+      "status": "done",
+      "completedCommit": "073fe04",
+      "completedAt": "2026-05-04"
     },
     {
       "id": "B3",
@@ -92,7 +98,10 @@
         "Implement runtime that consumes these — that's the install pipeline (C5)"
       ],
       "estimateHours": 2,
-      "dependsOn": ["B2"]
+      "dependsOn": ["B2"],
+      "status": "done",
+      "completedCommit": "ea15011",
+      "completedAt": "2026-05-04"
     },
     {
       "id": "B4",
@@ -121,7 +130,10 @@
         "Implement context building runtime — separate Phase 2 work"
       ],
       "estimateHours": 2,
-      "dependsOn": ["B2"]
+      "dependsOn": ["B2"],
+      "status": "done",
+      "completedCommit": "6e0e2ea",
+      "completedAt": "2026-05-04"
     },
     {
       "id": "B5",
@@ -146,7 +158,11 @@
         "Bump to stable 1.0.0 — that happens after Phase 2 CRM port validates the contract"
       ],
       "estimateHours": 1,
-      "dependsOn": ["B3", "B4"]
+      "dependsOn": ["B3", "B4"],
+      "status": "done",
+      "completedCommit": "572db21",
+      "completedAt": "2026-05-04",
+      "notes": "Code prep in 572db21; npm publish executed in same session"
     },
 
     {
@@ -172,7 +188,10 @@
         "Validate against real connectors yet — that is D2"
       ],
       "estimateHours": 2,
-      "dependsOn": ["B2"]
+      "dependsOn": ["B2"],
+      "status": "done",
+      "completedCommit": "f9617d4",
+      "completedAt": "2026-05-04"
     },
     {
       "id": "D2",
@@ -208,7 +227,11 @@
       ],
       "estimateHours": 3,
       "dependsOn": ["D1"],
-      "criticalGate": "If this task is hard or the SDK has to change to make it work, fix B before continuing. Do not merge a hacky D2."
+      "criticalGate": "If this task is hard or the SDK has to change to make it work, fix B before continuing. Do not merge a hacky D2.",
+      "status": "done",
+      "completedCommit": "0964fe1",
+      "completedAt": "2026-05-04",
+      "notes": "Gate green. One small SDK fix surfaced ($schema property in BaseFields)."
     },
     {
       "id": "D3",
@@ -234,7 +257,11 @@
         "Split into two packages (connector-gmail + connector-calendar) — keep combined for now"
       ],
       "estimateHours": 4,
-      "dependsOn": ["D2"]
+      "dependsOn": ["D2"],
+      "status": "done",
+      "completedCommit": "bfa4737",
+      "completedAt": "2026-05-05",
+      "notes": "Added skills field to manifest schema. Surfaced + fixed a stale tsbuildinfo issue."
     },
     {
       "id": "D4",
@@ -259,7 +286,11 @@
         "Run on app packages yet — that comes later"
       ],
       "estimateHours": 3,
-      "dependsOn": ["D3"]
+      "dependsOn": ["D3"],
+      "status": "done",
+      "completedCommit": "d31d50a",
+      "completedAt": "2026-05-05",
+      "notes": "Wrote scripts/verify-connectors.mjs (not the .ts originally specified). Negative-tested with corrupted manifest."
     },
 
     {
@@ -290,7 +321,10 @@
         "Move CRM screens yet — those come in A3-A5"
       ],
       "estimateHours": 2,
-      "dependsOn": []
+      "dependsOn": [],
+      "status": "done",
+      "completedCommit": "548b655",
+      "completedAt": "2026-05-05"
     },
     {
       "id": "A2",
@@ -315,7 +349,11 @@
         "Wire to real install pipeline yet — that is A6"
       ],
       "estimateHours": 2,
-      "dependsOn": ["A1", "B4"]
+      "dependsOn": ["A1", "B4"],
+      "status": "done",
+      "completedCommit": "f24a2c6",
+      "completedAt": "2026-05-05",
+      "notes": "11 unit tests for the registry; React layer (Provider/hooks/SlotRenderer) tested end-to-end starting at A5."
     },
     {
       "id": "A3",
@@ -343,7 +381,10 @@
         "Hard-code any nav entries — they all come from slot contributions"
       ],
       "estimateHours": 3,
-      "dependsOn": ["A2"]
+      "dependsOn": ["A2"],
+      "status": "done",
+      "completedCommit": "8cdd4d5",
+      "completedAt": "2026-05-05"
     },
     {
       "id": "A4",
@@ -369,7 +410,11 @@
         "Build SSO yet (Phase 5)"
       ],
       "estimateHours": 2,
-      "dependsOn": ["A3"]
+      "dependsOn": ["A3"],
+      "status": "done",
+      "completedCommit": "2d2b478",
+      "completedAt": "2026-05-05",
+      "notes": "Renamed CRM's `orgName` → `tenantName` (correct framework field). Namespaced localStorage keys boringos.token / boringos.tenantId. User card + tenant switcher restored in Sidebar."
     },
     {
       "id": "A5",
@@ -405,7 +450,11 @@
         "Move Pipeline, Contacts, Deals, Companies, KnowledgeBase — those are CRM-specific and stay in CRM"
       ],
       "estimateHours": 4,
-      "dependsOn": ["A4"]
+      "dependsOn": ["A4"],
+      "status": "done",
+      "completedCommit": "a7ca87b",
+      "completedAt": "2026-05-05",
+      "notes": "First visual milestone. All 13 routes return 200; all 7 screen modules transform clean. Workflows uses direct admin API instead of @boringos/workflow-ui to keep shell light."
     },
     {
       "id": "A6",
@@ -431,7 +480,8 @@
         "Handle remote apps — v1 is in-process only"
       ],
       "estimateHours": 3,
-      "dependsOn": ["A5"]
+      "dependsOn": ["A5"],
+      "status": "todo"
     },
     {
       "id": "A7",
@@ -460,7 +510,8 @@
         "Build a marketplace backend — Phase 4"
       ],
       "estimateHours": 4,
-      "dependsOn": ["A6", "C7"]
+      "dependsOn": ["A6", "C7"],
+      "status": "todo"
     },
     {
       "id": "A8",
@@ -496,7 +547,8 @@
       ],
       "estimateHours": 2,
       "dependsOn": ["A5"],
-      "repoOverride": "../boringos-crm"
+      "repoOverride": "../boringos-crm",
+      "status": "todo"
     },
     {
       "id": "A9",
@@ -532,7 +584,8 @@
         "Touch app code beyond exporting useBrand from the SDK — apps adopt it on their own schedule"
       ],
       "estimateHours": 4,
-      "dependsOn": ["A5"]
+      "dependsOn": ["A5"],
+      "status": "todo"
     },
 
     {
@@ -557,7 +610,8 @@
         "Add cross-app links — that is C2"
       ],
       "estimateHours": 1,
-      "dependsOn": []
+      "dependsOn": [],
+      "status": "todo"
     },
     {
       "id": "C2",
@@ -579,7 +633,8 @@
         "Implement enforcement — that lives in the SDK runtime checks (separate work)"
       ],
       "estimateHours": 1,
-      "dependsOn": []
+      "dependsOn": [],
+      "status": "todo"
     },
     {
       "id": "C3",
@@ -605,7 +660,8 @@
         "Run the install — that is C5"
       ],
       "estimateHours": 2,
-      "dependsOn": ["B5"]
+      "dependsOn": ["B5"],
+      "status": "todo"
     },
     {
       "id": "C4",
@@ -629,7 +685,8 @@
         "Run the install — that is C5"
       ],
       "estimateHours": 3,
-      "dependsOn": ["C3", "D1"]
+      "dependsOn": ["C3", "D1"],
+      "status": "todo"
     },
     {
       "id": "C5",
@@ -654,7 +711,8 @@
         "Handle billing — Phase 5"
       ],
       "estimateHours": 4,
-      "dependsOn": ["C1", "C2", "C4", "A6"]
+      "dependsOn": ["C1", "C2", "C4", "A6"],
+      "status": "todo"
     },
     {
       "id": "C6",
@@ -677,7 +735,8 @@
         "Implement automatic retention sweep cron — separate work"
       ],
       "estimateHours": 3,
-      "dependsOn": ["C5"]
+      "dependsOn": ["C5"],
+      "status": "todo"
     },
     {
       "id": "C7",
@@ -701,7 +760,8 @@
         "Allow individual capability dropping in v1 — all-or-nothing approval"
       ],
       "estimateHours": 2,
-      "dependsOn": ["C5"]
+      "dependsOn": ["C5"],
+      "status": "todo"
     },
 
     {
@@ -731,7 +791,8 @@
         "Hardcode CRM-specific logic — this is the generic version"
       ],
       "estimateHours": 3,
-      "dependsOn": ["B5"]
+      "dependsOn": ["B5"],
+      "status": "todo"
     },
     {
       "id": "E2",
@@ -758,7 +819,8 @@
         "Take ownership of an item — coexists with domain-specific repliers"
       ],
       "estimateHours": 3,
-      "dependsOn": ["B5"]
+      "dependsOn": ["B5"],
+      "status": "todo"
     },
     {
       "id": "E3",
@@ -783,7 +845,8 @@
         "Mark default apps as undeletable — they are uninstallable like any other app"
       ],
       "estimateHours": 2,
-      "dependsOn": ["E1", "E2", "C5"]
+      "dependsOn": ["E1", "E2", "C5"],
+      "status": "todo"
     },
     {
       "id": "E4",
@@ -808,7 +871,8 @@
         "Touch CRM server code — that is Phase 2"
       ],
       "estimateHours": 2,
-      "dependsOn": ["E1"]
+      "dependsOn": ["E1"],
+      "status": "todo"
     }
   ]
 }
