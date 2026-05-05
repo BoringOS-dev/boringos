@@ -514,7 +514,10 @@
       ],
       "estimateHours": 4,
       "dependsOn": ["A6", "C7"],
-      "status": "todo"
+      "status": "done",
+      "completedCommit": "39f12be",
+      "completedAt": "2026-05-05",
+      "notes": "C7 not done yet — A7 inlines a minimal PermissionPrompt at screens/Apps/PermissionPrompt.tsx that C7 will replace with the canonical shared component. Browse uses MOCK_LISTINGS until Phase 4 marketplace backend lands."
     },
     {
       "id": "A8",
