@@ -883,7 +883,10 @@
       ],
       "estimateHours": 2,
       "dependsOn": ["E1", "E2", "C5"],
-      "status": "todo"
+      "status": "done",
+      "completedCommit": "c850c42",
+      "completedAt": "2026-05-05",
+      "notes": "DEFAULT_APPS_CATALOG is an empty placeholder; kernel adapter populates from apps/* at boot when wiring this into the framework's onTenantCreated hook (kernel work, not control-plane work). Tests load the real manifests off disk so any E1/E2 regression breaks them."
     },
     {
       "id": "E4",
