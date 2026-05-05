@@ -761,7 +761,10 @@
       ],
       "estimateHours": 3,
       "dependsOn": ["C5"],
-      "status": "todo"
+      "status": "done",
+      "completedCommit": "07dfe5e",
+      "completedAt": "2026-05-05",
+      "notes": "Soft and hard modes; cascade returns dependent-app list (caller decides whether to force); event-emit failure doesn't break uninstall. 7 tests."
     },
     {
       "id": "C7",
