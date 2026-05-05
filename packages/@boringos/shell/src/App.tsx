@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: BUSL-1.1
 //
-// Shell App — mounts the chrome (Layout/Sidebar/CommandBar) with a
-// router. Routes are placeholders for A3; real screens land in A5.
+// Shell App — public auth routes (Login, Signup) + auth-gated chrome
+// hosting placeholder screens. Real screens land in A5.
 
 import {
   BrowserRouter,
@@ -12,6 +12,7 @@ import {
 
 import { Layout } from "./chrome/Layout.js";
 import { SlotRegistryProvider } from "./slots/context.js";
+import { AuthProvider, Login, RequireAuth, Signup } from "./auth/index.js";
 import { SDK_VERSION } from "@boringos/app-sdk";
 
 const PLACEHOLDER_ROUTES = [
@@ -46,21 +47,35 @@ function PlaceholderScreen({ title }: { title: string }) {
 
 export function App() {
   return (
-    <SlotRegistryProvider>
-      <BrowserRouter>
-        <Routes>
-          <Route path="/" element={<Layout />}>
-            <Route index element={<Navigate to="/home" replace />} />
-            {PLACEHOLDER_ROUTES.map((r) => (
-              <Route
-                key={r.path}
-                path={r.path}
-                element={<PlaceholderScreen title={r.title} />}
-              />
-            ))}
-          </Route>
-        </Routes>
-      </BrowserRouter>
-    </SlotRegistryProvider>
+    <AuthProvider>
+      <SlotRegistryProvider>
+        <BrowserRouter>
+          <Routes>
+            {/* Public auth routes */}
+            <Route path="/login" element={<Login />} />
+            <Route path="/signup" element={<Signup />} />
+
+            {/* Auth-gated chrome */}
+            <Route
+              path="/"
+              element={
+                <RequireAuth>
+                  <Layout />
+                </RequireAuth>
+              }
+            >
+              <Route index element={<Navigate to="/home" replace />} />
+              {PLACEHOLDER_ROUTES.map((r) => (
+                <Route
+                  key={r.path}
+                  path={r.path}
+                  element={<PlaceholderScreen title={r.title} />}
+                />
+              ))}
+            </Route>
+          </Routes>
+        </BrowserRouter>
+      </SlotRegistryProvider>
+    </AuthProvider>
   );
 }
