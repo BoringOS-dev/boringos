@@ -21,3 +21,4 @@ export { evals, evalRuns } from "./evals.js";
 export { inboxItems } from "./inbox.js";
 export { entityReferences } from "./entity-refs.js";
 export { tenantApps } from "./tenant-apps.js";
+export { tenantAppLinks } from "./tenant-app-links.js";

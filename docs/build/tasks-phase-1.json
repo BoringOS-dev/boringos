@@ -623,7 +623,9 @@
       ],
       "estimateHours": 1,
       "dependsOn": [],
-      "status": "todo"
+      "status": "done",
+      "completedCommit": "c82f1af",
+      "completedAt": "2026-05-05"
     },
     {
       "id": "C2",
