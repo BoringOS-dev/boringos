@@ -1,0 +1,28 @@
+{
+  "name": "@boringos-apps/generic-triage",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "scripts": {
+    "build": "tsc",
+    "typecheck": "tsc --noEmit"
+  },
+  "license": "BUSL-1.1",
+  "dependencies": {
+    "@boringos/app-sdk": "workspace:^"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "typescript": "^5.7.3"
+  },
+  "description": "Generic Inbox Triage — pre-installed first-party app that classifies inbox items.",
+  "files": [
+    "dist",
+    "schemas",
+    "skills",
+    "boringos.json",
+    "README.md"
+  ]
+}

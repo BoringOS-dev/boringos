@@ -1,0 +1,33 @@
+{
+  "$schema": "https://boringos.dev/schemas/manifest.schema.json",
+  "kind": "app",
+  "id": "generic-triage",
+  "version": "0.1.0",
+  "name": "Generic Inbox Triage",
+  "description": "Classifies inbox items, scores importance, attaches metadata. Pre-installed by default; uninstallable like any other app.",
+  "publisher": {
+    "name": "BoringOS",
+    "homepage": "https://boringos.dev",
+    "verified": true
+  },
+  "minRuntime": "1.0.0",
+  "license": "BUSL-1.1",
+  "hosting": "in-process",
+  "entityTypes": [],
+  "ui": {
+    "entry": "dist/ui.js"
+  },
+  "skills": [
+    "skills/triage.md"
+  ],
+  "capabilities": [
+    "events:subscribe:inbox.item_created",
+    "events:emit:triage.classified",
+    "inbox:read",
+    "inbox:write",
+    "agents:register",
+    "workflows:register",
+    "memory:read"
+  ],
+  "dependencies": []
+}
