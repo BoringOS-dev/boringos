@@ -73,6 +73,16 @@ import { createPluginRegistry } from "./plugin-system.js";
 import type { PluginDefinition } from "./plugin-system.js";
 import { createPluginWebhookRoutes, createPluginAdminRoutes } from "./plugin-routes.js";
 import { githubPlugin } from "./plugins/github.js";
+import { provisionDefaultApps, type DefaultAppCatalogEntry } from "./tenant-provisioning.js";
+import { createAppsAdminRoutes } from "./admin/apps.js";
+import {
+  createKernelInstallContext,
+  loadCatalogFromDisk,
+  type SlotInstallRuntime,
+  type InstallEventBus,
+  type AppRouteRegistry,
+} from "@boringos/control-plane";
+import { createAppRouteRegistry } from "@boringos/control-plane";
 
 export class BoringOS {
   private config: BoringOSConfig;
@@ -444,8 +454,114 @@ export class BoringOS {
     // Health endpoint
     app.get("/health", (c) => c.json({ status: "ok", timestamp: new Date().toISOString() }));
 
+    // Phase 2 K7/K8/K9 wiring — kernel install context + default-app
+    // catalog. Built once at boot and shared by /api/admin/apps (manual
+    // installs) and the tenantProvisionedHook (auto-install of default
+    // apps on signup).
+    const appRouteRegistry: AppRouteRegistry = createAppRouteRegistry();
+    // Note: appRouteRegistry.attachTo(app) is called AT THE END of route
+    // mounting, so the per-app dispatcher catches /api/{appId}/* AFTER
+    // all framework /api/* routes have been registered (otherwise the
+    // dispatcher's catch-all 404 wins over framework routes).
+
+    const installSlotRuntime: SlotInstallRuntime = {
+      installApp: ({ appId }) => ({ appId }),
+      uninstallApp: () => {},
+    };
+    const installEventBus: InstallEventBus = {
+      emit: () => {},
+    };
+    const kernelInstallContext = createKernelInstallContext({
+      db: dbConn.db,
+      slotRuntime: installSlotRuntime,
+      events: installEventBus,
+      routeRegistry: appRouteRegistry,
+    });
+
+    let defaultAppsCatalog: DefaultAppCatalogEntry[] = [];
+    if (this.config.defaultAppsDir) {
+      try {
+        const loaded = loadCatalogFromDisk(this.config.defaultAppsDir, {
+          skipMalformed: true,
+        });
+        if (loaded.errors.length > 0) {
+          console.warn(
+            `[boringos] default-app catalog skipped ${loaded.errors.length} malformed entries:`,
+            loaded.errors.map((x) => `${x.appDir}: ${x.message}`).join("; "),
+          );
+        }
+        // Enrich each entry with the live AppDefinition by dynamic-importing
+        // the compiled bundle. Without this, K3's agent registrar has
+        // nothing to register (manifest alone doesn't carry agents/workflows).
+        const { resolve: resolvePath } = await import("node:path");
+        const { pathToFileURL } = await import("node:url");
+        const enriched: DefaultAppCatalogEntry[] = [];
+        for (const entry of loaded.entries) {
+          const candidate = entry as unknown as DefaultAppCatalogEntry & { bundleDir?: string };
+          let definition = candidate.definition;
+          // Compute bundleDir from the catalog root + app id when the
+          // loader didn't supply one (current K8 loader doesn't).
+          const bundleDir =
+            candidate.bundleDir ?? resolvePath(this.config.defaultAppsDir!, entry.id);
+          if (!definition) {
+            try {
+              const entryPath = resolvePath(bundleDir, "dist", "index.js");
+              const mod = await import(pathToFileURL(entryPath).href);
+              definition =
+                (mod.default as typeof candidate.definition) ??
+                (mod as typeof candidate.definition);
+            } catch (err) {
+              console.warn(
+                `[boringos] could not load bundle for default app ${entry.id}:`,
+                err instanceof Error ? err.message : err,
+              );
+            }
+          }
+          enriched.push({ ...candidate, bundleDir, definition });
+        }
+        defaultAppsCatalog = enriched;
+      } catch (err) {
+        console.warn(
+          "[boringos] failed to load default-app catalog from",
+          this.config.defaultAppsDir,
+          err,
+        );
+      }
+    }
+
+    // Compose the tenantProvisionedHook: default-apps first, then any
+    // host-supplied hook. If the host registered its own hook we still
+    // run default-apps before it so the app entries exist when the
+    // host's hook runs.
+    const userHook = this.tenantProvisionedHook;
+    const composedTenantHook =
+      defaultAppsCatalog.length > 0 || userHook
+        ? async (db: Db, tenantId: string) => {
+            if (defaultAppsCatalog.length > 0) {
+              try {
+                await provisionDefaultApps({
+                  db,
+                  tenantId,
+                  catalog: defaultAppsCatalog,
+                  routeRegistry: appRouteRegistry,
+                  slotRuntime: installSlotRuntime,
+                  events: installEventBus,
+                  kernelContext: kernelInstallContext,
+                });
+              } catch (err) {
+                console.warn(
+                  "[boringos] default-app provisioning failed for tenant",
+                  tenantId,
+                  err,
+                );
+              }
+            }
+            if (userHook) await userHook(db, tenantId);
+          }
+        : undefined;
+
     // Auth routes (login, signup, session)
-    const authApp = createAuthRoutes(dbConn.db, jwtSecret, this.tenantProvisionedHook);
+    const authApp = createAuthRoutes(dbConn.db, jwtSecret, composedTenantHook);
     app.route("/api/auth", authApp);
 
     // Device auth routes (CLI login)
@@ -471,6 +587,41 @@ export class BoringOS {
 
     const adminApp = createAdminRoutes(dbConn.db, agentEngine, adminKeyValue, realtimeBus, workflowEngine, runtimes);
     app.route("/api/admin", adminApp);
+
+    // K10/K11 — apps install/uninstall HTTP endpoints. Mounted with an
+    // auth resolver that reads the session token (same pattern as the
+    // connector disconnect endpoint) so the shell's Apps screen can
+    // call /api/admin/apps/install directly.
+    const appsAdminApp = createAppsAdminRoutes({
+      db: dbConn.db,
+      kernelContext: kernelInstallContext,
+      auth: {
+        resolve: async (c) => {
+          const bearer = c.req
+            .header("Authorization")
+            ?.replace("Bearer ", "");
+          if (!bearer) return null;
+          const { sql } = await import("drizzle-orm");
+          const result = await dbConn.db.execute(sql`
+            SELECT ut.tenant_id, ut.role, ut.user_id
+            FROM auth_sessions s
+            JOIN user_tenants ut ON ut.user_id = s.user_id
+            WHERE s.token = ${bearer} AND s.expires_at > NOW()
+            LIMIT 1
+          `);
+          const row = (
+            result as unknown as Array<{
+              tenant_id: string;
+              role: string;
+              user_id: string;
+            }>
+          )[0];
+          if (!row) return null;
+          return { tenantId: row.tenant_id, userId: row.user_id, role: row.role };
+        },
+      },
+    });
+    app.route("/api/admin/apps", appsAdminApp);
     const sseApp = createSSERoutes(realtimeBus, adminKeyValue);
     app.route("/api", sseApp);
 
@@ -626,6 +777,12 @@ export class BoringOS {
     } catch (err) {
       console.error("[boringos] recoverPending failed:", err);
     }
+
+    // K7 — installed apps' /api/{appId}/* dispatcher. Mounted LAST so
+    // it only catches paths the framework itself didn't claim. The
+    // dispatcher is empty at boot; tenant_apps installs add per-app
+    // sub-routers via kernelInstallContext.
+    appRouteRegistry.attachTo(app);
 
     // 11. Start HTTP server
     const server = serve({ fetch: app.fetch, port: listenPort });

@@ -4,13 +4,15 @@
 // Browse, Installed, Updates, Install from URL.
 // The "killer screen" of v1, per the phase plan.
 
-import { useState } from "react";
+import { useMemo, useState } from "react";
 
+import { useAuth } from "../../auth/AuthProvider.js";
 import { ScreenBody, ScreenHeader } from "../_shared.js";
 import { Browse } from "./Browse.js";
 import { Installed } from "./Installed.js";
 import { Updates } from "./Updates.js";
 import { InstallFromUrl } from "./InstallFromUrl.js";
+import type { InstallApiOptions } from "./installApi.js";
 
 const TABS = [
   { id: "browse", label: "Browse" },
@@ -23,6 +25,14 @@ type TabId = (typeof TABS)[number]["id"];
 
 export function Apps() {
   const [tab, setTab] = useState<TabId>("browse");
+  const { token, user } = useAuth();
+
+  const apiOptions = useMemo<InstallApiOptions>(() => {
+    const headers: Record<string, string> = {};
+    if (token) headers["Authorization"] = `Bearer ${token}`;
+    if (user?.tenantId) headers["X-Tenant-Id"] = user.tenantId;
+    return { headers };
+  }, [token, user?.tenantId]);
 
   return (
     <>
@@ -49,10 +59,10 @@ export function Apps() {
         </div>
       </div>
       <ScreenBody>
-        {tab === "browse" && <Browse />}
-        {tab === "installed" && <Installed />}
+        {tab === "browse" && <Browse api={apiOptions} />}
+        {tab === "installed" && <Installed api={apiOptions} />}
         {tab === "updates" && <Updates />}
-        {tab === "install-from-url" && <InstallFromUrl />}
+        {tab === "install-from-url" && <InstallFromUrl api={apiOptions} />}
       </ScreenBody>
     </>
   );

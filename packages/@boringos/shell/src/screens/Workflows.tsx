@@ -59,13 +59,12 @@ export function Workflows() {
         subtitle="DAG-based orchestration"
       />
       <ScreenBody>
-        {error && (
-          <div className="mb-4 rounded-md bg-red-50 px-3 py-2 text-sm text-red-700">
-            {error}
+        {error ? (
+          <div className="rounded-md bg-red-50 border border-red-200 px-4 py-3 text-sm text-red-700">
+            <div className="font-medium">Couldn't load workflows.</div>
+            <div className="text-xs mt-1 font-mono">{error}</div>
           </div>
-        )}
-
-        {!workflows ? (
+        ) : !workflows ? (
           <LoadingState />
         ) : workflows.length === 0 ? (
           <EmptyState

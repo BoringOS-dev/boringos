@@ -1,9 +1,12 @@
 // SPDX-License-Identifier: BUSL-1.1
 //
-// Installed tab — lists what the InstallRuntime currently has. The
-// Uninstall button calls the K11 admin endpoint and shows a cascade
-// warning when other apps depend on the one being removed. Hard mode
-// surfaces a separate irreversible-confirm dialog before firing.
+// Installed tab — lists what's installed for the tenant. The list
+// comes from /api/admin/apps (backend, source of truth) plus a merge
+// from the client-side InstallRuntime so slot-only contributions
+// (rare in practice) don't disappear. The Uninstall button calls the
+// K11 admin endpoint and shows a cascade warning when other apps
+// depend on the one being removed. Hard mode surfaces a separate
+// irreversible-confirm dialog before firing.
 
 import { useEffect, useState } from "react";
 
@@ -14,6 +17,17 @@ import {
   InstallApiResponseError,
   type InstallApiOptions,
 } from "./installApi.js";
+
+/** Shape returned by /api/admin/apps for each row. */
+interface ServerInstallRow {
+  id?: string;
+  app_id: string;
+  appId?: string;
+  version: string;
+  status: string;
+  installed_at?: string;
+  installedAt?: string;
+}
 
 export interface InstalledProps {
   api?: InstallApiOptions;
@@ -44,18 +58,51 @@ const INITIAL_STATE: UninstallState = {
 
 export function Installed({ api, onUninstalled }: InstalledProps = {}) {
   const [records, setRecords] = useState<InstalledAppRecord[]>(() =>
-    installRuntime.list(),
+    mergeInstalled(installRuntime.list(), []),
   );
   const [state, setState] = useState<UninstallState>(INITIAL_STATE);
-
-  useEffect(() => {
-    const off = installRuntime.getRegistry().subscribe(() => {
-      setRecords(installRuntime.list());
-    });
-    return off;
-  }, []);
+  const [loadError, setLoadError] = useState<string | null>(null);
 
   const installApi = createInstallApi(api);
+
+  // Subscribe to client-side slot updates AND fetch the backend list.
+  // Backend is the source of truth; slot runtime is a hint. If the
+  // backend fetch fails we surface the error in the UI rather than
+  // silently degrade to "no apps installed" — that masks 401s.
+  useEffect(() => {
+    let cancelled = false;
+
+    async function refresh(): Promise<void> {
+      let serverRows: ServerInstallRow[] = [];
+      let err: string | null = null;
+      try {
+        const body = await installApi.list();
+        serverRows = (body.apps ?? []) as unknown as ServerInstallRow[];
+      } catch (e) {
+        if (e instanceof InstallApiResponseError) {
+          err = `${e.payload.error}${e.payload.detail ? `: ${e.payload.detail}` : ""} (HTTP ${e.payload.status})`;
+        } else {
+          err = e instanceof Error ? e.message : String(e);
+        }
+        console.error("[Installed] /api/admin/apps failed:", e);
+      }
+      if (cancelled) return;
+      setLoadError(err);
+      setRecords(mergeInstalled(installRuntime.list(), serverRows));
+    }
+
+    void refresh();
+
+    const off = installRuntime.getRegistry().subscribe(() => {
+      void refresh();
+    });
+
+    return () => {
+      cancelled = true;
+      off();
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const reset = () => setState(INITIAL_STATE);
 
@@ -118,6 +165,15 @@ export function Installed({ api, onUninstalled }: InstalledProps = {}) {
       setState((s) => ({ ...s, busy: false, error: errorMessage(e) }));
     }
   };
+
+  if (loadError) {
+    return (
+      <div className="rounded-md bg-red-50 border border-red-200 px-4 py-3 text-sm text-red-700">
+        <div className="font-medium">Couldn't load installed apps.</div>
+        <div className="text-xs mt-1 font-mono">{loadError}</div>
+      </div>
+    );
+  }
 
   if (records.length === 0) {
     return (
@@ -189,6 +245,32 @@ export function Installed({ api, onUninstalled }: InstalledProps = {}) {
       </ul>
     </div>
   );
+}
+
+/**
+ * Merge the client-side slot install records with the backend's
+ * authoritative list. Backend rows win on overlap; client-only rows
+ * (slot-installed without a backend tenant_apps entry — rare) are
+ * preserved.
+ */
+function mergeInstalled(
+  clientRows: InstalledAppRecord[],
+  serverRows: ServerInstallRow[],
+): InstalledAppRecord[] {
+  const byId = new Map<string, InstalledAppRecord>();
+  for (const r of clientRows) byId.set(r.appId, r);
+  for (const s of serverRows) {
+    const appId = s.app_id ?? s.appId ?? "";
+    if (!appId) continue;
+    const installedAtRaw = s.installed_at ?? s.installedAt ?? "";
+    const installedAt = installedAtRaw ? new Date(installedAtRaw) : new Date();
+    byId.set(appId, {
+      appId,
+      version: s.version,
+      installedAt,
+    });
+  }
+  return Array.from(byId.values()).sort((a, b) => a.appId.localeCompare(b.appId));
 }
 
 function errorMessage(e: unknown): string {

@@ -41,29 +41,22 @@ export function buildGmailSyncSpec(): DefaultWorkflowSpec {
         },
       },
       {
-        id: "loop",
-        name: "loop",
-        type: "for-each",
-        config: {
-          items: "{{fetch.messages}}",
-        },
-      },
-      {
+        // Batch-create inbox items directly from fetch.messages —
+        // create-inbox-item maps each entry's subject/snippet/from
+        // fields onto inbox columns, and dedups via sourceId so
+        // re-running the sync is idempotent.
         id: "store",
         name: "store",
         type: "create-inbox-item",
         config: {
           source: "google.gmail",
-          subject: "{{loop.subject}}",
-          body: "{{loop.snippet}}",
-          from: "{{loop.from}}",
+          items: "{{fetch.messages}}",
         },
       },
     ],
     edges: [
       { id: "e1", sourceBlockId: "trigger", targetBlockId: "fetch", sourceHandle: null, sortOrder: 0 },
-      { id: "e2", sourceBlockId: "fetch", targetBlockId: "loop", sourceHandle: null, sortOrder: 0 },
-      { id: "e3", sourceBlockId: "loop", targetBlockId: "store", sourceHandle: null, sortOrder: 0 },
+      { id: "e2", sourceBlockId: "fetch", targetBlockId: "store", sourceHandle: null, sortOrder: 0 },
     ],
     routine: {
       title: "Gmail sync (every 15 min)",

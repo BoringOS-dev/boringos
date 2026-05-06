@@ -23,6 +23,14 @@ export interface BoringOSConfig {
    * env var when omitted.
    */
   shellOrigin?: string;
+  /**
+   * Filesystem directory to scan at boot for default-app manifests
+   * (`apps/*\/boringos.json`). When set, `BoringOS.listen()` loads the
+   * catalog and auto-installs every entry on tenant signup — closes
+   * Phase 2 K8 + K9 wiring. The host's own `onTenantCreated()` callback
+   * still runs after if registered.
+   */
+  defaultAppsDir?: string;
 }
 
 export interface QueueConfig {

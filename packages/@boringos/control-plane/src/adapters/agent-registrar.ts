@@ -98,9 +98,25 @@ export async function registerAppAgents(
       persona,
     };
 
+    // Resolve runtime_id by looking up the tenant's runtime row whose
+    // `type` matches def.runtime (or "claude" as the default for app
+    // agents that don't pin a runtime). Without this, the agent engine
+    // spawns the bare CLI with no --model flag and the local CLI's
+    // default model wins (often Opus). Tenant runtimes are seeded by
+    // signup (auth-routes.ts), so by the time we install apps every
+    // tenant has at least { claude, chatgpt, gemini, ollama, command,
+    // webhook }.
+    const runtimeKind = runtime ?? "claude";
+    const runtimeRows = (await tx.execute(sql`
+      SELECT id FROM runtimes
+       WHERE tenant_id = ${tenantId} AND type = ${runtimeKind}
+       LIMIT 1
+    `)) as Array<{ id: string }>;
+    const runtimeId = runtimeRows[0]?.id ?? null;
+
     const rows = (await tx.execute(sql`
       INSERT INTO agents (
-        tenant_id, name, role, instructions, skills, metadata
+        tenant_id, name, role, instructions, skills, metadata, runtime_id
       )
       VALUES (
         ${tenantId},
@@ -108,7 +124,8 @@ export async function registerAppAgents(
         ${role},
         ${instructions},
         ${JSON.stringify(skills)}::jsonb,
-        ${JSON.stringify(metadata)}::jsonb
+        ${JSON.stringify(metadata)}::jsonb,
+        ${runtimeId}
       )
       RETURNING id
     `)) as Array<{ id: string }>;

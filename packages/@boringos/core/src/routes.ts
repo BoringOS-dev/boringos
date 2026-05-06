@@ -7,6 +7,7 @@ import {
   taskWorkProducts,
   costEvents,
   agents,
+  inboxItems,
 } from "@boringos/db";
 import type { AgentEngine } from "@boringos/agent";
 import { verifyCallbackToken } from "@boringos/agent";
@@ -182,6 +183,36 @@ export function createCallbackRoutes(db: Db, _engine: AgentEngine, jwtSecret: st
       instructions: body.instructions as string | undefined,
     });
     return c.json({ id }, 201);
+  });
+
+  // GET /inbox/:itemId — read inbox item
+  app.get("/inbox/:itemId", async (c) => {
+    const claims = c.get("claims");
+    const itemId = c.req.param("itemId");
+    const rows = await db.select().from(inboxItems).where(eq(inboxItems.id, itemId)).limit(1);
+    const item = rows[0];
+    if (!item) return c.json({ error: "Inbox item not found" }, 404);
+    if (item.tenantId !== claims.tenant_id) return c.json({ error: "Forbidden" }, 403);
+    return c.json(item);
+  });
+
+  // PATCH /inbox/:itemId — update inbox item metadata
+  app.patch("/inbox/:itemId", async (c) => {
+    const claims = c.get("claims");
+    const itemId = c.req.param("itemId");
+    const body = await c.req.json() as Record<string, unknown>;
+
+    const itemRows = await db.select().from(inboxItems).where(eq(inboxItems.id, itemId)).limit(1);
+    const item = itemRows[0];
+    if (!item) return c.json({ error: "Inbox item not found" }, 404);
+    if (item.tenantId !== claims.tenant_id) return c.json({ error: "Forbidden" }, 403);
+
+    const updates: Record<string, unknown> = { updatedAt: new Date() };
+    if (body.metadata) updates.metadata = body.metadata;
+    if (body.status) updates.status = body.status;
+
+    await db.update(inboxItems).set(updates).where(eq(inboxItems.id, itemId));
+    return c.json({ ok: true });
   });
 
   return app;

@@ -54,6 +54,15 @@ export interface RuntimeModel {
 }
 
 export interface BoringOSClient {
+  /**
+   * Read-only snapshot of the config used to construct this client.
+   * Screens that bypass the typed methods (direct fetch to admin
+   * endpoints) read `config.token` / `config.tenantId` / `config.url`
+   * to compose their own auth headers. Mutating this does not
+   * reconfigure the client; create a new one if you need new auth.
+   */
+  readonly config: Readonly<BoringOSClientConfig>;
+
   // Health
   health(): Promise<HealthStatus>;
 
@@ -125,8 +134,10 @@ export function createBoringOSClient(config: BoringOSClientConfig): BoringOSClie
     return h;
   }
 
-  // Use admin API when apiKey is set, callback API otherwise
-  const api = config.apiKey ? "/api/admin" : "/api/agent";
+  // Use admin API when authenticated as a human (apiKey OR session
+  // bearer token); callback API only when calling as a JWT-bearing
+  // agent (no apiKey, no token, just the JWT injected by the engine).
+  const api = config.apiKey || config.token ? "/api/admin" : "/api/agent";
 
   async function get<T>(path: string): Promise<T> {
     const res = await fetch(`${baseUrl}${path}`, { headers: headers() });
@@ -163,6 +174,7 @@ export function createBoringOSClient(config: BoringOSClientConfig): BoringOSClie
   }
 
   return {
+    config,
     health: () => get<HealthStatus>("/health"),
 
     // Settings

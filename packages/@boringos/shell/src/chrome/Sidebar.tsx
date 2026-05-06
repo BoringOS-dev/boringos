@@ -28,7 +28,7 @@ interface NavItem {
 }
 
 const WORKSPACE_ITEMS: NavItem[] = [
-  { to: "/home", label: "Home", icon: "☀" },
+  { to: "/home", label: "Home", icon: "⌂" },
   { to: "/copilot", label: "Copilot", icon: "◇" },
   { to: "/inbox", label: "Inbox", icon: "✉" },
   { to: "/tasks", label: "Tasks", icon: "☑" },

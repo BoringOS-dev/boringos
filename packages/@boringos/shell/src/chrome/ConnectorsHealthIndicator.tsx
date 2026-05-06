@@ -41,9 +41,15 @@ export function ConnectorsHealthIndicator() {
       try {
         const fresh = await fetchConnectorStatus(cfg);
         if (!cancelled) setRows(fresh);
-      } catch {
-        // Health probe failures are silent — the user already sees an
-        // error on the Connectors page if the API itself is down.
+      } catch (err) {
+        // Don't surface to UI — the indicator polls every 60s and the
+        // dedicated /connectors page renders the same error in full.
+        // But DO log so a "where's my indicator?" debug session doesn't
+        // require reading the source.
+        console.warn(
+          "[ConnectorsHealthIndicator] /api/connectors/status poll failed:",
+          err,
+        );
       }
     }
 
