@@ -2,7 +2,8 @@
 //
 // Shell App — public auth routes (Login, Signup) + auth-gated chrome
 // hosting the seven shell-mandatory screens (A5).
-// Drive, Connectors, Apps, Activity, Team are still placeholders for now.
+// Drive, Approvals, Activity, Team are still placeholders. Connectors
+// landed in N1; Apps landed in C/K series.
 
 import {
   BrowserRouter,
@@ -18,6 +19,7 @@ import { BoringOSClientProvider } from "./providers/BoringOSClientProvider.js";
 import { BrandProvider } from "./branding/BrandProvider.js";
 import {
   Agents,
+  Connectors,
   Copilot,
   Home,
   Inbox,
@@ -77,7 +79,7 @@ export function App() {
                 {/* Still placeholders */}
                 <Route path="approvals" element={<PlaceholderScreen title="Approvals" />} />
                 <Route path="drive" element={<PlaceholderScreen title="Drive" />} />
-                <Route path="connectors" element={<PlaceholderScreen title="Connectors" />} />
+                <Route path="connectors" element={<Connectors />} />
                 <Route path="apps" element={<Apps />} />
                 <Route path="activity" element={<PlaceholderScreen title="Activity" />} />
                 <Route path="team" element={<PlaceholderScreen title="Team" />} />

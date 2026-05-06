@@ -1,0 +1,1263 @@
+{
+  "version": "1.0.0",
+  "generated": "2026-05-05",
+  "phase": "phase-3",
+  "description": "Phase 3 tasks — close every Phase 1/2 gap that left the UI half-built, ship the Connectors OAuth UX, promote entity_refs to canonical entities, build Accounts as the second first-party app using only the public SDK, wire cross-app capability + event flow, and finish every placeholder screen in the shell. The phase exits as a fully manually-testable product. Sequential execution per way-to-implement.md.",
+  "repoRoot": "/Users/paragarora/Documents/Workspace/research/hebbs-clients/boringos-framework",
+  "executionMode": "sequential",
+  "phaseGate": "A fresh tenant signs up, lands on Home, opens Connectors → connects real Gmail via OAuth → emails sync into Inbox → generic-triage classifies + generic-replier drafts in parallel → user installs CRM via Apps → CRM email-lens enriches the SAME inbox item without re-classifying → user installs Accounts (built only with the public SDK) and is prompted to grant entities.crm:read → user closes a deal in CRM → Accounts auto-drafts an invoice linked to that deal via entity_refs → copilot answers questions across BOTH apps simultaneously → uninstalling CRM warns about Accounts dependency. All shell placeholder screens (Copilot, Approvals, Drive, Activity, Team) render real data. Manual test plan in docs/tests/test_phase3.md walks every step end-to-end.",
+  "phaseRisk": "If Accounts requires SDK changes, the SDK contract is wrong — pause and fix the SDK before opening third-party in Phase 4. If canonical entities require breaking changes to CRM, document the migration; the rule is no SDK breakage during the canonical promotion.",
+  "tasks": [
+    {
+      "id": "N1",
+      "workstream": "Connectors UI",
+      "name": "Connectors page replaces placeholder",
+      "goal": "Real Connectors page listing every registered connector kind, with per-tenant connected-account rows, status badges, and an Add button per kind.",
+      "readFirst": [
+        "packages/@boringos/shell/src/screens/Connectors.tsx (current placeholder)",
+        "packages/@boringos/connector/src/index.ts (registry shape)",
+        "packages/@boringos/db/src/schema/connectors.ts"
+      ],
+      "touch": [
+        "packages/@boringos/shell/src/screens/Connectors/index.tsx",
+        "packages/@boringos/shell/src/screens/Connectors/ConnectorCard.tsx",
+        "packages/@boringos/shell/src/screens/Connectors/connectorsApi.ts"
+      ],
+      "acceptance": [
+        "Renders all kinds from /api/admin/connectors/registry plus connected accounts from /api/admin/connectors",
+        "Per-card status: not connected | connected | error | expired (with last-error tooltip)",
+        "Add button is enabled per kind based on what's been registered with the framework",
+        "Vitest + RTL covering empty / connected / mixed states"
+      ],
+      "doNot": [
+        "Hardcode Google or Slack — render the registry generically",
+        "Inline OAuth logic; that lands in N2/N3"
+      ],
+      "estimateHours": 3,
+      "dependsOn": [],
+      "status": "done",
+      "completedAt": "2026-05-06",
+      "notes": "Connectors page replaces placeholder. Pure presenter (connectorsPresenter.ts) handles status normalization + view-model + sorting; ConnectorCard.tsx renders a single card; index.tsx wires the page; connectorsApi.ts wraps the existing /api/connectors/status + /api/connectors/disconnect/:kind endpoints. 17 unit tests on the presenter cover the full state matrix. Backend already had /api/connectors/oauth/:kind/{authorize,callback} from Phase 1 — those get refined in N2/N3 if needed."
+    },
+    {
+      "id": "N2",
+      "workstream": "Connectors UI",
+      "name": "OAuth authorize redirect endpoint",
+      "goal": "GET /api/connectors/:kind/authorize uses the existing OAuthManager to generate a state-signed URL and 302s to the provider's authorize endpoint.",
+      "readFirst": [
+        "packages/@boringos/connector/src/oauth.ts",
+        "packages/@boringos/core/src/index.ts (route mounting)"
+      ],
+      "touch": [
+        "packages/@boringos/core/src/connectors/authorize.ts",
+        "packages/@boringos/core/src/index.ts"
+      ],
+      "acceptance": [
+        "302 with the provider's authorize URL when called by an authenticated session",
+        "State token includes tenantId + nonce; signed with auth.secret to detect tampering",
+        "Returns 404 for unregistered kinds; 401 unauthenticated; 400 if connector kind has no oauth config"
+      ],
+      "doNot": [
+        "Re-implement OAuth — use connector SDK's existing OAuthManager",
+        "Generate a new client secret per request — tenant-level config lives in env or settings"
+      ],
+      "estimateHours": 2,
+      "dependsOn": ["N1"],
+      "status": "done",
+      "completedAt": "2026-05-06",
+      "notes": "Authorize endpoint refined: HMAC-SHA256 signed state via @boringos/connector/oauth-state.ts (createState/verifyState/isSafeReturnTo). returnTo allowlist rejects open redirectors. Connector clientId is now properly typed via OAuthCredentialed; missing clientId surfaces a 500 with a clear message instead of trying with empty creds. shellOrigin config knob added to BoringOSConfig for cross-origin returnTo. 12 unit tests on the state helpers."
+    },
+    {
+      "id": "N3",
+      "workstream": "Connectors UI",
+      "name": "OAuth callback + credential persist",
+      "goal": "GET /api/connectors/:kind/callback exchanges code for tokens, encrypts + writes a connectors row for the tenant, and redirects back to the shell's /connectors page with success/error querystring.",
+      "readFirst": [
+        "packages/@boringos/connector/src/oauth.ts",
+        "packages/@boringos/db/src/schema/connectors.ts"
+      ],
+      "touch": [
+        "packages/@boringos/core/src/connectors/callback.ts"
+      ],
+      "acceptance": [
+        "Verifies state signature; rejects on mismatch with a 400",
+        "On success: upserts a connectors row with kind, name (provider account label), encrypted credentials, scopes, status='connected'",
+        "Redirects to /connectors?connect=success&kind=:kind on success, ?connect=error&reason=... on failure",
+        "Integration test against Google's test OAuth endpoint via mock; verifies idempotent re-connect updates the same row"
+      ],
+      "doNot": [
+        "Trust the redirect URI from the querystring — must match what was signed in N2",
+        "Store unencrypted refresh tokens"
+      ],
+      "estimateHours": 3,
+      "dependsOn": ["N2"],
+      "status": "done",
+      "completedAt": "2026-05-06",
+      "notes": "Callback flow rewritten alongside N2 in the same connector-routes.ts file. State signature verified before tenant resolution. Tokens upserted (active status). Success → redirect to returnTo with ?connect=success&kind=. Failure → redirect with ?connect=error&kind=&reason= so the shell page can surface the error to the user. Plain-text error pages eliminated."
+    },
+    {
+      "id": "N4",
+      "workstream": "Connectors UI",
+      "name": "Add Google / Add Slack wizard modal",
+      "goal": "Click Add on a connector card → modal explains the OAuth scopes that will be granted → click Authorize → window.location.href to the authorize endpoint.",
+      "readFirst": [
+        "packages/@boringos/shell/src/screens/Connectors/ConnectorCard.tsx (from N1)",
+        "packages/@boringos/connector-google/boringos.json (scopes list)",
+        "packages/@boringos/connector-slack/boringos.json"
+      ],
+      "touch": [
+        "packages/@boringos/shell/src/screens/Connectors/AddConnectorModal.tsx"
+      ],
+      "acceptance": [
+        "Modal title + description sourced from the connector manifest, not hardcoded per kind",
+        "Scopes rendered as a human-readable list with a 'why we need this' tooltip",
+        "Authorize button kicks the user to /api/connectors/:kind/authorize",
+        "Cancel closes without writing anything"
+      ],
+      "doNot": [
+        "Build separate modals per connector — single generic modal driven by manifest data",
+        "Hide scopes — the user has to see what they're granting"
+      ],
+      "estimateHours": 2,
+      "dependsOn": ["N3"],
+      "status": "done",
+      "completedAt": "2026-05-06",
+      "notes": "AddConnectorModal.tsx — generic modal driven entirely by manifest data (name, description, scopes). humanizeScope() helper renders Google URL scopes as gmail.modify/calendar.events; Slack-style passes through. Esc closes; click-outside cancels. Reconnect bypasses the modal since the user has already granted these scopes. /api/connectors/status now returns oauthScopes in the response. 3 new presenter tests covering scope humanization."
+    },
+    {
+      "id": "N5",
+      "workstream": "Connectors UI",
+      "name": "Default sync workflow installs on connect",
+      "goal": "When a Google connector is created, install the Gmail sync workflow template (cron 15m → list_emails → routeToInbox) so the user immediately starts seeing emails in Inbox without further action.",
+      "readFirst": [
+        "packages/@boringos/connector-google/src/index.ts",
+        "packages/@boringos/workflow/src/store.ts"
+      ],
+      "touch": [
+        "packages/@boringos/core/src/connectors/post-connect.ts",
+        "packages/@boringos/connector-google/src/default-workflows.ts"
+      ],
+      "acceptance": [
+        "After successful OAuth callback, a per-tenant workflow row + cron trigger exist",
+        "Disconnecting the Google connector pauses (not deletes) the workflow",
+        "Re-connecting resumes the workflow at the same cron",
+        "Test: end-to-end — call /authorize, mock Google callback, assert workflow exists and is scheduled"
+      ],
+      "doNot": [
+        "Hardcode the Gmail sync workflow into the framework — the connector defines its own default-workflow set",
+        "Skip the connector if the user already had one — the row is per-tenant, idempotent on reconnect"
+      ],
+      "estimateHours": 3,
+      "dependsOn": ["N3"],
+      "status": "done",
+      "completedAt": "2026-05-06",
+      "notes": "Added DefaultWorkflowSpec interface + ConnectorDefinition.defaultWorkflows() extension point in @boringos/connector. Google connector exports the Gmail sync spec (cron */15 → list_emails → for-each → create-inbox-item). New @boringos/core/connectors/post-connect.ts owns install + pause + resume; idempotent via spec.tag stored in workflow name prefix. Wired into OAuth callback + disconnect handler. 5 integration tests against embedded Postgres."
+    },
+    {
+      "id": "N6",
+      "workstream": "Connectors UI",
+      "name": "Disconnect + token-expired UX",
+      "goal": "Per-card Disconnect button revokes credentials at the provider, deletes the row, pauses dependent workflows. Token-expired status surfaces with a Reconnect CTA that re-runs the OAuth flow.",
+      "readFirst": [
+        "packages/@boringos/shell/src/screens/Connectors/ConnectorCard.tsx (from N1)",
+        "packages/@boringos/connector/src/oauth.ts (revoke flow)"
+      ],
+      "touch": [
+        "packages/@boringos/core/src/connectors/disconnect.ts",
+        "packages/@boringos/shell/src/screens/Connectors/ReconnectButton.tsx"
+      ],
+      "acceptance": [
+        "Disconnect: confirmation modal, revoke at provider, delete row, pause workflows; surfaces success or partial failure",
+        "Token refresh failure flips connector status to 'expired'; UI shows a yellow banner",
+        "Reconnect runs the same authorize flow but with hint=:tenantId so providers reuse the existing account if possible",
+        "Test: simulate token revoked at provider; next workflow run flips status; UI updates"
+      ],
+      "doNot": [
+        "Drop the workflow data on disconnect — the user may reconnect; preserve unless the user explicitly removes",
+        "Block disconnect if a workflow is running — let it complete then pause"
+      ],
+      "estimateHours": 3,
+      "dependsOn": ["N5"],
+      "status": "done",
+      "completedAt": "2026-05-06",
+      "notes": "DisconnectModal.tsx — confirmation step with explicit consequences (tokens removed, workflows paused, data preserved). Token-expired badge already in N1 presenter; Reconnect button shows in that state and skips the Add modal. /connectors?connect=success|error&kind=&reason= surfaces inline banners with dismissible UX; URL cleaned via history.replaceState so refresh doesn't redisplay."
+    },
+    {
+      "id": "N7",
+      "workstream": "Connectors UI",
+      "name": "Connector status surface in shell chrome",
+      "goal": "Header indicator (small bell or status dot) shows aggregate connector health; click → flyout listing per-connector status; routes to /connectors on click of a degraded item.",
+      "readFirst": [
+        "packages/@boringos/shell/src/chrome/Header.tsx",
+        "packages/@boringos/shell/src/screens/Connectors/connectorsApi.ts (from N1)"
+      ],
+      "touch": [
+        "packages/@boringos/shell/src/chrome/ConnectorsHealthIndicator.tsx"
+      ],
+      "acceptance": [
+        "Healthy state hidden / muted; degraded state visible with a count badge",
+        "Polls or subscribes to /api/events for connector.* events",
+        "Click → routes to /connectors with the degraded card scrolled into view"
+      ],
+      "doNot": [
+        "Spam the bell on transient errors — debounce; show only after second failure",
+        "Build a full notifications panel here — that lands in S7"
+      ],
+      "estimateHours": 2,
+      "dependsOn": ["N6"],
+      "status": "done",
+      "completedAt": "2026-05-06",
+      "notes": "ConnectorsHealthIndicator.tsx — compact pill in shell main area's top-right. Polls /api/connectors/status every 60s. Hidden on happy path; surfaces only when expired or error states exist. Click expands a flyout listing degraded connectors with a 'Manage connectors →' deep link. Mounted in Layout.tsx between Sidebar and Outlet."
+    },
+    {
+      "id": "O1",
+      "workstream": "Canonical entities",
+      "name": "Schema for canonical_persons + canonical_companies",
+      "goal": "First-class tables for canonical Person + Company. Include identity fields (email, phone, name) + dedup-friendly indexes (lowercased email, normalized phone).",
+      "readFirst": [
+        "packages/@boringos/db/src/schema/index.ts",
+        "packages/@boringos/db/src/schema/entity-references.ts"
+      ],
+      "touch": [
+        "packages/@boringos/db/src/schema/canonical-persons.ts",
+        "packages/@boringos/db/src/schema/canonical-companies.ts",
+        "packages/@boringos/db/src/schema/index.ts"
+      ],
+      "acceptance": [
+        "canonical_persons: id, tenantId, displayName, primaryEmail (citext), primaryPhone, createdAt, mergedIntoId (nullable for soft-merges)",
+        "canonical_companies: id, tenantId, displayName, primaryDomain, createdAt, mergedIntoId",
+        "Unique index on (tenantId, lower(primaryEmail)) — soft, partial WHERE primaryEmail IS NOT NULL",
+        "Migrations applied; smoke test inserts + queries"
+      ],
+      "doNot": [
+        "Force an email or phone — names alone allowed (e.g. lead with just a Slack handle)",
+        "Hard-delete on merge — use mergedIntoId so apps can follow the chain"
+      ],
+      "estimateHours": 3,
+      "dependsOn": ["N7"],
+      "status": "todo"
+    },
+    {
+      "id": "O2",
+      "workstream": "Canonical entities",
+      "name": "Promote API: app entity → canonical entity",
+      "goal": "POST /api/admin/canonical/persons/from-entity { sourceApp, sourceType, sourceId } resolves an app entity into a canonical Person, creating one if no match, otherwise linking via entity_refs.",
+      "readFirst": [
+        "packages/@boringos/db/src/schema/entity-references.ts",
+        "packages/@boringos/core/src/admin/index.ts"
+      ],
+      "touch": [
+        "packages/@boringos/core/src/admin/canonical.ts"
+      ],
+      "acceptance": [
+        "Match heuristic: exact lower(email) → existing canonical Person; otherwise create new",
+        "Always writes an entity_refs row linking sourceEntity ↔ canonicalPerson",
+        "Idempotent: calling twice with same source returns the same canonicalId",
+        "Same shape for /from-entity → canonical Company (domain match instead of email)"
+      ],
+      "doNot": [
+        "Auto-merge across email + phone in the same pass — surface candidates, the merge requires a separate explicit call",
+        "Trust client-supplied canonicalId — always re-resolve"
+      ],
+      "estimateHours": 4,
+      "dependsOn": ["O1"],
+      "status": "todo"
+    },
+    {
+      "id": "O3",
+      "workstream": "Canonical entities",
+      "name": "Auto-link heuristic on entity create",
+      "goal": "When CRM (or any app) creates a new Contact, the install pipeline's hook layer fires a canonical-resolve so a CRM Contact and a future Accounts Customer with the same email both back-reference the same canonical Person.",
+      "readFirst": [
+        "packages/@boringos/control-plane/src/adapters/lifecycle.ts",
+        "apps/generic-triage/src/agents/triage.ts (so triage can attach canonical Person to inbox items)"
+      ],
+      "touch": [
+        "packages/@boringos/core/src/canonical/auto-link.ts",
+        "packages/@boringos/connector/src/event-bus.ts (emit entity_created)"
+      ],
+      "acceptance": [
+        "All apps that emit entity_created get an automatic canonical resolve via subscription, not by calling a helper",
+        "If a duplicate is detected, the entity's metadata gains canonicalCandidates: [...] for UI to surface a merge prompt",
+        "Test: simulate CRM Contact + Accounts Customer with same email → entity_refs has 2 rows pointing to same canonical Person"
+      ],
+      "doNot": [
+        "Block the entity create on resolution — async via event handler",
+        "Auto-merge silently — score-based candidates surface to UI; human picks"
+      ],
+      "estimateHours": 4,
+      "dependsOn": ["O2"],
+      "status": "todo"
+    },
+    {
+      "id": "O4",
+      "workstream": "Canonical entities",
+      "name": "Cross-reference badge on entity detail",
+      "goal": "When viewing a CRM Contact who is also an Accounts Customer, a 'This person' badge lists all app references with deep-links.",
+      "readFirst": [
+        "packages/@boringos/shell/src/screens/Entity/EntityDetail.tsx (created by Phase 2 L workstream)",
+        "packages/@boringos/shell/src/components/entity-refs/"
+      ],
+      "touch": [
+        "packages/@boringos/shell/src/components/CanonicalRefBadge.tsx"
+      ],
+      "acceptance": [
+        "Reads /api/admin/canonical/persons/:id/refs and renders one chip per app reference",
+        "Clicking a chip routes to that app's entity detail page",
+        "Hidden when only one app refers to the canonical entity (no point showing self)"
+      ],
+      "doNot": [
+        "Render anything if canonical_persons isn't enabled for the tenant — feature flag this for safety",
+        "Allow editing canonical fields from this badge — that's the merge UI in O5"
+      ],
+      "estimateHours": 2,
+      "dependsOn": ["O3"],
+      "status": "todo"
+    },
+    {
+      "id": "O5",
+      "workstream": "Canonical entities",
+      "name": "Merge UI for duplicate canonical entities",
+      "goal": "When auto-link detects candidates, surface a 'These look like the same Person — merge?' prompt with field-by-field comparison and Confirm/Reject.",
+      "readFirst": [
+        "packages/@boringos/shell/src/screens/Inbox/ (where the prompt embeds)",
+        "packages/@boringos/core/src/admin/canonical.ts (from O2)"
+      ],
+      "touch": [
+        "packages/@boringos/shell/src/screens/Canonical/MergePrompt.tsx",
+        "packages/@boringos/core/src/admin/canonical.ts (add /merge endpoint)"
+      ],
+      "acceptance": [
+        "POST /api/admin/canonical/persons/:id/merge { intoId } sets sourceId.mergedIntoId, rewires entity_refs",
+        "All app entity rows that previously linked to merged-source now resolve to merge-target via canonical resolution",
+        "UI confirms via diff view; merge is a single click",
+        "Reject flow records a non-match marker so we don't re-prompt"
+      ],
+      "doNot": [
+        "Hard-delete the source canonical row — soft-merge via mergedIntoId chain",
+        "Do reverse-merge automatically — admins explicitly choose target"
+      ],
+      "estimateHours": 4,
+      "dependsOn": ["O4"],
+      "status": "todo"
+    },
+    {
+      "id": "O6",
+      "workstream": "Canonical entities",
+      "name": "SDK helpers for canonical lookup from apps",
+      "goal": "Public helpers — useCanonicalPerson(personId), getCanonicalForEntity({sourceApp, sourceId}) — exposed from @boringos/app-sdk so future apps don't have to know about the canonical schema.",
+      "readFirst": [
+        "packages/@boringos/app-sdk/src/index.ts",
+        "packages/@boringos/core/src/admin/canonical.ts (from O2)"
+      ],
+      "touch": [
+        "packages/@boringos/app-sdk/src/canonical.ts",
+        "packages/@boringos/app-sdk/src/index.ts"
+      ],
+      "acceptance": [
+        "Hook returns the canonical Person + all entity_refs back to source apps",
+        "Returns null + sets metadata.canonicalCandidates when ambiguous",
+        "Documented in docs/app-sdk.md with a worked example",
+        "@boringos/app-sdk minor version bump; no breaking changes (M5 contract)"
+      ],
+      "doNot": [
+        "Force apps to use canonical entities — opt-in only; CRM keeps its own Contact rows linked via entity_refs",
+        "Ship a hook that fetches synchronously — async with TanStack Query like every other shell hook"
+      ],
+      "estimateHours": 3,
+      "dependsOn": ["O5"],
+      "status": "todo"
+    },
+    {
+      "id": "P1",
+      "workstream": "Cross-app capability",
+      "name": "Manifest declares cross-app entity reads",
+      "goal": "App manifest gains capabilities: ['entities.crm:read'] declarations. Validator checks the referenced app exists in the registry at install time.",
+      "readFirst": [
+        "packages/@boringos/app-sdk/src/manifest-schema.ts",
+        "packages/@boringos/control-plane/src/validator.ts"
+      ],
+      "touch": [
+        "packages/@boringos/app-sdk/src/manifest-schema.ts",
+        "packages/@boringos/control-plane/src/validator.ts"
+      ],
+      "acceptance": [
+        "Schema accepts capabilities matching ^entities\\.[a-z][a-z0-9-]*:(read|write|admin)$",
+        "Validator: install fails if entities.crm:read is declared but CRM isn't installed in the tenant",
+        "Existing capabilities like inbox.items:write keep working (no breaking change)",
+        "Test: manifest with entities.crm:read installs cleanly when CRM present, errors otherwise"
+      ],
+      "doNot": [
+        "Add a finer-grained per-entity-type capability yet — single entities.{app}:read covers everything for v1",
+        "Allow * wildcards across apps — explicit-only"
+      ],
+      "estimateHours": 2,
+      "dependsOn": ["O6"],
+      "status": "todo"
+    },
+    {
+      "id": "P2",
+      "workstream": "Cross-app capability",
+      "name": "Permission prompt shows cross-app deps",
+      "goal": "Phase 1's permission prompt (already renders capabilities at install) gets a 'this app needs to read entities from CRM, Accounts' section with the affected app names + scope.",
+      "readFirst": [
+        "packages/@boringos/shell/src/screens/Apps/PermissionPrompt.tsx",
+        "packages/@boringos/control-plane/src/install.ts"
+      ],
+      "touch": [
+        "packages/@boringos/shell/src/screens/Apps/PermissionPrompt.tsx"
+      ],
+      "acceptance": [
+        "Cross-app capabilities grouped under a separate visual section with the granting app's logo",
+        "Approve button disabled if any cross-app dep refers to an uninstalled app, with 'Install X first' CTA",
+        "Test: permission prompt for Accounts shows the CRM dep block with the right copy"
+      ],
+      "doNot": [
+        "Allow Approve to silently install the missing dep — explicit user action",
+        "Re-render the existing capability list — extend, don't replace"
+      ],
+      "estimateHours": 2,
+      "dependsOn": ["P1"],
+      "status": "todo"
+    },
+    {
+      "id": "P3",
+      "workstream": "Cross-app capability",
+      "name": "Runtime enforcement on cross-app entity reads",
+      "goal": "When Accounts agent reads a CRM Contact via the canonical-resolve helper, a capability check ensures Accounts has entities.crm:read; missing capability → 403 with a clear error.",
+      "readFirst": [
+        "packages/@boringos/core/src/admin/canonical.ts (from O2)",
+        "packages/@boringos/app-sdk/src/canonical.ts (from O6)"
+      ],
+      "touch": [
+        "packages/@boringos/core/src/middleware/cross-app-capability.ts"
+      ],
+      "acceptance": [
+        "Middleware reads the calling app's tenant_apps row, checks capabilities array, and either passes through or returns 403",
+        "Error body: { error: 'capability_denied', missing: 'entities.crm:read', requestedBy: 'accounts' }",
+        "Test: stub Accounts without entities.crm:read tries to resolve a CRM Contact — gets 403"
+      ],
+      "doNot": [
+        "Trust client-claimed app id — derive from the agent's session/tenant_app row",
+        "Cache deny decisions — read-through on every call (Drizzle's connection pool handles the cost)"
+      ],
+      "estimateHours": 3,
+      "dependsOn": ["P2"],
+      "status": "todo"
+    },
+    {
+      "id": "P4",
+      "workstream": "Cross-app capability",
+      "name": "Uninstall cascade warning when other apps depend",
+      "goal": "Uninstalling CRM while Accounts has entities.crm:read declared shows a warning listing the dependent apps and what will break, with options: Uninstall both / Just CRM (Accounts will fail) / Cancel.",
+      "readFirst": [
+        "packages/@boringos/control-plane/src/uninstall.ts",
+        "packages/@boringos/shell/src/screens/Apps/UninstallModal.tsx"
+      ],
+      "touch": [
+        "packages/@boringos/shell/src/screens/Apps/UninstallModal.tsx",
+        "packages/@boringos/control-plane/src/uninstall.ts (add deps()) helper"
+      ],
+      "acceptance": [
+        "/api/admin/apps/:appId?dry-run=true returns dependent apps; UI surfaces them",
+        "Uninstall both option chains uninstalls in dependency order (Accounts first, then CRM)",
+        "Just CRM option proceeds with a 'capabilities will fail' acknowledgement and writes an audit row"
+      ],
+      "doNot": [
+        "Block uninstall — always offer 'Just CRM' as a power-user option",
+        "Cascade by default — explicit selection"
+      ],
+      "estimateHours": 3,
+      "dependsOn": ["P3"],
+      "status": "todo"
+    },
+    {
+      "id": "Q0",
+      "workstream": "Accounts app",
+      "name": "Scope checkpoint — confirm Accounts scope with user before any Q work",
+      "goal": "Pause sequential execution. Re-confirm with the user that thin-AR (auto-draft invoice from deal_won + reconcile payments) is the right scope, vs alternatives (broader Accounts, Support, Scheduling, etc.). Record the decision in this task's notes before unblocking Q1.",
+      "readFirst": [
+        "docs/phases/phase-3.md (workstream Q row)",
+        "docs/build/tasks-phase-3.json (Q1-Q8 to see the full surface)"
+      ],
+      "touch": [],
+      "acceptance": [
+        "User has explicitly confirmed which app to build as the second first-party app",
+        "Confirmed scope is recorded in this task's status notes",
+        "Q1-Q8 task names + goals updated if the chosen app is not Accounts"
+      ],
+      "doNot": [
+        "Skip this gate — the cost of building the wrong second app is the cost of the whole phase",
+        "Assume Accounts because the JSON says so — the JSON was a starting point"
+      ],
+      "estimateHours": 0,
+      "dependsOn": ["P4"],
+      "status": "todo"
+    },
+    {
+      "id": "Q1",
+      "workstream": "Accounts app",
+      "name": "Bootstrap boringos-accounts repo",
+      "goal": "New repo at hebbs-clients/boringos-accounts following the same shape as boringos-crm. Created via the create-boringos CLI scaffolder so we exercise that path too.",
+      "readFirst": [
+        "packages/@boringos/create-boringos/src/index.ts (the scaffolder)",
+        "Existing boringos-crm/feat_business_shell branch for the layout reference"
+      ],
+      "touch": [
+        "../boringos-accounts/ (new repo)"
+      ],
+      "acceptance": [
+        "Repo bootstrapped via npx create-boringos --kind=app boringos-accounts",
+        "boringos.json valid against current schema",
+        "package.json has @boringos/app-sdk as a workspace dep (alpha)",
+        "Empty defineApp() exported with id='accounts'"
+      ],
+      "doNot": [
+        "Copy CRM code — start clean to test the scaffolder honestly",
+        "Skip the scaffolder and hand-create — that bypasses the contract test"
+      ],
+      "estimateHours": 2,
+      "dependsOn": ["Q0"],
+      "status": "todo"
+    },
+    {
+      "id": "Q2",
+      "workstream": "Accounts app",
+      "name": "Schema: invoices, payments, chart of accounts",
+      "goal": "Domain tables for Accounts. fin_invoices, fin_payments, fin_chart_of_accounts. Migrations applied via Phase 2's K2 schema runner.",
+      "readFirst": [
+        "packages/@boringos/control-plane/src/adapters/schema-migrator.ts",
+        "Existing CRM repo's schema migrations"
+      ],
+      "touch": [
+        "../boringos-accounts/migrations/0001_init.sql",
+        "../boringos-accounts/src/schema.ts"
+      ],
+      "acceptance": [
+        "fin_invoices: id, tenantId, customerCanonicalPersonId (FK to canonical_persons), dealCanonicalRef, amountCents, currency, status, dueAt",
+        "fin_payments: id, tenantId, invoiceId (FK), amountCents, paidAt, source",
+        "fin_chart_of_accounts: id, tenantId, code, name, type",
+        "Install runs migrations cleanly; uninstall (hard) drops them"
+      ],
+      "doNot": [
+        "Use raw cents in display — UI formats with locale; storage uses cents",
+        "Cross-tenant FK — every row is tenant-scoped"
+      ],
+      "estimateHours": 3,
+      "dependsOn": ["Q1"],
+      "status": "todo"
+    },
+    {
+      "id": "Q3",
+      "workstream": "Accounts app",
+      "name": "Agents: Invoice Drafter + Payment Reconciler",
+      "goal": "Two agents seed at install. Invoice Drafter watches deal_won → creates a draft invoice. Payment Reconciler watches incoming payment events → matches to invoice.",
+      "readFirst": [
+        "boringos-crm's agent definitions for the pattern",
+        "packages/@boringos/app-sdk/src/define-app.ts"
+      ],
+      "touch": [
+        "../boringos-accounts/src/agents/invoice-drafter.ts",
+        "../boringos-accounts/src/agents/payment-reconciler.ts",
+        "../boringos-accounts/src/skills/*.md"
+      ],
+      "acceptance": [
+        "Both agents register on install via Phase 2's K3 agent registrar",
+        "Skill markdown teaches each agent its scope (no overlap)",
+        "Invoice Drafter writes drafts to fin_invoices via the app's own /api/accounts route",
+        "Payment Reconciler edits fin_invoices.status = 'paid'"
+      ],
+      "doNot": [
+        "Use entities.crm:read inside the agents themselves — they read the canonical Person via the SDK helper",
+        "Auto-send invoices — drafts sit until human approves"
+      ],
+      "estimateHours": 5,
+      "dependsOn": ["Q2"],
+      "status": "todo"
+    },
+    {
+      "id": "Q4",
+      "workstream": "Accounts app",
+      "name": "Workflow templates: deal_won → draft_invoice",
+      "goal": "Workflow that subscribes to crm.deal_won, resolves the deal's customer to a canonical Person, then wakes Invoice Drafter with the deal context.",
+      "readFirst": [
+        "packages/@boringos/workflow/src/handlers/wake-agent.ts",
+        "Phase 2's K4 workflow registrar"
+      ],
+      "touch": [
+        "../boringos-accounts/src/workflows/deal-won-draft.ts"
+      ],
+      "acceptance": [
+        "On crm.deal_won (sourced from CRM): resolve canonical Person, write a fin_invoices draft row, wake Invoice Drafter with the new invoiceId",
+        "If the deal has no customer (rare), workflow halts with a clear log line",
+        "Idempotent on duplicate deal_won events (e.g. retry) — uses dealCanonicalRef as dedup key"
+      ],
+      "doNot": [
+        "Subscribe to private CRM events — only documented public ones (deal_won, contact_changed, etc.)",
+        "Skip canonical resolution and embed CRM contactId directly — that breaks if CRM uninstalls"
+      ],
+      "estimateHours": 3,
+      "dependsOn": ["Q3"],
+      "status": "todo"
+    },
+    {
+      "id": "Q5",
+      "workstream": "Accounts app",
+      "name": "UI slots: Invoices, Customers, Settings",
+      "goal": "Three slot.pages contributions: Invoices list + detail, Customers list + detail (canonical Person view filtered to those with invoices), Settings panel for chart of accounts.",
+      "readFirst": [
+        "Phase 2's L4-L7 (CRM page slots)",
+        "packages/@boringos/app-sdk/src/define-ui.ts"
+      ],
+      "touch": [
+        "../boringos-accounts/src/pages/Invoices.tsx",
+        "../boringos-accounts/src/pages/Customers.tsx",
+        "../boringos-accounts/src/pages/SettingsPanel.tsx"
+      ],
+      "acceptance": [
+        "All pages mount via slot system; sidebar grows with Accounts section after install",
+        "Invoice detail shows linked deal (deep-link to CRM if installed)",
+        "Customer detail uses the CanonicalRefBadge from O4",
+        "Settings panel edits chart of accounts entries"
+      ],
+      "doNot": [
+        "Re-implement the canonical Person view — reuse the shared component",
+        "Hardcode tenant settings keys — read from the framework's settings table"
+      ],
+      "estimateHours": 6,
+      "dependsOn": ["Q4"],
+      "status": "todo"
+    },
+    {
+      "id": "Q6",
+      "workstream": "Accounts app",
+      "name": "EntityActions for fin_invoice",
+      "goal": "Actions on an invoice: Mark Paid, Send Reminder, Cancel. Wire into ui.entityActions slot.",
+      "readFirst": [
+        "Phase 2's L8 (CRM EntityActions for crm_deal)"
+      ],
+      "touch": [
+        "../boringos-accounts/src/actions/invoice-actions.ts",
+        "../boringos-accounts/src/pages/Invoices.tsx (wire actions)"
+      ],
+      "acceptance": [
+        "Actions render on fin_invoice detail toolbar",
+        "Mark Paid creates a fin_payments row with source='manual'",
+        "Send Reminder enqueues an email via Gmail connector if connected",
+        "Cancel updates status='cancelled'; reversible via 'Reactivate' action"
+      ],
+      "doNot": [
+        "Build action handlers that call CRM APIs directly — go through canonical layer + capability checks",
+        "Auto-send reminders without explicit click"
+      ],
+      "estimateHours": 3,
+      "dependsOn": ["Q5"],
+      "status": "todo"
+    },
+    {
+      "id": "Q7",
+      "workstream": "Accounts app",
+      "name": "Manifest validation + capability declarations",
+      "goal": "Final boringos.json declares: entityTypes (fin_invoice, fin_payment), capabilities including entities.crm:read, ui slots, schema migrations, agents, workflows. Validates against the SDK schema.",
+      "readFirst": [
+        "boringos-crm's final boringos.json for the shape",
+        "packages/@boringos/control-plane/src/validator.ts"
+      ],
+      "touch": [
+        "../boringos-accounts/boringos.json"
+      ],
+      "acceptance": [
+        "validateManifest() passes",
+        "verify-connectors-style validator passes (referenced files exist, declared events exist, etc.)",
+        "Capabilities array includes inbox.items:write, entities.crm:read, network.send (Gmail emails)",
+        "minRuntime matches the framework version"
+      ],
+      "doNot": [
+        "Declare entities.crm:write — Accounts only reads CRM data; deal updates flow back via events, not direct writes",
+        "Skip validation — manifest must pass before install"
+      ],
+      "estimateHours": 2,
+      "dependsOn": ["Q6"],
+      "status": "todo"
+    },
+    {
+      "id": "Q8",
+      "workstream": "Accounts app",
+      "name": "Install + e2e smoke",
+      "goal": "Install Accounts via the Apps screen on a tenant that already has CRM. Verify the cross-app capability prompt fires (P2) and post-install the sidebar grows with Accounts entries.",
+      "readFirst": [
+        "Phase 2's M-suite gate tests for the pattern"
+      ],
+      "touch": [
+        "tests/accounts-install-e2e.test.ts"
+      ],
+      "acceptance": [
+        "Install via /api/admin/apps/install with manifest URL pointing at boringos-accounts repo's raw boringos.json",
+        "Permission prompt blocks until CRM is verified installed (P2)",
+        "Post-install: 3 nav entries appear, 2 agents seed, 1 workflow seeds, capabilities are recorded with the cross-app entry",
+        "Test against embedded Postgres; uninstall cleans up"
+      ],
+      "doNot": [
+        "Skip the permission prompt verification — it is the cross-app contract",
+        "Hardcode app id mapping — derive from manifest"
+      ],
+      "estimateHours": 3,
+      "dependsOn": ["Q7"],
+      "status": "todo"
+    },
+    {
+      "id": "R1",
+      "workstream": "Cross-app event flow",
+      "name": "CRM emits crm.deal_won when a deal closes",
+      "goal": "When a deal moves to a Closed-Won stage in CRM, a crm.deal_won event fires with { dealId, canonicalCustomerId, amountCents, closedAt }.",
+      "readFirst": [
+        "boringos-crm/src/agents/* and any place stage transitions are handled",
+        "packages/@boringos/connector/src/event-bus.ts"
+      ],
+      "touch": [
+        "boringos-crm/src/events/deal-events.ts (add deal_won emission)"
+      ],
+      "acceptance": [
+        "Stage change to a stage flagged stage.outcome='won' emits the event",
+        "Event payload schema documented in CRM's manifest events[]",
+        "No emission when toggling stages within Closed-Won (idempotent on dedup key dealId)"
+      ],
+      "doNot": [
+        "Emit from the UI directly — server-side after the DB write commits",
+        "Embed CRM-specific shape — payload fields must be canonical-resolvable"
+      ],
+      "estimateHours": 2,
+      "dependsOn": ["Q8"],
+      "status": "todo"
+    },
+    {
+      "id": "R2",
+      "workstream": "Cross-app event flow",
+      "name": "Accounts subscribes via workflow",
+      "goal": "Accounts' deal-won-draft workflow (Q4) is triggered by the real crm.deal_won event from R1, not a stub.",
+      "readFirst": [
+        "Q4 workflow",
+        "Phase 2's K4 workflow registrar (event triggers)"
+      ],
+      "touch": [
+        "../boringos-accounts/src/workflows/deal-won-draft.ts (verify event name)"
+      ],
+      "acceptance": [
+        "Real CRM deal_won fires Accounts workflow within 5 seconds",
+        "Workflow run record visible on Accounts' Workflows page",
+        "Test: trigger CRM deal_won via direct DB insert + event emit, observe Accounts workflow run"
+      ],
+      "doNot": [
+        "Poll for events — subscription only",
+        "Couple the workflow to CRM internals — only public event payload"
+      ],
+      "estimateHours": 2,
+      "dependsOn": ["R1"],
+      "status": "todo"
+    },
+    {
+      "id": "R3",
+      "workstream": "Cross-app event flow",
+      "name": "Invoice draft has prefilled deal context",
+      "goal": "When R2 creates a fin_invoices draft, the draft contains: customer (resolved canonically), deal description, amount from deal, line item summary.",
+      "readFirst": [
+        "Q3 Invoice Drafter agent",
+        "Q4 workflow for context shape"
+      ],
+      "touch": [
+        "../boringos-accounts/src/agents/invoice-drafter.ts (consume workflow output)"
+      ],
+      "acceptance": [
+        "Draft includes deal title, amount, customer name, suggested due date (default: 30 days)",
+        "Agent run log shows the workflow context it received",
+        "User can edit any field before sending"
+      ],
+      "doNot": [
+        "Auto-send — draft remains until user approves and clicks Send",
+        "Lock fields — every field is editable; agent suggestions are suggestions"
+      ],
+      "estimateHours": 3,
+      "dependsOn": ["R2"],
+      "status": "todo"
+    },
+    {
+      "id": "R4",
+      "workstream": "Cross-app event flow",
+      "name": "Bidirectional entity_refs link",
+      "goal": "After invoice draft creation, an entity_refs row links crm_deal:dealId ↔ fin_invoice:invoiceId so both detail pages show each other.",
+      "readFirst": [
+        "Phase 2's entity_refs admin API"
+      ],
+      "touch": [
+        "../boringos-accounts/src/workflows/deal-won-draft.ts (write the link)"
+      ],
+      "acceptance": [
+        "CRM deal detail shows 'Linked invoice: INV-001' chip with deep-link",
+        "Accounts invoice detail shows 'From deal: ACME-Q1' chip with deep-link",
+        "Test: navigate both directions"
+      ],
+      "doNot": [
+        "Re-derive the link from canonical resolution — entity_refs is the authoritative cross-app link",
+        "Block the workflow on link creation — best-effort"
+      ],
+      "estimateHours": 2,
+      "dependsOn": ["R3"],
+      "status": "todo"
+    },
+    {
+      "id": "R5",
+      "workstream": "Cross-app event flow",
+      "name": "Reverse: invoice paid → CRM deal annotation",
+      "goal": "When a payment is reconciled (Q3 Reconciler), an event fires that CRM listens for; CRM annotates the linked deal with a paymentReceivedAt timestamp.",
+      "readFirst": [
+        "boringos-crm's existing event listeners",
+        "Q3 Payment Reconciler"
+      ],
+      "touch": [
+        "../boringos-accounts/src/events/invoice-events.ts (emit invoice.paid)",
+        "boringos-crm/src/agents/deal-annotator.ts"
+      ],
+      "acceptance": [
+        "invoice.paid event payload includes the linked dealCanonicalRef",
+        "CRM deal detail surfaces 'Paid on YYYY-MM-DD' in the activity timeline",
+        "Reverse direction proves the event flow works both ways"
+      ],
+      "doNot": [
+        "Mutate CRM deal directly from Accounts — events only",
+        "Couple the deal annotation to a single payment — handle partial payments by accumulating"
+      ],
+      "estimateHours": 3,
+      "dependsOn": ["R4"],
+      "status": "todo"
+    },
+    {
+      "id": "S1",
+      "workstream": "Shell screen completion",
+      "name": "Copilot conversation UI replaces placeholder",
+      "goal": "Real conversation interface: message stream, input box, tool-use cards, agent-typing indicator. Backend already exists (/api/copilot/sessions).",
+      "readFirst": [
+        "packages/@boringos/shell/src/screens/Copilot.tsx (current placeholder)",
+        "CLAUDE.md (Copilot section — endpoints, message-as-comment model)"
+      ],
+      "touch": [
+        "packages/@boringos/shell/src/screens/Copilot/index.tsx",
+        "packages/@boringos/shell/src/screens/Copilot/MessageStream.tsx",
+        "packages/@boringos/shell/src/screens/Copilot/InputBox.tsx"
+      ],
+      "acceptance": [
+        "Sidebar list of recent sessions; click → load conversation",
+        "Send message → optimistic add → SSE stream surfaces agent response as it generates",
+        "Tool-use cards render inline (e.g., 'Created deal ACME-042') with deep-links",
+        "New conversation button creates a fresh session via /api/copilot/sessions"
+      ],
+      "doNot": [
+        "Reimplement message storage — comments table is the system of record",
+        "Custom polling — use the existing SSE stream"
+      ],
+      "estimateHours": 5,
+      "dependsOn": ["R5"],
+      "status": "todo"
+    },
+    {
+      "id": "S2",
+      "workstream": "Shell screen completion",
+      "name": "Approvals UI replaces placeholder",
+      "goal": "Real approvals page: filterable list (pending/approved/rejected), card per item, decision UI (approve/reject + comment).",
+      "readFirst": [
+        "packages/@boringos/shell/src/screens/Approvals.tsx (placeholder)",
+        "CLAUDE.md (Approvals admin API)"
+      ],
+      "touch": [
+        "packages/@boringos/shell/src/screens/Approvals/index.tsx",
+        "packages/@boringos/shell/src/screens/Approvals/ApprovalCard.tsx"
+      ],
+      "acceptance": [
+        "List paginated; filter by status + age",
+        "Card shows: requesting agent, what's being approved (with diff/preview), submitted at, urgency",
+        "Approve/Reject calls /api/admin/approvals/:id/{approve|reject}",
+        "Realtime: approvals stream via SSE so list updates without refresh"
+      ],
+      "doNot": [
+        "Build a separate detail page — card expands inline",
+        "Auto-decide based on rules — that's a future workstream"
+      ],
+      "estimateHours": 4,
+      "dependsOn": ["S1"],
+      "status": "todo"
+    },
+    {
+      "id": "S3",
+      "workstream": "Shell screen completion",
+      "name": "Drive UI: file browser",
+      "goal": "Replace Drive placeholder with a real file browser: folder tree, file list, upload, download, delete, move.",
+      "readFirst": [
+        "packages/@boringos/shell/src/screens/Drive.tsx (placeholder)",
+        "CLAUDE.md (DriveManager + admin API)"
+      ],
+      "touch": [
+        "packages/@boringos/shell/src/screens/Drive/index.tsx",
+        "packages/@boringos/shell/src/screens/Drive/FolderTree.tsx",
+        "packages/@boringos/shell/src/screens/Drive/FileList.tsx",
+        "packages/@boringos/shell/src/screens/Drive/UploadButton.tsx"
+      ],
+      "acceptance": [
+        "Tree built from /api/admin/drive/list",
+        "Drag-drop upload to current folder",
+        "File row: name, size, lastModified, download + delete",
+        "Move via right-click → choose folder"
+      ],
+      "doNot": [
+        "Re-implement multi-part upload — use what's in the admin API today",
+        "Show framework-internal files (drive_skill_revisions etc.) — filter to user-owned"
+      ],
+      "estimateHours": 5,
+      "dependsOn": ["S2"],
+      "status": "todo"
+    },
+    {
+      "id": "S4",
+      "workstream": "Shell screen completion",
+      "name": "Drive skill editor + revision history",
+      "goal": "Per-tenant Drive skill (the markdown teaching agents how to use Drive) gets a markdown editor with revision history (revert / view diff).",
+      "readFirst": [
+        "CLAUDE.md (drive_skill_revisions table)",
+        "packages/@boringos/shell/src/screens/Drive/index.tsx (from S3)"
+      ],
+      "touch": [
+        "packages/@boringos/shell/src/screens/Drive/SkillEditor.tsx",
+        "packages/@boringos/shell/src/screens/Drive/RevisionList.tsx"
+      ],
+      "acceptance": [
+        "Editor with monaco or codemirror; preview pane",
+        "Save → posts to /api/admin/drive/skill, increments revision",
+        "Revisions list: each row has author, timestamp, action menu (revert / diff)",
+        "Diff renders as a side-by-side markdown comparison"
+      ],
+      "doNot": [
+        "Bring in a heavy WYSIWYG — markdown source is the system of record",
+        "Auto-save on every keystroke — explicit Save button"
+      ],
+      "estimateHours": 4,
+      "dependsOn": ["S3"],
+      "status": "todo"
+    },
+    {
+      "id": "S5",
+      "workstream": "Shell screen completion",
+      "name": "Activity log UI replaces placeholder",
+      "goal": "Real activity stream: timeline grouped by day, filters (actor, entity type, action type, date range).",
+      "readFirst": [
+        "packages/@boringos/shell/src/screens/Activity.tsx (placeholder)",
+        "CLAUDE.md (activity log via /api/admin/activity)"
+      ],
+      "touch": [
+        "packages/@boringos/shell/src/screens/Activity/index.tsx",
+        "packages/@boringos/shell/src/screens/Activity/Timeline.tsx",
+        "packages/@boringos/shell/src/screens/Activity/Filters.tsx"
+      ],
+      "acceptance": [
+        "Timeline: today, yesterday, this week, older",
+        "Each row: actor (user or agent name+avatar), action verb, target, timestamp, deep-link",
+        "Filters apply server-side via querystring",
+        "Pagination via cursor; infinite scroll"
+      ],
+      "doNot": [
+        "Show framework-internal events (run_started etc.) by default — they go behind a 'system' filter toggle",
+        "Allow editing or deleting entries — audit log is immutable"
+      ],
+      "estimateHours": 4,
+      "dependsOn": ["S4"],
+      "status": "todo"
+    },
+    {
+      "id": "S6",
+      "workstream": "Shell screen completion",
+      "name": "Team management UI replaces placeholder",
+      "goal": "Real team page: members list, role per member, invite form, pending invitations list, role change, remove.",
+      "readFirst": [
+        "packages/@boringos/shell/src/screens/Team.tsx (placeholder)",
+        "CLAUDE.md (Team management endpoints under /api/auth)"
+      ],
+      "touch": [
+        "packages/@boringos/shell/src/screens/Team/index.tsx",
+        "packages/@boringos/shell/src/screens/Team/InviteModal.tsx"
+      ],
+      "acceptance": [
+        "Member list: name, email, role (admin/member), joined, last active",
+        "Invite modal: email + role; submits via POST /api/auth/invite, shows the invite link or sends email",
+        "Pending invitations: separate section with revoke button",
+        "Admin-only actions hidden from member-role users"
+      ],
+      "doNot": [
+        "Allow self-removal — admins must transfer ownership before leaving",
+        "Build SSO / SCIM — that's Phase 5 enterprise tier"
+      ],
+      "estimateHours": 4,
+      "dependsOn": ["S5"],
+      "status": "todo"
+    },
+    {
+      "id": "S7",
+      "workstream": "Shell screen completion",
+      "name": "Notifications dropdown",
+      "goal": "Bell icon in chrome with badge count; click → flyout listing recent events (run failed, approval needed, connector expired, etc.). Already-read state persisted.",
+      "readFirst": [
+        "packages/@boringos/shell/src/chrome/Header.tsx",
+        "packages/@boringos/core/src/sse.ts (existing SSE bus)"
+      ],
+      "touch": [
+        "packages/@boringos/shell/src/chrome/NotificationsDropdown.tsx",
+        "packages/@boringos/db/src/schema/notification-reads.ts"
+      ],
+      "acceptance": [
+        "Subscribes to /api/events; aggregates the last 50 actionable events",
+        "Click on a notification → routes to the relevant screen and marks read",
+        "Mark all read button",
+        "Keyboard shortcut: Cmd+Shift+N"
+      ],
+      "doNot": [
+        "Build push notifications — in-app only for v1",
+        "Spam every event — only actionable types (run_failed, approval_needed, connector_expired, …)"
+      ],
+      "estimateHours": 4,
+      "dependsOn": ["S6"],
+      "status": "todo"
+    },
+    {
+      "id": "S8",
+      "workstream": "Shell screen completion",
+      "name": "Inbox detail + actions",
+      "goal": "Click into an inbox item → full content view (email body, attachments, thread history); inline actions (mark read/snooze/archive/convert-to-task), agent annotations rendered (triage classification, reply drafts, CRM lens enrichment).",
+      "readFirst": [
+        "packages/@boringos/shell/src/screens/Inbox/ (from Phase 1)",
+        "Phase 2's L10 (CRM email-lens enrichment shape)"
+      ],
+      "touch": [
+        "packages/@boringos/shell/src/screens/Inbox/InboxDetail.tsx",
+        "packages/@boringos/shell/src/screens/Inbox/AgentAnnotations.tsx"
+      ],
+      "acceptance": [
+        "Detail: subject, from, full body (rendered safely), attachments list",
+        "Annotations panel: triage classification + score + rationale; reply drafts (collapsible); CRM lens (collapsible)",
+        "Actions: archive, snooze (1h/4h/tomorrow/custom), mark unread, convert to task",
+        "Convert to task creates with the email content prefilled"
+      ],
+      "doNot": [
+        "Render raw HTML emails — use a sanitizer (e.g. DOMPurify)",
+        "Hide annotations from a single app — every annotation visible"
+      ],
+      "estimateHours": 5,
+      "dependsOn": ["S7"],
+      "status": "todo"
+    },
+    {
+      "id": "S9",
+      "workstream": "Shell screen completion",
+      "name": "Onboarding wizard UI",
+      "goal": "First-time tenant sees a 5-step wizard: connect Gmail → install CRM → invite team → review pipeline stages → tour. State stored in onboarding_state (already in DB).",
+      "readFirst": [
+        "CLAUDE.md (onboarding_state table + admin API)",
+        "Existing onboarding hook in @boringos/ui"
+      ],
+      "touch": [
+        "packages/@boringos/shell/src/screens/Onboarding/Wizard.tsx",
+        "packages/@boringos/shell/src/screens/Onboarding/steps/*"
+      ],
+      "acceptance": [
+        "Auto-shows after signup if onboarding incomplete; dismissible",
+        "Each step deep-links to the actual surface (Connectors / Apps / Team / Settings)",
+        "Steps mark complete via the existing complete-step endpoint",
+        "Final step = a guided tour pop-overs through the chrome"
+      ],
+      "doNot": [
+        "Force completion — every step skippable",
+        "Build the tour engine in-house — use a small library like react-joyride if needed"
+      ],
+      "estimateHours": 4,
+      "dependsOn": ["S8"],
+      "status": "todo"
+    },
+    {
+      "id": "T1",
+      "workstream": "Phase 3 Gate",
+      "name": "End-to-end timing benchmark",
+      "goal": "Measure: signup → connect Gmail → install CRM → install Accounts → close deal in CRM → invoice draft visible in Accounts. Phase 3 target: under 90 seconds total (excluding the human OAuth click).",
+      "readFirst": [
+        "docs/tests/phase2-gate-results.md (M1 pattern)"
+      ],
+      "touch": [
+        "tests/phase3-gate-timing.test.ts"
+      ],
+      "acceptance": [
+        "Vitest suite simulates the full flow against embedded Postgres + mocked OAuth callback",
+        "p95 ≤ 90s",
+        "Per-step timings logged; bottleneck visible if gate fails"
+      ],
+      "doNot": [
+        "Test against real Google in this benchmark — real Gmail is T2's job",
+        "Skip the canonical-resolution step in the timing measurement — it is on the hot path"
+      ],
+      "estimateHours": 2,
+      "dependsOn": ["S9"],
+      "status": "todo"
+    },
+    {
+      "id": "T2",
+      "workstream": "Phase 3 Gate",
+      "name": "Real Gmail end-to-end (manual)",
+      "goal": "Manual run against a real Google account: connect Gmail via the new Connectors UI, send a test email from another account, verify generic-triage classifies + generic-replier drafts + CRM email-lens enriches the same item, confirm under 60s wall-clock.",
+      "readFirst": [
+        "docs/tests/test_phase3.md (T7 — to be written)"
+      ],
+      "touch": [
+        "docs/tests/phase3-gate-results.md (record the run)"
+      ],
+      "acceptance": [
+        "Test user can complete the flow without instructions outside test_phase3.md",
+        "All three annotations visible in inbox detail (S8)",
+        "No console errors during the run",
+        "Recorded screencap or step-log committed alongside the result"
+      ],
+      "doNot": [
+        "Skip if Gmail flake — re-run; flakes are bugs",
+        "Use a shared test account — tester uses their own Gmail with consent screen 'testing' mode"
+      ],
+      "estimateHours": 1,
+      "dependsOn": ["T1"],
+      "status": "todo"
+    },
+    {
+      "id": "T3",
+      "workstream": "Phase 3 Gate",
+      "name": "Cross-app capability prompt verification",
+      "goal": "Installing Accounts shows the entities.crm:read prompt with CRM dep visualized. Approve → install. Reject → install aborted. Install when CRM not present → blocked.",
+      "readFirst": [
+        "P2 (permission prompt cross-app deps)",
+        "Q8 (Accounts install e2e)"
+      ],
+      "touch": [
+        "tests/phase3-gate-cross-app-prompt.test.ts"
+      ],
+      "acceptance": [
+        "Test 1: CRM installed → prompt visible with the CRM section → approve → install succeeds",
+        "Test 2: CRM not installed → install button blocked with 'Install CRM first' CTA",
+        "Test 3: Reject prompt → install aborts cleanly, no partial state"
+      ],
+      "doNot": [
+        "Skip the no-CRM negative case — it is the security-relevant one",
+        "Mock the prompt — test against the real React component"
+      ],
+      "estimateHours": 2,
+      "dependsOn": ["T2"],
+      "status": "todo"
+    },
+    {
+      "id": "T4",
+      "workstream": "Phase 3 Gate",
+      "name": "Cross-app uninstall cascade verification",
+      "goal": "Uninstalling CRM with Accounts present surfaces the cascade warning (P4). Both options ('uninstall both', 'just CRM') work as documented; 'just CRM' is followed by Accounts agent runs failing with capability_denied (P3).",
+      "readFirst": [
+        "P3 (runtime enforcement)",
+        "P4 (cascade UX)"
+      ],
+      "touch": [
+        "tests/phase3-gate-uninstall-cascade.test.ts"
+      ],
+      "acceptance": [
+        "Modal correctly lists Accounts as dependent",
+        "Both options behave as P4 specifies",
+        "After 'just CRM', Accounts agent run with cross-app read returns 403 capability_denied (verifies P3)"
+      ],
+      "doNot": [
+        "Force the 'cascade' option — power users may explicitly choose breakage",
+        "Hide the audit row for the breakage choice — must be findable in Activity"
+      ],
+      "estimateHours": 2,
+      "dependsOn": ["T3"],
+      "status": "todo"
+    },
+    {
+      "id": "T5",
+      "workstream": "Phase 3 Gate",
+      "name": "Copilot answers across both apps",
+      "goal": "Copilot prompt 'What deals are open and what invoices are pending?' returns a unified answer using both CRM agentDocs + Accounts agentDocs.",
+      "readFirst": [
+        "Phase 2's M4 (CRM agentDocs in copilot context)"
+      ],
+      "touch": [
+        "tests/phase3-gate-copilot-multiapp.test.ts"
+      ],
+      "acceptance": [
+        "Copilot context includes both CRM and Accounts API mount headers",
+        "Test prompt's response references both sets of entities",
+        "Tool-use cards render correctly for actions across both apps"
+      ],
+      "doNot": [
+        "Hand-curate the prompt — use the same context-provider pipeline real users hit",
+        "Skip the assertion on tool-use cards — they prove the action plumbing"
+      ],
+      "estimateHours": 2,
+      "dependsOn": ["T4"],
+      "status": "todo"
+    },
+    {
+      "id": "T6",
+      "workstream": "Phase 3 Gate",
+      "name": "SDK regression check",
+      "goal": "Diff @boringos/app-sdk between Phase 2 close and Phase 3 close. Only allowed change is the canonical helpers added in O6 (additive, no breaking).",
+      "readFirst": [
+        "Phase 2's M5 result",
+        "O6 (SDK helpers for canonical lookup)"
+      ],
+      "touch": [
+        "tests/phase3-gate-sdk-regression.test.ts"
+      ],
+      "acceptance": [
+        "Verifies only additive changes in app-sdk (canonical.ts + index.ts re-export); validate.ts and manifest-schema.ts unchanged",
+        "Connector-sdk completely unchanged",
+        "Phase 3 SDK contract: PASS or FAIL with explicit reasons"
+      ],
+      "doNot": [
+        "Pass the gate if the SDK was bent during Accounts build — pause the phase, fix the SDK, redo the broken work",
+        "Allow accidental breaking changes hidden in unrelated PRs — the check is decisive"
+      ],
+      "estimateHours": 1,
+      "dependsOn": ["T5"],
+      "status": "todo"
+    },
+    {
+      "id": "T7",
+      "workstream": "Phase 3 Gate",
+      "name": "Manual e2e test plan: docs/tests/test_phase3.md",
+      "goal": "Comprehensive manual test plan covering signup → Gmail → CRM → Accounts → cross-app event flow → all shell screens. Pre-flight, smoke pass, full pass, known issues, decision gate.",
+      "readFirst": [
+        "docs/tests/test_phase1.md (template)"
+      ],
+      "touch": [
+        "docs/tests/test_phase3.md"
+      ],
+      "acceptance": [
+        "Step 0 pre-flight (build, install)",
+        "Step 1 unit tests (aggregate count + new files added)",
+        "Step 2 connector verifier",
+        "Step 3 manual signup + sidebar check",
+        "Step 4 Gmail OAuth + first email round-trip (real)",
+        "Step 5 CRM install + email-lens check",
+        "Step 6 Accounts install + cross-app prompt + capability deny test",
+        "Step 7 deal-close → invoice draft (cross-app event flow)",
+        "Step 8 every shell screen: Copilot conversation, Approvals, Drive, Activity, Team, Notifications, Inbox detail, Onboarding",
+        "Step 9 Copilot multi-app prompt",
+        "Step 10 Uninstall cascade (cascade + just-CRM both tested)",
+        "Smoke pass (10 min) shortlist; full pass (90 min) ordering",
+        "Known pre-existing issues + Phase 4 deferrals"
+      ],
+      "doNot": [
+        "Reference internal milestones (T1-T7 task IDs) in user-visible test steps — describe the user behavior",
+        "Defer the manual checks for Phase 4 — Phase 3 close requires this run"
+      ],
+      "estimateHours": 4,
+      "dependsOn": ["T6"],
+      "status": "todo"
+    }
+  ]
+}

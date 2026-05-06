@@ -3,9 +3,39 @@ import { eq, and, sql } from "drizzle-orm";
 import type { Db } from "@boringos/db";
 import { connectors } from "@boringos/db";
 import type { ConnectorRegistry, EventBus, ActionRunner, ConnectorCredentials } from "@boringos/connector";
-import { createOAuthManager } from "@boringos/connector";
+import { createOAuthManager, createState, verifyState, isSafeReturnTo } from "@boringos/connector";
 import { verifyCallbackToken } from "@boringos/agent";
 import { generateId } from "@boringos/shared";
+import { installDefaultWorkflows, pauseDefaultWorkflows } from "./connectors/post-connect.js";
+
+/** What an OAuth-capable connector ships alongside its definition. */
+interface OAuthCredentialed {
+  clientId?: string;
+  clientSecret?: string;
+}
+
+function readOAuthClient(connector: unknown): { clientId: string; clientSecret: string } {
+  const c = connector as OAuthCredentialed;
+  return {
+    clientId: c.clientId ?? "",
+    clientSecret: c.clientSecret ?? "",
+  };
+}
+
+function publicOrigin(c: { req: { header: (k: string) => string | undefined } }, fallback: string): string {
+  const proto = c.req.header("X-Forwarded-Proto") ?? "http";
+  const host = c.req.header("Host") ?? new URL(fallback).host;
+  return `${proto}://${host}`;
+}
+
+export interface ConnectorRoutesOptions {
+  /**
+   * Absolute origin where the shell SPA lives (e.g. http://localhost:5174 in
+   * dev). Used as the default returnTo when the caller doesn't pass one,
+   * and added to the allowlist for returnTo validation.
+   */
+  shellOrigin?: string;
+}
 
 export function createConnectorRoutes(
   db: Db,
@@ -14,8 +44,33 @@ export function createConnectorRoutes(
   actionRunner: ActionRunner,
   jwtSecret: string,
   baseUrl: string,
+  opts: ConnectorRoutesOptions = {},
 ): Hono {
   const app = new Hono();
+  const shellOrigin =
+    opts.shellOrigin ?? process.env.BORINGOS_SHELL_URL ?? "";
+
+  function buildAllowedReturnOrigins(callerOrigin: string): string[] {
+    const list = new Set<string>([callerOrigin]);
+    if (shellOrigin) list.add(shellOrigin);
+    try {
+      list.add(new URL(baseUrl).origin);
+    } catch {
+      /* ignore */
+    }
+    return Array.from(list);
+  }
+
+  function resolveReturnTo(rawReturnTo: string | undefined, callerOrigin: string): string {
+    const fallback = `${shellOrigin || callerOrigin}/connectors`;
+    if (!rawReturnTo) return fallback;
+    if (isSafeReturnTo(rawReturnTo, buildAllowedReturnOrigins(callerOrigin))) {
+      return rawReturnTo.startsWith("/")
+        ? `${shellOrigin || callerOrigin}${rawReturnTo}`
+        : rawReturnTo;
+    }
+    return fallback;
+  }
 
   // ── OAuth ────────────────────────────────────────────────────────────────
 
@@ -26,21 +81,25 @@ export function createConnectorRoutes(
     if (!connector) return c.json({ error: `Unknown connector: ${kind}` }, 404);
     if (!connector.oauth) return c.json({ error: `Connector ${kind} does not support OAuth` }, 400);
 
-    // Resolve tenant from session or header
     const tenantId = c.req.query("tenantId") ?? c.req.header("X-Tenant-Id") ?? "";
     if (!tenantId) return c.json({ error: "tenantId required" }, 400);
 
-    const config = connector.oauth;
-    const clientId = (connector as any).clientId ?? c.req.query("clientId") ?? "";
-    const clientSecret = (connector as any).clientSecret ?? "";
+    const { clientId, clientSecret } = readOAuthClient(connector);
+    if (!clientId) {
+      return c.json(
+        {
+          error: `Connector ${kind} is missing clientId. Set it when registering the connector with the framework.`,
+        },
+        500,
+      );
+    }
 
-    const oauth = createOAuthManager(config, clientId, clientSecret);
-    // Use X-Forwarded-Proto/Host for public URL, fallback to baseUrl
-    const proto = c.req.header("X-Forwarded-Proto") ?? "http";
-    const host = c.req.header("Host") ?? new URL(baseUrl).host;
-    const publicBase = `${proto}://${host}`;
-    const redirectUri = `${publicBase}/api/connectors/oauth/${kind}/callback`;
-    const state = `${tenantId}:${generateId().slice(0, 8)}`;
+    const callerOrigin = publicOrigin(c, baseUrl);
+    const returnTo = resolveReturnTo(c.req.query("returnTo"), callerOrigin);
+
+    const oauth = createOAuthManager(connector.oauth, clientId, clientSecret);
+    const redirectUri = `${callerOrigin}/api/connectors/oauth/${kind}/callback`;
+    const state = createState({ tenantId, returnTo }, jwtSecret);
     const url = oauth.getAuthorizationUrl(redirectUri, state);
 
     return c.redirect(url);
@@ -53,40 +112,57 @@ export function createConnectorRoutes(
     if (!connector?.oauth) return c.text("Unknown or non-OAuth connector", 400);
 
     const code = c.req.query("code");
-    const state = c.req.query("state") ?? "";
+    const stateRaw = c.req.query("state") ?? "";
     const error = c.req.query("error");
 
-    if (error) return c.text(`OAuth error: ${error}`, 400);
-    if (!code) return c.text("Missing authorization code", 400);
+    const callerOrigin = publicOrigin(c, baseUrl);
+    const fallbackReturn = `${shellOrigin || callerOrigin}/connectors`;
 
-    const tenantId = state.split(":")[0];
-    if (!tenantId) return c.text("Invalid state parameter", 400);
+    if (error) {
+      return c.redirect(
+        `${fallbackReturn}?connect=error&kind=${encodeURIComponent(kind)}&reason=${encodeURIComponent(error)}`,
+      );
+    }
+    if (!code) {
+      return c.redirect(
+        `${fallbackReturn}?connect=error&kind=${encodeURIComponent(kind)}&reason=missing_code`,
+      );
+    }
 
-    const config = connector.oauth;
-    const clientId = (connector as any).clientId ?? "";
-    const clientSecret = (connector as any).clientSecret ?? "";
+    const verified = verifyState(stateRaw, jwtSecret);
+    if (!verified.ok || !verified.payload) {
+      return c.redirect(
+        `${fallbackReturn}?connect=error&kind=${encodeURIComponent(kind)}&reason=${encodeURIComponent(verified.reason ?? "bad_state")}`,
+      );
+    }
+    const { tenantId, returnTo } = verified.payload;
 
-    const oauth = createOAuthManager(config, clientId, clientSecret);
-    const proto = c.req.header("X-Forwarded-Proto") ?? "http";
-    const host = c.req.header("Host") ?? new URL(baseUrl).host;
-    const publicBase = `${proto}://${host}`;
-    const redirectUri = `${publicBase}/api/connectors/oauth/${kind}/callback`;
+    const { clientId, clientSecret } = readOAuthClient(connector);
+    if (!clientId) {
+      return c.redirect(
+        `${fallbackReturn}?connect=error&kind=${encodeURIComponent(kind)}&reason=missing_client_id`,
+      );
+    }
+
+    const oauth = createOAuthManager(connector.oauth, clientId, clientSecret);
+    const redirectUri = `${callerOrigin}/api/connectors/oauth/${kind}/callback`;
 
     try {
       const tokens = await oauth.exchangeCode(code, redirectUri);
 
-      // Upsert connector credentials
       const existing = await db.select().from(connectors)
         .where(and(eq(connectors.tenantId, tenantId), eq(connectors.kind, kind)))
         .limit(1);
 
+      const credentialBag = {
+        accessToken: tokens.accessToken,
+        refreshToken: tokens.refreshToken,
+        expiresAt: tokens.expiresAt?.toISOString(),
+      };
+
       if (existing[0]) {
         await db.update(connectors).set({
-          credentials: {
-            accessToken: tokens.accessToken,
-            refreshToken: tokens.refreshToken,
-            expiresAt: tokens.expiresAt?.toISOString(),
-          },
+          credentials: credentialBag,
           status: "active",
           updatedAt: new Date(),
         }).where(eq(connectors.id, existing[0].id));
@@ -97,29 +173,40 @@ export function createConnectorRoutes(
           kind,
           status: "active",
           config: {},
-          credentials: {
-            accessToken: tokens.accessToken,
-            refreshToken: tokens.refreshToken,
-            expiresAt: tokens.expiresAt?.toISOString(),
-          },
+          credentials: credentialBag,
         });
       }
 
-      // Emit connector.connected event
-      await eventBus.emit({
-        connectorKind: kind,
-        type: "connector.connected",
-        tenantId,
-        data: { kind },
-        timestamp: new Date(),
-      }).catch(() => {});
+      // N5 — install (or resume) the connector's default workflows.
+      // Best-effort: a failure here shouldn't prevent the user from
+      // reaching the success page. If install partially fails the
+      // user can re-trigger from the connector card later.
+      try {
+        await installDefaultWorkflows(db, tenantId, connector);
+      } catch (err) {
+        console.warn(
+          `[connector ${kind}] default workflow install failed for tenant ${tenantId}:`,
+          err,
+        );
+      }
 
-      // Redirect back to frontend settings page
-      // Derive frontend URL: replace "crmapi." with "crm." or use same origin
-      const frontendBase = publicBase.replace("://crmapi.", "://crm.").replace("://api.", "://");
-      return c.redirect(`${frontendBase}/settings/team?connected=${kind}`);
+      await eventBus
+        .emit({
+          connectorKind: kind,
+          type: "connector.connected",
+          tenantId,
+          data: { kind },
+          timestamp: new Date(),
+        })
+        .catch(() => {});
+
+      const redirectTo = `${returnTo}${returnTo.includes("?") ? "&" : "?"}connect=success&kind=${encodeURIComponent(kind)}`;
+      return c.redirect(redirectTo);
     } catch (err) {
-      return c.text(`OAuth token exchange failed: ${err instanceof Error ? err.message : String(err)}`, 500);
+      const reason = err instanceof Error ? err.message : String(err);
+      return c.redirect(
+        `${fallbackReturn}?connect=error&kind=${encodeURIComponent(kind)}&reason=${encodeURIComponent(reason)}`,
+      );
     }
   });
 
@@ -172,6 +259,7 @@ export function createConnectorRoutes(
         name: conn.name,
         description: conn.description,
         hasOAuth: !!conn.oauth,
+        oauthScopes: conn.oauth?.scopes ?? [],
         connected: !!match,
         status: match?.status ?? "not_connected",
         lastSyncAt: match?.lastSyncAt,
@@ -195,6 +283,18 @@ export function createConnectorRoutes(
     const rows = result as unknown as Array<{ tenant_id: string; role: string }>;
     if (!rows[0]) return c.json({ error: "Invalid session" }, 401);
     if (rows[0].role !== "admin") return c.json({ error: "Admin only" }, 403);
+
+    // N6 — pause the connector's default workflows but keep them around
+    // so a reconnect resumes cleanly. Best-effort; the disconnect
+    // should still succeed even if pause fails.
+    try {
+      await pauseDefaultWorkflows(db, rows[0].tenant_id, kind);
+    } catch (err) {
+      console.warn(
+        `[connector ${kind}] default workflow pause failed:`,
+        err,
+      );
+    }
 
     await db.delete(connectors)
       .where(and(eq(connectors.tenantId, rows[0].tenant_id), eq(connectors.kind, kind)));

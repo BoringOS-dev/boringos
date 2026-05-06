@@ -1,5 +1,6 @@
 export type {
   ConnectorDefinition,
+  DefaultWorkflowSpec,
   OAuthConfig,
   OAuthTokens,
   EventDefinition,
@@ -20,6 +21,9 @@ export type { ConnectorRegistry } from "./registry.js";
 
 export { createOAuthManager } from "./oauth.js";
 export type { OAuthManager } from "./oauth.js";
+
+export { createState, verifyState, isSafeReturnTo } from "./oauth-state.js";
+export type { OAuthStatePayload, VerifyResult } from "./oauth-state.js";
 
 export { createEventBus } from "./event-bus.js";
 export type { EventBus, EventHandler } from "./event-bus.js";

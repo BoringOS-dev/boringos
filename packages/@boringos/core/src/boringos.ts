@@ -457,7 +457,9 @@ export class BoringOS {
     app.route("/api/agent", callbackApp);
 
     // Connector routes
-    const connectorApp = createConnectorRoutes(dbConn.db, connectorRegistry, eventBus, actionRunner, jwtSecret, callbackUrl);
+    const connectorApp = createConnectorRoutes(dbConn.db, connectorRegistry, eventBus, actionRunner, jwtSecret, callbackUrl, {
+      shellOrigin: this.config.shellOrigin,
+    });
     app.route("/api/connectors", connectorApp);
 
     // Admin API (for human management of the platform)

@@ -6,6 +6,7 @@ import type {
 } from "@boringos/connector";
 import { GmailClient } from "./gmail-client.js";
 import { CalendarClient } from "./calendar-client.js";
+import { googleDefaultWorkflows } from "./default-workflows.js";
 
 export interface GoogleConfig {
   clientId: string;
@@ -138,6 +139,10 @@ export function google(config: GoogleConfig): ConnectorDefinition & { clientId: 
 
     createClient(credentials: ConnectorCredentials): ConnectorClient {
       return new GoogleWorkspaceClient(credentials);
+    },
+
+    defaultWorkflows() {
+      return googleDefaultWorkflows();
     },
 
     skillMarkdown() {

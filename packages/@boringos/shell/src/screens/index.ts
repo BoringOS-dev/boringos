@@ -7,3 +7,4 @@ export { Tasks } from "./Tasks.js";
 export { Agents } from "./Agents.js";
 export { Workflows } from "./Workflows.js";
 export { Settings } from "./Settings.js";
+export { Connectors } from "./Connectors/index.js";

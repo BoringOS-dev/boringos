@@ -14,6 +14,34 @@ export interface ConnectorDefinition extends SkillProvider {
   setup?(ctx: ConnectorContext): Promise<void>;
   handleWebhook?(req: WebhookRequest): Promise<WebhookResponse>;
   createClient(credentials: ConnectorCredentials): ConnectorClient;
+
+  /**
+   * Workflows the framework should install for a tenant the first time
+   * this connector connects (N5). Each spec includes an optional cron
+   * routine — the canonical use is "Gmail sync every 15 minutes". The
+   * installer is idempotent on the spec's `tag`.
+   */
+  defaultWorkflows?(): DefaultWorkflowSpec[];
+}
+
+/**
+ * Workflow + routine the framework auto-installs when a tenant connects
+ * a connector. The connector author owns the spec; the framework owns
+ * the persist + idempotency.
+ */
+export interface DefaultWorkflowSpec {
+  /** Stable identifier — used for idempotent re-install on reconnect. */
+  tag: string;
+  name: string;
+  description?: string;
+  blocks: Array<Record<string, unknown>>;
+  edges: Array<Record<string, unknown>>;
+  /** Optional cron routine that triggers the workflow. */
+  routine?: {
+    title: string;
+    cronExpression: string;
+    timezone?: string;
+  };
 }
 
 // ── OAuth ────────────────────────────────────────────────────────────────────

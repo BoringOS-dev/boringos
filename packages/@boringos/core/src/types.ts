@@ -16,6 +16,13 @@ export interface BoringOSConfig {
   drive?: DriveAppConfig;
   logging?: LogConfig;
   queue?: QueueConfig;
+  /**
+   * Origin of the shell SPA (e.g. http://localhost:5174 in dev).
+   * Used as the default returnTo target for OAuth callbacks and added
+   * to the safe-redirect allowlist. Defaults to the BORINGOS_SHELL_URL
+   * env var when omitted.
+   */
+  shellOrigin?: string;
 }
 
 export interface QueueConfig {

@@ -11,12 +11,14 @@
 import { Outlet } from "react-router-dom";
 import { Sidebar } from "./Sidebar.js";
 import { CommandBar } from "./CommandBar.js";
+import { ConnectorsHealthIndicator } from "./ConnectorsHealthIndicator.js";
 
 export function Layout() {
   return (
     <div className="flex h-screen overflow-hidden bg-white text-slate-900">
       <Sidebar />
       <main className="flex-1 flex flex-col overflow-hidden relative">
+        <ConnectorsHealthIndicator />
         <Outlet />
         <CommandBar />
       </main>
