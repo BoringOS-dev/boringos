@@ -26,14 +26,27 @@ export const triageOnInboxItemCreated: WorkflowTemplate = {
       type: "create-task",
       config: {
         title: "Triage inbox item: {{trigger.subject}}",
-        description: "From: {{trigger.from}}\n\n{{trigger.body}}",
+        // The task description is the only field the task context
+        // provider surfaces to the agent prompt (title + description
+        // + status/priority). Embed the inboxItemId on the first line
+        // so the agent can parse it out, then include the email body
+        // verbatim so the agent doesn't need a separate GET roundtrip
+        // for routine cases. The PATCH still uses the agent callback
+        // API to write metadata back.
+        description:
+          "inbox-item-id: {{trigger.itemId}}\n" +
+          "source: {{trigger.source}}\n" +
+          "from: {{trigger.from}}\n" +
+          "subject: {{trigger.subject}}\n" +
+          "---\n" +
+          "{{trigger.body}}",
         status: "todo",
-        originKind: "workflow",
+        // Use a stable origin so re-installation / re-emission doesn't
+        // pile up dupes. dedup=true skips when a non-terminal task with
+        // the same (originKind, originId) already exists.
+        originKind: "inbox.item_created",
         originId: "{{trigger.itemId}}",
-        metadata: {
-          inboxItemId: "{{trigger.itemId}}",
-          source: "{{trigger.source}}",
-        },
+        dedup: true,
       },
     },
     {

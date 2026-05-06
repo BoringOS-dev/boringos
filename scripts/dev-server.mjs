@@ -26,6 +26,10 @@ const app = new BoringOS({
   // Auto-install generic-triage + generic-replier on every fresh signup
   // (Phase 2 K8 + K9 wiring).
   defaultAppsDir: resolve(repoRoot, "apps"),
+  // Drain the wakeup queue faster in dev — each slot spawns its own
+  // claude subprocess, so 5 = ~5x the burst throughput. Tuned for a
+  // dev box; production should profile before bumping.
+  queue: { concurrency: 5 },
 });
 
 // Connectors. We register every connector unconditionally so the

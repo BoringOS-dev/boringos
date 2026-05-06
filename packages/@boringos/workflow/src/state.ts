@@ -27,7 +27,10 @@ export function resolveTemplate(
   state: ExecutionState,
   nameToId: Map<string, string>,
 ): string {
-  return template.replace(/\{\{(\w+)\.(\w+)\}\}/g, (_match, blockName: string, field: string) => {
+  // Block names commonly include hyphens (e.g. "create-task", "wake-replier").
+  // The original `\w+` regex silently passed those through as literal text,
+  // breaking any workflow template that referenced an upstream block by name.
+  return template.replace(/\{\{([\w-]+)\.(\w+)\}\}/g, (_match, blockName: string, field: string) => {
     const blockId = nameToId.get(blockName);
     if (!blockId) return `{{${blockName}.${field}}}`;
 

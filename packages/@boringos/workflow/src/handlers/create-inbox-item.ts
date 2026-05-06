@@ -35,6 +35,20 @@ export const createInboxItemHandler: BlockHandler = {
     const tenantId = ctx.tenantId;
     let created = 0;
     const createdIds: string[] = [];
+    /**
+     * Track per-item fields alongside the id so the emitted
+     * `inbox.item_created` event can carry the same `subject` / `from`
+     * / `body` that downstream `create-task` blocks reference via
+     * `{{trigger.subject}}` etc. Without this enrichment, the
+     * triggered workflow only gets `{ itemId, source }` and templated
+     * task descriptions render to empty strings.
+     */
+    const createdEvents: Array<{
+      itemId: string;
+      subject: string;
+      from: string | null;
+      body: string | null;
+    }> = [];
 
     // Batch mode — create from array (may arrive as JSON string from template resolution)
     const hasItemsConfig = "items" in ctx.config;
@@ -63,44 +77,61 @@ export const createInboxItemHandler: BlockHandler = {
         }
 
         const itemId = generateId();
+        const subject = (entry.subject as string) ?? (entry.summary as string) ?? (entry.title as string) ?? "No subject";
+        const body = (entry.body as string) ?? (entry.snippet as string) ?? (entry.description as string) ?? null;
+        const from = (entry.from as string) ?? null;
         await db.insert(inboxItems).values({
           id: itemId,
           tenantId,
           source,
-          subject: (entry.subject as string) ?? (entry.summary as string) ?? (entry.title as string) ?? "No subject",
-          body: (entry.body as string) ?? (entry.snippet as string) ?? (entry.description as string) ?? null,
-          from: (entry.from as string) ?? null,
+          subject,
+          body,
+          from,
           assigneeUserId: (entry.assigneeUserId as string) ?? (ctx.config.assigneeUserId as string) ?? null,
           sourceId,
           metadata: entry,
         });
         created++;
         createdIds.push(itemId);
+        createdEvents.push({ itemId, subject, from, body });
       }
     } else {
       // Single item mode
       const itemId = generateId();
+      const subject = (ctx.config.subject as string) ?? "No subject";
+      const body = (ctx.config.body as string) ?? null;
+      const from = (ctx.config.from as string) ?? null;
       await db.insert(inboxItems).values({
         id: itemId,
         tenantId,
         source,
-        subject: (ctx.config.subject as string) ?? "No subject",
-        body: (ctx.config.body as string) ?? null,
-        from: (ctx.config.from as string) ?? null,
+        subject,
+        body,
+        from,
         assigneeUserId: (ctx.config.assigneeUserId as string) ?? null,
       });
       created = 1;
       createdIds.push(itemId);
+      createdEvents.push({ itemId, subject, from, body });
     }
 
-    // Emit events for each created item so agents can react
-    if (eventBus && createdIds.length > 0) {
-      for (const itemId of createdIds) {
+    // Emit events for each created item so agents can react.
+    // Payload carries the row's primary fields so subscribed workflow
+    // templates can reference `{{trigger.subject}}` / `{{trigger.from}}`
+    // / `{{trigger.body}}` directly when building tasks/prompts.
+    if (eventBus && createdEvents.length > 0) {
+      for (const ev of createdEvents) {
         await eventBus.emit({
           connectorKind: "inbox",
           type: "inbox.item_created",
           tenantId,
-          data: { itemId, source },
+          data: {
+            itemId: ev.itemId,
+            source,
+            subject: ev.subject,
+            from: ev.from,
+            body: ev.body,
+          },
           timestamp: new Date(),
         }).catch(() => {}); // don't fail the workflow on event errors
       }
