@@ -176,7 +176,7 @@ describe("connector-google", () => {
     expect(conn.kind).toBe("google");
     expect(conn.name).toBe("Google Workspace");
     expect(conn.events).toHaveLength(3);
-    expect(conn.actions).toHaveLength(8); // 4 gmail + 4 calendar
+    expect(conn.actions).toHaveLength(12); // 7 gmail + 5 calendar
   });
 
   it("has OAuth config with Gmail and Calendar scopes", async () => {
