@@ -17,6 +17,78 @@ model. It also closes the gap that today's standalone approvals
 have: agents have no way to *request* one, and decisions don't wake
 anything.
 
+## The default-deny rule
+
+Agents MUST ask for approval before any critical decision **unless**
+the user has explicitly authorized that decision in the originating
+task description.
+
+This flips the burden: not "agents can ask if they want," but
+"agents must ask unless the user said otherwise." Without that
+posture, agents drift toward the most-helpful action they can
+imagine — which on day one means sending emails, charging cards,
+deleting records, accepting calendar invites — because that's what
+shows the most progress on a task. We don't want the most progress.
+We want the most *correct* progress.
+
+### What counts as critical
+
+**Critical (default: ask)**
+- Sending any outbound communication: email, calendar invite,
+  Slack message, SMS, posting to a social channel
+- Making a commitment on the user's behalf: accepting an invite,
+  agreeing to terms, signing anything
+- Spending money or consuming paid quota: API credits, ad spend,
+  third-party services
+- Deleting or overwriting user data: archiving emails, deleting
+  records, force-pushing branches, dropping rows
+- Touching anything outside the user's own scope: a teammate's
+  inbox, a customer's account, public-facing surfaces (website,
+  social profile)
+- Crossing a stated policy threshold: budget caps, deal-discount
+  ceilings, anything the tenant flagged in settings
+
+**Not critical (just do it)**
+- Reading, fetching, classifying, summarizing
+- Drafting *without* sending (saving as `metadata.replyDrafts`,
+  saving a file in the work directory)
+- Setting `metadata.triage` or other Hebbs-internal annotations
+- Local edits in the agent's own workspace / git worktree
+- Creating sub-tasks for human_todo questions (clarifications)
+- Posting comments on tasks the agent owns
+
+### What "user explicitly authorized" looks like
+
+The originating task description has to plainly say so. Examples:
+
+- *"Process Mira's email"* → agent drafts, **must ask** before
+  sending.
+- *"Process Mira's email **and send my reply**"* → "send" is
+  explicit; no approval needed.
+- *"Reply to every unread email"* → "reply" alone is ambiguous in
+  practice; **must ask** the first time, then if approved with
+  "approve all of these going forward" the agent can proceed
+  through the batch.
+- *"Spend up to **$100** on credits this week"* → bound is
+  explicit; no approval needed up to $100.
+
+When in doubt, ask. A spurious approval is cheap (one extra task in
+the user's queue); a wrong send / spend / delete is expensive.
+
+### Implementing the rule
+
+This is enforced in **the agent's instructions**, not in the
+framework — the skill markdown teaches default-deny, lists the
+critical categories, gives the "explicitly authorized" examples.
+The framework can't realistically classify which of an agent's
+proposed actions is "critical" — the LLM has to make that judgment
+based on the skill prompt.
+
+Tenants can override per-app by setting the bar themselves in
+their persona instructions (e.g., a power-user might say "you can
+send emails to first-degree contacts without asking"). That belongs
+to the per-tenant settings system in task_04, not here.
+
 ## Why approvals were broken
 
 Audit of the framework as of `1172348`:
@@ -142,12 +214,51 @@ the existing protocol provider):
 ```md
 ## Asking for human approval
 
-When you need a human to OK something irreversible, expensive, or
-sensitive — sending an email outside the team, spending budget,
-deleting data, taking an action that crosses a policy line — DO
-NOT just do it.
+DEFAULT POSTURE: ask before doing anything critical. Do NOT just
+go ahead.
 
-Create a child task instead:
+### What "critical" means
+
+You MUST ask for approval before:
+  - Sending outbound communication (email, calendar invite, Slack
+    message, SMS, social post)
+  - Making a commitment on the user's behalf (accepting invites,
+    signing, agreeing)
+  - Spending money or paid quota (API credits, ad spend, services)
+  - Deleting or overwriting data (archiving, force-pushing,
+    dropping records)
+  - Touching anything outside the user's own scope (a teammate's
+    inbox, customer accounts, public surfaces)
+  - Crossing a stated policy or budget cap
+
+You DO NOT need to ask for:
+  - Reading, fetching, classifying, summarizing
+  - Drafting WITHOUT sending (saving to metadata.replyDrafts,
+    saving a file)
+  - Setting Hebbs-internal annotations (triage, scoring)
+  - Local edits in your own workspace / git worktree
+  - Creating sub-tasks for clarifying questions
+
+### When you DON'T need approval
+
+If — and only if — the originating task description plainly
+authorizes the specific critical action, you may proceed without
+asking. Examples:
+
+  - "Process Mira's email"             → DRAFT only. Ask before sending.
+  - "Process Mira's email AND send my reply" → "send" is explicit. Proceed.
+  - "Reply to every unread"            → ambiguous. Ask the first one;
+                                         if user approves with "approve
+                                         all of these going forward,"
+                                         then proceed through the batch.
+  - "Spend up to $100 on credits"      → bound is explicit. Proceed up to $100.
+
+When in doubt, ASK. A spurious approval costs one extra task row.
+A wrong send / spend / delete costs trust.
+
+### How to ask
+
+Create a child task on your current task:
 
   curl -X POST $BORINGOS_CALLBACK_URL/api/agent/tasks \
     -H "Authorization: Bearer $BORINGOS_CALLBACK_TOKEN" \
@@ -155,8 +266,8 @@ Create a child task instead:
     -d '{
       "parentId": "<your current task id>",
       "title": "<one-line summary of what you want approval for>",
-      "description": "<markdown explaining what you want to do, why,
-                      and the alternatives you considered>",
+      "description": "<markdown: what you want to do, WHY, and any
+                      alternatives you considered>",
       "originKind": "agent_action",
       "proposedParams": { "kind": "<action name>", ...inputs },
       "assigneeUserId": "<owner of your current task>",
@@ -169,9 +280,11 @@ they do, you'll wake on your CURRENT task with the new comment in
 the thread — that comment is the human's full reasoning, not just
 yes/no. Read it carefully and act accordingly.
 
-If you're rejected, propose an alternative or close out gracefully.
-Never re-submit the same request without addressing the rejection
-reason.
+If rejected: propose an alternative or close out gracefully. Never
+re-submit the same request without addressing the rejection reason.
+
+If approved with conditions ("approve, but use the contractor
+template"): those conditions are MANDATORY. Apply them.
 ```
 
 #### 2. Protocol provider mentions approvals
