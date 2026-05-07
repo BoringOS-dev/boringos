@@ -152,20 +152,46 @@ export function createAdminRoutes(
     const denied = requireAdmin(c); if (denied) return denied;
     const body = await c.req.json() as Record<string, unknown>;
     const id = generateId();
+    const tenantId = c.get("tenantId");
     const skills = Array.isArray(body.skills) ? (body.skills as string[]).filter((s) => typeof s === "string") : [];
+
+    // Task 07: Provenance tracking
+    const source = (body.source as string) ?? "user";
+    const sourceAppId = body.sourceAppId as string | undefined;
+
+    // Validate source
+    if (!["user", "app"].includes(source)) {
+      return c.json({ error: "source must be 'user' or 'app'" }, 400);
+    }
+    if (source === "shell") {
+      return c.json({ error: "source='shell' is reserved for framework agents" }, 403);
+    }
+    if (source === "app" && !sourceAppId) {
+      return c.json({ error: "sourceAppId is required when source='app'" }, 400);
+    }
+
+    // Default reportsTo to tenant root if not provided
+    let reportsTo = body.reportsTo as string | undefined;
+    if (!reportsTo) {
+      const tenantRows = await db.select({ rootAgentId: tenants.rootAgentId }).from(tenants).where(eq(tenants.id, tenantId)).limit(1);
+      reportsTo = tenantRows[0]?.rootAgentId ?? undefined;
+    }
+
     await db.insert(agents).values({
       id,
-      tenantId: c.get("tenantId"),
+      tenantId,
       name: body.name as string,
       role: (body.role as string) ?? "general",
       instructions: body.instructions as string | undefined,
       runtimeId: body.runtimeId as string | undefined,
-      reportsTo: body.reportsTo as string | undefined,
+      reportsTo,
+      source,
+      sourceAppId: sourceAppId ?? null,
       skills,
     });
     const rows = await db.select().from(agents).where(eq(agents.id, id)).limit(1);
-    emit("agent:created", c.get("tenantId"), { agentId: id, name: body.name });
-    await logActivity(c.get("tenantId"), "agent.created", "agent", id, { name: body.name, role: body.role });
+    emit("agent:created", tenantId, { agentId: id, name: body.name });
+    await logActivity(tenantId, "agent.created", "agent", id, { name: body.name, role: body.role, source });
     return c.json(rows[0], 201);
   });
 

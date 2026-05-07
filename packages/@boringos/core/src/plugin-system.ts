@@ -17,14 +17,31 @@ export interface PluginWebhook {
   handler: (req: PluginWebhookRequest) => Promise<PluginWebhookResponse>;
 }
 
+export interface PluginAgentDeclaration {
+  name: string;
+  role: string;
+  persona?: string;
+  skills?: string[];
+  instructions?: string;
+}
+
+export interface PluginTenantContext {
+  db: Db;
+  tenantId: string;
+  rootAgentId: string;
+  registerAgent: (decl: PluginAgentDeclaration) => Promise<{ id: string; name: string }>;
+}
+
 export interface PluginDefinition {
   name: string;
   version: string;
   description?: string;
   configSchema?: Record<string, { type: string; description: string; required?: boolean }>;
+  agents?: PluginAgentDeclaration[];
   jobs?: PluginJob[];
   webhooks?: PluginWebhook[];
   setup?(ctx: AppContext): Promise<void>;
+  onTenantCreated?(ctx: PluginTenantContext): Promise<void>;
 }
 
 export interface PluginJobContext {
