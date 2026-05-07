@@ -28,7 +28,14 @@ export function createHierarchyProvider(deps: { db: unknown }): ContextProvider 
             lines.push(`- When stuck or blocked, escalate to your manager.`);
           }
         } else {
-          lines.push(`- You are a **top-level agent** with no manager.`);
+          // Task 07: Chief of Staff is organizational root
+          if (agent.role === "chief-of-staff") {
+            lines.push(`- You are the **Chief of Staff** — the organizational root.`);
+            lines.push(`- Everyone in the team reports to you (directly or through your reports).`);
+            lines.push(`- Coordinate decisions, route work, unblock your reports.`);
+          } else {
+            lines.push(`- You are a **top-level agent** with no manager.`);
+          }
         }
 
         // Find direct reports
