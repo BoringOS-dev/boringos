@@ -22,12 +22,16 @@ export const commandRuntime: RuntimeModule = {
 
     try {
       const env = buildAgentEnv(ctx);
+      // Combine system instructions with context markdown
+      const fullInput = ctx.systemInstructions
+        ? `${ctx.systemInstructions}\n\n${ctx.contextMarkdown}`
+        : ctx.contextMarkdown;
       const result = await spawnAgent({
         command,
         args,
         cwd,
         env,
-        stdin: ctx.contextMarkdown,
+        stdin: fullInput,
         onOutputLine: callbacks.onOutputLine,
         onStderrLine: callbacks.onStderrLine,
       });

@@ -69,11 +69,29 @@ curl:
 The catalog is dynamic. When the user connects a new connector, the
 next agent wake sees the new tools without code changes anywhere.
 
-### 2. App-registered HTTP routes
-Already exists via `api-catalog` provider, which calls each
-registered app's `agentDocs(baseUrl)`. Keep it; just make sure the
-new "Available tools" section nests under the same header so the
-agent reads them as one surface.
+### 2. App-registered HTTP routes — two sub-layers, one of them
+broken
+
+Apps register routes via `RouteRegistrar.agentDocs(baseUrl)` and
+the existing `api-catalog` context provider reads them. But there
+are **two distinct registries** the catalog provider has to walk,
+and only one is wired today:
+
+| Path | How it gets registered | Wired into apiCatalog? |
+|---|---|---|
+| `app.route(path, hono, { agentDocs })` on the BoringOS builder | Static, host code at boot | ✅ wired — `boringos.ts:257-260` walks `extraRoutes` |
+| `appRouteRegistry.installAppRoutes(...)` | Dynamic, install pipeline (default apps + user-installed apps) | ❌ NOT wired — registry exposes `getCatalog()` but it never gets fed in |
+
+The fix is one line in the lazy getter that builds `apiCatalog`:
+concat `appRouteRegistry.getCatalog()` after the `extraRoutes`
+list. Both sources already produce the same `ApiCatalogEntry`
+shape (path + agentDocs), so there's no schema work.
+
+After this fix, when an app like the CRM is installed via the
+install pipeline and its definition includes
+`routes.agentDocs(baseUrl) => "## CRM tools..."`, every agent's
+next wake sees the CRM section in its prompt — without the
+framework owner having to mount the CRM statically.
 
 ### 3. Plugin webhook receivers (future)
 Plugins can expose webhooks (`POST /webhooks/plugins/:name/:event`).
@@ -196,13 +214,17 @@ extra fetch.
 
 - `packages/@boringos/agent/src/providers/connector-actions-catalog.ts` — new
 - `packages/@boringos/agent/src/providers/index.ts` — export the new provider
-- `packages/@boringos/agent/src/engine.ts` — register it in the default pipeline
-- `packages/@boringos/agent/src/types.ts` — add `connectorRegistry` to
-  `AgentEngineConfig`
+- `packages/@boringos/agent/src/engine.ts` — register it in the default
+  pipeline + accept `connectorRegistry` in `AgentEngineConfig`
 - `packages/@boringos/agent/src/providers/approvals-skill.ts` — append
   the executing-approved-actions section
-- `packages/@boringos/core/src/boringos.ts` — pass `connectorRegistry`
-  into the agent engine config
+- `packages/@boringos/core/src/boringos.ts` — two changes:
+  1. Pass `connectorRegistry` into the agent engine config so the
+     new catalog provider can read it.
+  2. Extend the `apiCatalog` getter to concat
+     `appRouteRegistry.getCatalog()` after the static
+     `extraRoutes` list, so installed-app `agentDocs` flow into
+     the prompt automatically.
 - `packages/@boringos/core/src/admin-routes.ts` — `proposed_params`
   snapshot in decision comments
 
