@@ -42,6 +42,8 @@ export interface InboxDetailProps {
   onDiscardDraft?: (item: InboxItem, draft: ReplyDraft) => void | Promise<void>;
   /** A8 — opens compose modal with no draft prefilled (or first draft if any). */
   onReply?: (item: InboxItem) => void;
+  /** Open the schedule-meeting modal for this item. */
+  onSchedule?: (item: InboxItem) => void;
   /** Flip the latest item back to status='unread'. */
   onMarkUnread?: (item: InboxItem) => void | Promise<void>;
   /** POST archive — vanishes from the current list. */
@@ -59,6 +61,7 @@ export function InboxDetail({
   onUseDraft,
   onDiscardDraft,
   onReply,
+  onSchedule,
   onMarkUnread,
   onArchive,
   onConvertToTask,
@@ -113,6 +116,7 @@ export function InboxDetail({
           onArchive={() => void onArchive?.(latest)}
           onConvertToTask={() => void onConvertToTask?.(latest)}
           onSnooze={(until) => void onSnooze?.(latest, until)}
+          onSchedule={onSchedule ? () => onSchedule(latest) : undefined}
         />
       </header>
 

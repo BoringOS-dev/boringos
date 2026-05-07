@@ -19,6 +19,7 @@ import { BoringOSClientProvider } from "./providers/BoringOSClientProvider.js";
 import { BrandProvider } from "./branding/BrandProvider.js";
 import {
   Agents,
+  Calendar,
   Connectors,
   Copilot,
   Home,
@@ -71,6 +72,7 @@ export function App() {
                 <Route path="home" element={<Home />} />
                 <Route path="copilot" element={<Copilot />} />
                 <Route path="inbox" element={<Inbox />} />
+                <Route path="calendar" element={<Calendar />} />
                 <Route path="tasks" element={<Tasks />} />
                 <Route path="agents" element={<Agents />} />
                 <Route path="workflows" element={<Workflows />} />

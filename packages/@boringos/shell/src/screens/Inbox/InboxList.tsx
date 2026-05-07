@@ -12,6 +12,7 @@ import {
   countDrafts,
   formatRelativeTime,
   parseSenderName,
+  readScheduledMeeting,
   readSentReply,
   readTriage,
   scoreDotClass,
@@ -137,6 +138,22 @@ export function InboxList({ threads, isLoading, status, selectedId, bulkSelected
                       <span className="font-medium">↩ Replied</span>
                       <span className="text-slate-400">
                         {formatRelativeTime(sentReply.sentAt, now)}
+                      </span>
+                    </div>
+                  );
+                })()}
+                {/* Scheduled-meeting indicator — stamped by the
+                    Schedule modal after a successful create_event. */}
+                {(() => {
+                  const scheduled = readScheduledMeeting(item);
+                  if (!scheduled) return null;
+                  const startsAt = new Date(scheduled.startsAt);
+                  return (
+                    <div className="mt-1.5 flex items-center gap-1 text-[10px] text-violet-700">
+                      <span className="font-medium">🗓 Meeting</span>
+                      <span className="text-slate-500 tabular-nums">
+                        {startsAt.toLocaleDateString(undefined, { month: "short", day: "numeric" })},{" "}
+                        {startsAt.toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit" })}
                       </span>
                     </div>
                   );

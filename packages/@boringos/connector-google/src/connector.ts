@@ -25,7 +25,7 @@ class GoogleWorkspaceClient implements ConnectorClient {
   async executeAction(action: string, inputs: Record<string, unknown>): Promise<ActionResult> {
     // Route to the right sub-client
     const gmailActions = ["list_emails", "read_email", "send_email", "search_emails", "get_thread", "archive_email", "reply_email", "modify_email", "ensure_label", "list_history"];
-    const calendarActions = ["list_events", "create_event", "update_event", "find_free_slots"];
+    const calendarActions = ["list_events", "create_event", "update_event", "delete_event", "find_free_slots"];
 
     if (gmailActions.includes(action)) return this.gmail.executeAction(action, inputs);
     if (calendarActions.includes(action)) return this.calendar.executeAction(action, inputs);
@@ -151,12 +151,25 @@ export function google(config: GoogleConfig): ConnectorDefinition & { clientId: 
         },
       },
       {
+        name: "delete_event",
+        description: "Delete a calendar event by ID",
+        inputs: {
+          eventId: { type: "string", description: "Calendar event ID", required: true },
+        },
+      },
+      {
         name: "find_free_slots",
-        description: "Find available time slots in the calendar",
+        description: "Find discrete free meeting slots inside a window, fixed-length, within working hours",
         inputs: {
           timeMin: { type: "string", description: "Search window start (ISO 8601)", required: true },
           timeMax: { type: "string", description: "Search window end (ISO 8601)", required: true },
-          durationMinutes: { type: "number", description: "Required slot duration in minutes", required: true },
+          durationMinutes: { type: "number", description: "Slot length in minutes (default 30)" },
+          workingHourStart: { type: "number", description: "Start of working day, local hour 0-23 (default 9)" },
+          workingHourEnd: { type: "number", description: "End of working day, local hour 0-23 (default 17)" },
+          workingDaysMask: { type: "number", description: "Bitmask Sun..Sat (default 0b0111110 = Mon-Fri)" },
+          slotIntervalMinutes: { type: "number", description: "Step granularity between candidate slots (default 30)" },
+          maxSlots: { type: "number", description: "Cap on returned slots (default 12)" },
+          timeZone: { type: "string", description: "IANA timezone for working-hour band (default UTC)" },
         },
       },
     ],

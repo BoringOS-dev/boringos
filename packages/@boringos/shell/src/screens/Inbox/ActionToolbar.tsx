@@ -15,6 +15,7 @@ export interface ActionToolbarProps {
   onArchive: () => void;
   onConvertToTask: () => void;
   onSnooze: (until: Date) => void;
+  onSchedule?: () => void;
   /** Display when an action is in flight to avoid double-fire. */
   busy?: boolean;
 }
@@ -26,6 +27,7 @@ export function ActionToolbar({
   onArchive,
   onConvertToTask,
   onSnooze,
+  onSchedule,
   busy,
 }: ActionToolbarProps) {
   const [snoozeOpen, setSnoozeOpen] = useState(false);
@@ -91,6 +93,17 @@ export function ActionToolbar({
           </div>
         )}
       </div>
+      {onSchedule && (
+        <button
+          type="button"
+          onClick={onSchedule}
+          disabled={busy}
+          className="text-xs font-medium px-3 py-1.5 rounded-md text-slate-700 hover:bg-slate-100 disabled:opacity-50"
+          title="Schedule a meeting from this email"
+        >
+          🗓 Schedule
+        </button>
+      )}
       <button
         type="button"
         onClick={onMarkUnread}

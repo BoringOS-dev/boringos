@@ -13,6 +13,7 @@ import { ClassificationFilter } from "./ClassificationFilter.js";
 import { InboxList } from "./InboxList.js";
 import { InboxDetail } from "./InboxDetail.js";
 import { ReplyComposer } from "./ReplyComposer.js";
+import { ScheduleMeetingModal } from "./ScheduleMeetingModal.js";
 import { SearchBox } from "./SearchBox.js";
 import { useNow } from "./useNow.js";
 import {
@@ -34,6 +35,7 @@ export function Inbox() {
     item: InboxItem;
     draft: ReplyDraft | null;
   } | null>(null);
+  const [scheduling, setScheduling] = useState<InboxItem | null>(null);
   const [classFilter, setClassFilter] = useState<Set<Classification>>(new Set());
   const [bulkSelected, setBulkSelected] = useState<Set<string>>(new Set());
   // Anchor for shift-range selection.
@@ -556,6 +558,7 @@ export function Inbox() {
                 onReclassify={handleReclassify}
                 onReply={(item) => setComposing({ item, draft: null })}
                 onUseDraft={(item, draft) => setComposing({ item, draft })}
+                onSchedule={(item) => setScheduling(item)}
               />
             </div>
           </div>
@@ -590,6 +593,16 @@ export function Inbox() {
             } finally {
               queryClient.invalidateQueries({ queryKey: ["inbox"] });
             }
+          }}
+        />
+      )}
+
+      {scheduling && (
+        <ScheduleMeetingModal
+          item={scheduling}
+          onClose={() => setScheduling(null)}
+          onScheduled={() => {
+            queryClient.invalidateQueries({ queryKey: ["inbox"] });
           }}
         />
       )}

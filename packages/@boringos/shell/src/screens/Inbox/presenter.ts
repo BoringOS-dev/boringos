@@ -208,6 +208,35 @@ export function readSentReply(item: ItemLike): SentReply | null {
   };
 }
 
+export interface ScheduledMeeting {
+  eventId?: string;
+  htmlLink?: string;
+  startsAt: string;
+  endsAt?: string;
+  scheduledAt?: string;
+}
+
+/**
+ * Read the scheduledMeeting block off metadata. Stamped by the
+ * Schedule modal after a successful create_event. Drives the
+ * "🗓 Meeting scheduled" indicator on the inbox row.
+ */
+export function readScheduledMeeting(item: ItemLike): ScheduledMeeting | null {
+  const m = item.metadata;
+  if (!m || typeof m !== "object") return null;
+  const s = (m as { scheduledMeeting?: unknown }).scheduledMeeting;
+  if (!s || typeof s !== "object") return null;
+  const obj = s as Record<string, unknown>;
+  if (typeof obj.startsAt !== "string") return null;
+  return {
+    eventId: typeof obj.eventId === "string" ? obj.eventId : undefined,
+    htmlLink: typeof obj.htmlLink === "string" ? obj.htmlLink : undefined,
+    startsAt: obj.startsAt,
+    endsAt: typeof obj.endsAt === "string" ? obj.endsAt : undefined,
+    scheduledAt: typeof obj.scheduledAt === "string" ? obj.scheduledAt : undefined,
+  };
+}
+
 /**
  * Compose a quoted reply body. Standard email convention:
  *   <draft body>
