@@ -17,7 +17,9 @@ const PRIORITY_COLORS: Record<string, string> = {
 };
 
 export function Tasks() {
-  const [status, setStatus] = useState<Status | "all">("all");
+  // Default to "todo" — what the user actually needs to act on.
+  // "all" moves to the end of the tab strip as the catch-all view.
+  const [status, setStatus] = useState<Status | "all">("todo");
   const filters = status === "all" ? undefined : { status };
   const { tasks, isLoading } = useTasks(filters);
 
@@ -28,7 +30,7 @@ export function Tasks() {
         subtitle="Work assigned to humans and agents"
         actions={
           <div className="flex items-center gap-1 rounded-md border border-slate-200 bg-white p-0.5">
-            {(["all", ...STATUSES] as const).map((s) => (
+            {([...STATUSES, "all"] as const).map((s) => (
               <button
                 key={s}
                 type="button"

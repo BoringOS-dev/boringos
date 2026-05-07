@@ -31,5 +31,8 @@ export type { EventBus, EventHandler } from "./event-bus.js";
 export { createActionRunner } from "./action-runner.js";
 export type { ActionRunner } from "./action-runner.js";
 
+export { refreshOAuthToken } from "./oauth-refresh.js";
+export type { RefreshedToken } from "./oauth-refresh.js";
+
 export { createConnectorTestHarness } from "./test-harness.js";
 export type { ConnectorTestHarness } from "./test-harness.js";

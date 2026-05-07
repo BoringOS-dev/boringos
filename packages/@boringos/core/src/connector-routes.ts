@@ -3,7 +3,7 @@ import { eq, and, sql } from "drizzle-orm";
 import type { Db } from "@boringos/db";
 import { connectors } from "@boringos/db";
 import type { ConnectorRegistry, EventBus, ActionRunner, ConnectorCredentials } from "@boringos/connector";
-import { createOAuthManager, createState, verifyState, isSafeReturnTo } from "@boringos/connector";
+import { createOAuthManager, createState, verifyState, isSafeReturnTo, refreshOAuthToken } from "@boringos/connector";
 import { verifyCallbackToken } from "@boringos/agent";
 import { generateId } from "@boringos/shared";
 import { installDefaultWorkflows, pauseDefaultWorkflows } from "./connectors/post-connect.js";
@@ -396,16 +396,48 @@ export function createConnectorRoutes(
     const connectorRow = rows[0];
     if (!connectorRow) return c.json({ error: `Connector ${kind} not configured for this tenant` }, 404);
 
+    const creds = (connectorRow.credentials as Record<string, string>) ?? {};
     const credentials: ConnectorCredentials = {
-      accessToken: (connectorRow.credentials as Record<string, string>)?.accessToken ?? "",
-      refreshToken: (connectorRow.credentials as Record<string, string>)?.refreshToken,
+      accessToken: creds.accessToken ?? "",
+      refreshToken: creds.refreshToken,
       config: connectorRow.config as Record<string, unknown>,
     };
 
-    const resultData = await actionRunner.execute(
+    let resultData = await actionRunner.execute(
       { connectorKind: kind, action, tenantId, agentId, userId, inputs: body },
       credentials,
     );
+
+    // OAuth refresh-and-retry. Access tokens for Google last 1 hour;
+    // without this every call past the first hour 401s and forces a
+    // user-visible reconnect. The workflow handler does the same
+    // dance — we share `refreshOAuthToken` so both stay in sync.
+    if (
+      !resultData.success &&
+      credentials.refreshToken &&
+      typeof resultData.error === "string" &&
+      /\b401\b/.test(resultData.error)
+    ) {
+      const refreshed = await refreshOAuthToken(kind, credentials.refreshToken);
+      if (refreshed) {
+        await db
+          .update(connectors)
+          .set({
+            credentials: {
+              ...creds,
+              accessToken: refreshed.accessToken,
+              expiresAt: refreshed.expiresAt,
+            },
+            updatedAt: new Date(),
+          })
+          .where(eq(connectors.id, connectorRow.id))
+          .catch(() => {});
+        resultData = await actionRunner.execute(
+          { connectorKind: kind, action, tenantId, agentId, userId, inputs: body },
+          { ...credentials, accessToken: refreshed.accessToken },
+        );
+      }
+    }
 
     return c.json(resultData, resultData.success ? 200 : 400);
   });
