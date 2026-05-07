@@ -70,6 +70,11 @@ export function filterForTab(
       case "my-todos":
         // Failed system tasks bubble up here regardless of origin.
         if (needsAttentionTaskIds.has(t.id)) return open;
+        // Agent-action tasks always need a human decision — surface
+        // them in My todos even when the agent didn't manage to set
+        // assigneeUserId (defensive; the agent route should set it
+        // from the parent's owner, but better safe).
+        if (t.originKind === "agent_action" && open) return true;
         return isMine && open && !sys;
       case "watching":
         return watchedByMe && open;

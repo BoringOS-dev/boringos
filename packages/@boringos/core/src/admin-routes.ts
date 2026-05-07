@@ -508,6 +508,12 @@ export function createAdminRoutes(
       assigneeUserId:
         (body.assigneeUserId as string) ??
         (body.assigneeAgentId ? undefined : c.get("userId") ?? undefined),
+      // Stamp the creating user — needed for the "My todos" /
+      // "Watching" filters in the Tasks UI to distinguish "I made
+      // this" from "an agent made this." Without it, tasks created
+      // through this endpoint were invisible in My todos when an
+      // agent was the assignee.
+      createdByUserId: c.get("userId") ?? undefined,
       parentId: body.parentId as string | undefined,
       identifier,
       originKind: (body.originKind as string) ?? "manual",

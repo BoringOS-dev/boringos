@@ -99,6 +99,29 @@ export function createCallbackRoutes(db: Db, _engine: AgentEngine, jwtSecret: st
     const claims = c.get("claims");
     const body = await c.req.json() as Record<string, unknown>;
     const id = generateId();
+    const originKind = (body.originKind as string) ?? "agent_created";
+
+    // For agent_action / human_todo / agent_blocked tasks the user is
+    // the audience: someone needs to read this and act. If the agent
+    // didn't supply `assigneeUserId`, default it to the parent task's
+    // owner so the row lands in their "My todos" rather than floating
+    // unassigned and invisible.
+    let assigneeUserId = body.assigneeUserId as string | undefined;
+    const needsHumanInbox =
+      originKind === "agent_action" ||
+      originKind === "human_todo" ||
+      originKind === "agent_blocked";
+    if (needsHumanInbox && !assigneeUserId && body.parentId) {
+      const parentRows = await db.select({
+        assigneeUserId: tasks.assigneeUserId,
+        createdByUserId: tasks.createdByUserId,
+      }).from(tasks).where(eq(tasks.id, body.parentId as string)).limit(1);
+      const parent = parentRows[0];
+      if (parent) {
+        assigneeUserId = parent.assigneeUserId ?? parent.createdByUserId ?? undefined;
+      }
+    }
+
     await db.insert(tasks).values({
       id,
       tenantId: claims.tenant_id,
@@ -108,9 +131,9 @@ export function createCallbackRoutes(db: Db, _engine: AgentEngine, jwtSecret: st
       priority: (body.priority as string) ?? "medium",
       parentId: body.parentId as string | undefined,
       assigneeAgentId: body.assigneeAgentId as string | undefined,
-      assigneeUserId: body.assigneeUserId as string | undefined,
+      assigneeUserId,
       createdByAgentId: claims.agent_id,
-      originKind: (body.originKind as string) ?? "agent_created",
+      originKind,
       proposedParams: body.proposedParams as Record<string, unknown> | undefined,
     });
     return c.json({ id }, 201);
