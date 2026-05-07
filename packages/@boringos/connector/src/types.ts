@@ -97,7 +97,14 @@ export interface ActionRequest {
   connectorKind: string;
   action: string;
   tenantId: string;
-  agentId: string;
+  /**
+   * Agent caller identity (callback API path). Mutually exclusive with
+   * `userId` — exactly one is set per call. Human-initiated calls from
+   * the shell carry `userId` instead.
+   */
+  agentId?: string;
+  /** Human caller identity (session-authenticated path). */
+  userId?: string;
   inputs: Record<string, unknown>;
 }
 

@@ -335,14 +335,53 @@ export function createConnectorRoutes(
 
   // ── Actions ──────────────────────────────────────────────────────────────
 
-  // POST /actions/:kind/:action — agent invokes a connector action (JWT authenticated)
+  // POST /actions/:kind/:action — invoke a connector action.
+  //
+  // Two auth modes, distinguished by presence of `X-Tenant-Id`:
+  //   • Header present  → human caller; Bearer is a session token, look
+  //     up via auth_sessions and verify the user belongs to the tenant.
+  //   • Header absent   → agent caller; Bearer is an HMAC-signed JWT,
+  //     verify via verifyCallbackToken and read claims.
   app.post("/actions/:kind/:action", async (c) => {
     const authHeader = c.req.header("Authorization");
     if (!authHeader?.startsWith("Bearer ")) {
       return c.json({ error: "Missing Authorization header" }, 401);
     }
-    const claims = verifyCallbackToken(authHeader.slice(7), jwtSecret);
-    if (!claims) return c.json({ error: "Invalid or expired token" }, 401);
+    const bearer = authHeader.slice(7);
+    const tenantHeader = c.req.header("X-Tenant-Id") ?? "";
+
+    let tenantId: string;
+    let agentId: string | undefined;
+    let userId: string | undefined;
+
+    if (tenantHeader) {
+      // tenantHeader / bearer must be a valid UUID + opaque token for
+      // the auth_sessions / user_tenants join to succeed. Treat *any*
+      // failure (bad cast, no row, expired) as 401 — never leak the
+      // underlying SQL error.
+      try {
+        const result = await db.execute(sql`
+          SELECT s.user_id, ut.tenant_id
+            FROM auth_sessions s
+            JOIN user_tenants ut ON ut.user_id = s.user_id
+           WHERE s.token = ${bearer}
+             AND ut.tenant_id = ${tenantHeader}
+             AND s.expires_at > NOW()
+           LIMIT 1
+        `);
+        const rows = result as unknown as Array<{ user_id: string; tenant_id: string }>;
+        if (!rows[0]) return c.json({ error: "Invalid session" }, 401);
+        tenantId = rows[0].tenant_id;
+        userId = rows[0].user_id;
+      } catch {
+        return c.json({ error: "Invalid session" }, 401);
+      }
+    } else {
+      const claims = verifyCallbackToken(bearer, jwtSecret);
+      if (!claims) return c.json({ error: "Invalid or expired token" }, 401);
+      tenantId = claims.tenant_id;
+      agentId = claims.agent_id;
+    }
 
     const kind = c.req.param("kind");
     const action = c.req.param("action");
@@ -351,7 +390,7 @@ export function createConnectorRoutes(
     const rows = await db
       .select()
       .from(connectors)
-      .where(and(eq(connectors.tenantId, claims.tenant_id), eq(connectors.kind, kind)))
+      .where(and(eq(connectors.tenantId, tenantId), eq(connectors.kind, kind)))
       .limit(1);
 
     const connectorRow = rows[0];
@@ -364,7 +403,7 @@ export function createConnectorRoutes(
     };
 
     const resultData = await actionRunner.execute(
-      { connectorKind: kind, action, tenantId: claims.tenant_id, agentId: claims.agent_id, inputs: body },
+      { connectorKind: kind, action, tenantId, agentId, userId, inputs: body },
       credentials,
     );
 
