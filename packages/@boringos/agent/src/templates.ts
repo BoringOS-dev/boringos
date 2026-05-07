@@ -1,6 +1,6 @@
 import { eq } from "drizzle-orm";
 import type { Db } from "@boringos/db";
-import { agents } from "@boringos/db";
+import { agents, tenants } from "@boringos/db";
 import { generateId } from "@boringos/shared";
 import { loadPersonaBundle, mergePersonaBundle, resolvePersonaRole } from "./persona-loader.js";
 
@@ -40,6 +40,15 @@ export async function createAgentFromTemplate(
   const id = generateId();
   const name = config.name ?? formatRoleName(resolvedRole);
 
+  // Determine reportsTo: explicit > tenant root > null (only for shell agents creating root)
+  let reportsTo = config.reportsTo ?? null;
+  if (!reportsTo && config.source !== 'shell') {
+    const tenantRows = await db.select({ root_agent_id: tenants.rootAgentId }).from(tenants).where(eq(tenants.id, config.tenantId)).limit(1);
+    if (tenantRows[0]?.root_agent_id) {
+      reportsTo = tenantRows[0].root_agent_id;
+    }
+  }
+
   await db.insert(agents).values({
     id,
     tenantId: config.tenantId,
@@ -47,12 +56,12 @@ export async function createAgentFromTemplate(
     role: resolvedRole,
     instructions: config.instructions ?? personaInstructions.slice(0, 500), // Summary for DB
     runtimeId: config.runtimeId ?? null,
-    reportsTo: config.reportsTo ?? null,
+    reportsTo,
     source: config.source ?? 'user',
     sourceAppId: config.sourceAppId ?? null,
   });
 
-  return { id, name, role: resolvedRole, tenantId: config.tenantId, reportsTo: config.reportsTo ?? null };
+  return { id, name, role: resolvedRole, tenantId: config.tenantId, reportsTo };
 }
 
 function formatRoleName(role: string): string {

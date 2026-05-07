@@ -5,6 +5,7 @@ import { describe, it, expect } from "vitest";
 import { mkdtemp } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { eq } from "drizzle-orm";
 
 const KEY = "hier-admin";
 
@@ -22,15 +23,43 @@ function h(tid: string) {
   return { "Content-Type": "application/json", "X-API-Key": KEY, "X-Tenant-Id": tid };
 }
 
+async function createCoSForTenant(server: any, tenantId: string) {
+  const { generateId } = await import("@boringos/shared");
+  const { tenants, agents: agentsTable } = await import("@boringos/db");
+  const db = server.context.db as import("@boringos/db").Db;
+
+  const cosId = generateId();
+  await db.insert(agentsTable).values({
+    id: cosId,
+    tenantId,
+    name: "Chief of Staff",
+    role: "chief-of-staff",
+    source: "shell",
+  });
+  await db.update(tenants).set({ rootAgentId: cosId }).where(eq(tenants.id, tenantId));
+  return cosId;
+}
+
 describe("agent templates", () => {
   it("creates agent from role template with persona", async () => {
     const server = await boot(5565);
     try {
       const { generateId } = await import("@boringos/shared");
-      const { tenants } = await import("@boringos/db");
+      const { tenants, agents: agentsTable } = await import("@boringos/db");
       const db = server.context.db as import("@boringos/db").Db;
       const tid = generateId();
       await db.insert(tenants).values({ id: tid, name: "Template Co", slug: "template-co" });
+
+      // Create CoS as root
+      const cosId = generateId();
+      await db.insert(agentsTable).values({
+        id: cosId,
+        tenantId: tid,
+        name: "Chief of Staff",
+        role: "chief-of-staff",
+        source: "shell",
+      });
+      await db.update(tenants).set({ rootAgentId: cosId }).where(eq(tenants.id, tid));
 
       const res = await fetch(`${server.url}/api/admin/agents/from-template`, {
         method: "POST", headers: h(tid),
@@ -57,10 +86,21 @@ describe("team templates", () => {
     const server = await boot(5564);
     try {
       const { generateId } = await import("@boringos/shared");
-      const { tenants } = await import("@boringos/db");
+      const { tenants, agents: agentsTable } = await import("@boringos/db");
       const db = server.context.db as import("@boringos/db").Db;
       const tid = generateId();
       await db.insert(tenants).values({ id: tid, name: "Team Co", slug: "team-co" });
+
+      // Create CoS as root
+      const cosId = generateId();
+      await db.insert(agentsTable).values({
+        id: cosId,
+        tenantId: tid,
+        name: "Chief of Staff",
+        role: "chief-of-staff",
+        source: "shell",
+      });
+      await db.update(tenants).set({ rootAgentId: cosId }).where(eq(tenants.id, tid));
 
       const res = await fetch(`${server.url}/api/admin/teams/from-template`, {
         method: "POST", headers: h(tid),
@@ -70,9 +110,9 @@ describe("team templates", () => {
       const body = await res.json() as { agents: Array<{ id: string; name: string; role: string; reportsTo: string | null }> };
       expect(body.agents).toHaveLength(4); // CTO + 2 engineers + QA
 
-      // CTO has no boss
+      // CTO reports to CoS
       const cto = body.agents.find(a => a.role === "cto");
-      expect(cto?.reportsTo).toBeNull();
+      expect(cto?.reportsTo).toBe(cosId);
 
       // Engineers report to CTO
       const engineers = body.agents.filter(a => a.role === "engineer");
@@ -93,10 +133,21 @@ describe("org tree", () => {
     const server = await boot(5563);
     try {
       const { generateId } = await import("@boringos/shared");
-      const { tenants } = await import("@boringos/db");
+      const { tenants, agents: agentsTable } = await import("@boringos/db");
       const db = server.context.db as import("@boringos/db").Db;
       const tid = generateId();
       await db.insert(tenants).values({ id: tid, name: "Org Co", slug: "org-co" });
+
+      // Create CoS as root
+      const cosId = generateId();
+      await db.insert(agentsTable).values({
+        id: cosId,
+        tenantId: tid,
+        name: "Chief of Staff",
+        role: "chief-of-staff",
+        source: "shell",
+      });
+      await db.update(tenants).set({ rootAgentId: cosId }).where(eq(tenants.id, tid));
 
       // Create a team first
       await fetch(`${server.url}/api/admin/teams/from-template`, {
@@ -107,9 +158,10 @@ describe("org tree", () => {
       // Get org tree
       const res = await fetch(`${server.url}/api/admin/agents/org-tree`, { headers: h(tid) });
       const body = await res.json() as { tree: Array<{ name: string; reports: Array<{ name: string }> }> };
-      expect(body.tree).toHaveLength(1); // CEO at root
-      expect(body.tree[0].name).toBe("CEO");
-      expect(body.tree[0].reports.length).toBe(3); // CTO, PM, PA
+      // CoS is at root with CEO as one of the reports
+      expect(body.tree).toHaveLength(1);
+      expect(body.tree[0].name).toBe("Chief of Staff");
+      expect(body.tree[0].reports.some((r: any) => r.name === "CEO")).toBe(true);
     } finally { await server.close(); }
   }, 30000);
 });
@@ -128,11 +180,17 @@ describe("delegation", () => {
     const tid = generateId();
     await conn.db.insert(tenants).values({ id: tid, name: "Deleg Co", slug: "deleg-co" });
 
-    const bossId = generateId();
+    // Create CoS as root
+    const cosId = generateId();
+    await conn.db.insert(agents).values({ id: cosId, tenantId: tid, name: "CoS", role: "chief-of-staff", status: "idle", source: "shell" });
+    await conn.db.update(tenants).set({ rootAgentId: cosId }).where(eq(tenants.id, tid));
+
     const engId = generateId();
     const resId = generateId();
 
-    await conn.db.insert(agents).values({ id: bossId, tenantId: tid, name: "Boss", role: "ceo", status: "idle" });
+    // Boss reports to CoS
+    const bossId = generateId();
+    await conn.db.insert(agents).values({ id: bossId, tenantId: tid, name: "Boss", role: "ceo", status: "idle", reportsTo: cosId });
     await conn.db.insert(agents).values({ id: engId, tenantId: tid, name: "Dev", role: "engineer", reportsTo: bossId, status: "idle" });
     await conn.db.insert(agents).values({ id: resId, tenantId: tid, name: "Researcher", role: "researcher", reportsTo: bossId, status: "idle" });
 
@@ -163,10 +221,15 @@ describe("delegation", () => {
     const tid = generateId();
     await conn.db.insert(tenants).values({ id: tid, name: "Tier A Co", slug: "tier-a-co" });
 
+    // Create CoS as root
+    const cosId = generateId();
+    await conn.db.insert(agents).values({ id: cosId, tenantId: tid, name: "CoS", role: "chief-of-staff", status: "idle", source: "shell" });
+    await conn.db.update(tenants).set({ rootAgentId: cosId }).where(eq(tenants.id, tid));
+
     const bossId = generateId();
     const engId = generateId();
     const writerId = generateId();
-    await conn.db.insert(agents).values({ id: bossId, tenantId: tid, name: "Boss", role: "ceo", status: "idle" });
+    await conn.db.insert(agents).values({ id: bossId, tenantId: tid, name: "Boss", role: "ceo", status: "idle", reportsTo: cosId });
     // Engineer with an unusual skill that'd never match the keyword regex
     await conn.db.insert(agents).values({
       id: engId, tenantId: tid, name: "Dev", role: "engineer", reportsTo: bossId, status: "idle",
@@ -205,10 +268,15 @@ describe("delegation", () => {
     const tid = generateId();
     await conn.db.insert(tenants).values({ id: tid, name: "Paused Co", slug: "paused-co" });
 
+    // Create CoS as root
+    const cosId = generateId();
+    await conn.db.insert(agents).values({ id: cosId, tenantId: tid, name: "CoS", role: "chief-of-staff", status: "idle", source: "shell" });
+    await conn.db.update(tenants).set({ rootAgentId: cosId }).where(eq(tenants.id, tid));
+
     const bossId = generateId();
     const pausedId = generateId();
     const activeId = generateId();
-    await conn.db.insert(agents).values({ id: bossId, tenantId: tid, name: "Boss", role: "ceo", status: "idle" });
+    await conn.db.insert(agents).values({ id: bossId, tenantId: tid, name: "Boss", role: "ceo", status: "idle", reportsTo: cosId });
     await conn.db.insert(agents).values({ id: pausedId, tenantId: tid, name: "Paused Eng", role: "engineer", reportsTo: bossId, status: "paused" });
     await conn.db.insert(agents).values({ id: activeId, tenantId: tid, name: "Active Eng", role: "engineer", reportsTo: bossId, status: "idle" });
 
@@ -232,8 +300,13 @@ describe("hierarchy provider", () => {
     const tid = generateId();
     await conn.db.insert(tenants).values({ id: tid, name: "Peers Co", slug: "peers-co" });
 
+    // Create CoS as root
+    const cosId = generateId();
+    await conn.db.insert(agents).values({ id: cosId, tenantId: tid, name: "CoS", role: "chief-of-staff", status: "idle", source: "shell" });
+    await conn.db.update(tenants).set({ rootAgentId: cosId }).where(eq(tenants.id, tid));
+
     const ceo = generateId(); const vp = generateId(); const peer1 = generateId(); const peer2 = generateId(); const ic = generateId();
-    await conn.db.insert(agents).values({ id: ceo, tenantId: tid, name: "CEO", role: "ceo", status: "idle", skills: [] });
+    await conn.db.insert(agents).values({ id: ceo, tenantId: tid, name: "CEO", role: "ceo", status: "idle", skills: [], reportsTo: cosId });
     await conn.db.insert(agents).values({ id: vp, tenantId: tid, name: "VP Sales", role: "vp", reportsTo: ceo, status: "idle", skills: ["deal-coaching"] });
     await conn.db.insert(agents).values({ id: peer1, tenantId: tid, name: "VP Marketing", role: "vp", reportsTo: ceo, status: "idle", skills: ["campaign-strategy"] });
     await conn.db.insert(agents).values({ id: peer2, tenantId: tid, name: "VP Product", role: "vp", reportsTo: ceo, status: "paused", skills: ["roadmap"] });
@@ -268,6 +341,9 @@ describe("admin gating", () => {
       // (raw SQL rather than drizzle schema). Seed via raw SQL.
       const tid = generateId();
       await db.insert(tenants).values({ id: tid, name: "Gate Co", slug: "gate-co" });
+
+      // Create CoS as root for this tenant
+      await createCoSForTenant(server, tid);
 
       const adminId = generateId();
       const adminToken = generateId();
@@ -338,6 +414,9 @@ describe("reparent semantics", () => {
       const tid = generateId();
       await db.insert(tenants).values({ id: tid, name: "Cycle Co", slug: "cycle-co" });
 
+      // Create CoS as root for this tenant
+      await createCoSForTenant(server, tid);
+
       // A → B → C. Try to set A.reportsTo = C (which would create A→C→B→A).
       const aRes = await fetch(`${server.url}/api/admin/agents`, { method: "POST", headers: h(tid), body: JSON.stringify({ name: "A", role: "general" }) });
       const a = await aRes.json() as { id: string };
@@ -370,6 +449,9 @@ describe("reparent semantics", () => {
       const db = server.context.db as import("@boringos/db").Db;
       const tid = generateId();
       await db.insert(tenants).values({ id: tid, name: "Archive Co", slug: "archive-co" });
+
+      // Create CoS as root for this tenant
+      await createCoSForTenant(server, tid);
 
       // CEO → VP → IC. Archive VP. IC should now report to CEO.
       const ceoRes = await fetch(`${server.url}/api/admin/agents`, { method: "POST", headers: h(tid), body: JSON.stringify({ name: "CEO", role: "ceo" }) });
@@ -405,11 +487,16 @@ describe("handoff", () => {
     const tid = generateId();
     await conn.db.insert(tenants).values({ id: tid, name: "Handoff Co", slug: "handoff-co" });
 
+    // Create CoS as root
+    const cosId = generateId();
+    await conn.db.insert(agents).values({ id: cosId, tenantId: tid, name: "CoS", role: "chief-of-staff", status: "idle", source: "shell" });
+    await conn.db.update(tenants).set({ rootAgentId: cosId }).where(eq(tenants.id, tid));
+
     const a = generateId(); const b = generateId(); const cc = generateId(); const dd = generateId();
-    await conn.db.insert(agents).values({ id: a, tenantId: tid, name: "A", role: "general", status: "idle" });
-    await conn.db.insert(agents).values({ id: b, tenantId: tid, name: "B", role: "general", status: "idle" });
-    await conn.db.insert(agents).values({ id: cc, tenantId: tid, name: "C", role: "general", status: "idle" });
-    await conn.db.insert(agents).values({ id: dd, tenantId: tid, name: "D", role: "general", status: "idle" });
+    await conn.db.insert(agents).values({ id: a, tenantId: tid, name: "A", role: "general", status: "idle", reportsTo: cosId });
+    await conn.db.insert(agents).values({ id: b, tenantId: tid, name: "B", role: "general", status: "idle", reportsTo: cosId });
+    await conn.db.insert(agents).values({ id: cc, tenantId: tid, name: "C", role: "general", status: "idle", reportsTo: cosId });
+    await conn.db.insert(agents).values({ id: dd, tenantId: tid, name: "D", role: "general", status: "idle", reportsTo: cosId });
 
     // Root task, assigned to A
     const rootId = generateId();

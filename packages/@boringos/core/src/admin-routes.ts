@@ -207,7 +207,7 @@ export function createAdminRoutes(
       const { validateReparenting } = await import("@boringos/agent");
       const validation = await validateReparenting(db as any, agentId, body.reportsTo as string | null, tenantId);
       if (!validation.valid) {
-        return c.json({ error: validation.reason }, 400);
+        return c.json({ error: validation.reason }, 409);
       }
       values.reportsTo = body.reportsTo;
     }

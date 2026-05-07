@@ -1093,3 +1093,47 @@ Per-run elapsed (ms): 20, 8, 6
 **Phase 2 contract verdict:** PASS — the SDK was not modified during the port. The contract held.
 
 **Note on the pre-existing baseline:** `src/validate.ts` + `src/manifest-schema.ts` are an in-progress packaging refactor (inlining the manifest schema instead of reading it from disk at runtime). They predate the start of Phase 2 work; the workstream owner should land them as a separate commit.
+
+## M4 — Copilot context (2026-05-07T23:48:51.966Z)
+
+| Check | Status |
+|---|---|
+| catalog has /api/crm entry | ✓ |
+| prompt includes CRM mount header | ✓ |
+| prompt mentions Contacts/Deals/Companies/Pipelines/Activities | ✓ |
+| docs render against the supplied callback URL | ✓ |
+
+## M5 — SDK regression (2026-05-07T23:48:58.272Z)
+
+**Repo HEAD:** `f7e78ac` (Phase 1 close)
+
+**Phase 2 SDK diffs (intentional, pre-existing baseline):**
+
+
+**New SDK diffs introduced by Phase 2 (K1-L12 + M1-M4):** none ✓
+
+**Phase 2 contract verdict:** PASS — the SDK was not modified during the port. The contract held.
+
+**Note on the pre-existing baseline:** `src/validate.ts` + `src/manifest-schema.ts` are an in-progress packaging refactor (inlining the manifest schema instead of reading it from disk at runtime). They predate the start of Phase 2 work; the workstream owner should land them as a separate commit.
+
+## M4 — Copilot context (2026-05-07T23:51:12.881Z)
+
+| Check | Status |
+|---|---|
+| catalog has /api/crm entry | ✓ |
+| prompt includes CRM mount header | ✓ |
+| prompt mentions Contacts/Deals/Companies/Pipelines/Activities | ✓ |
+| docs render against the supplied callback URL | ✓ |
+
+## M5 — SDK regression (2026-05-07T23:51:20.218Z)
+
+**Repo HEAD:** `f7e78ac` (Phase 1 close)
+
+**Phase 2 SDK diffs (intentional, pre-existing baseline):**
+
+
+**New SDK diffs introduced by Phase 2 (K1-L12 + M1-M4):** none ✓
+
+**Phase 2 contract verdict:** PASS — the SDK was not modified during the port. The contract held.
+
+**Note on the pre-existing baseline:** `src/validate.ts` + `src/manifest-schema.ts` are an in-progress packaging refactor (inlining the manifest schema instead of reading it from disk at runtime). They predate the start of Phase 2 work; the workstream owner should land them as a separate commit.
