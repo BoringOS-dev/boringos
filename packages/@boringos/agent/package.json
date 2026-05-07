@@ -21,7 +21,8 @@
     "@boringos/memory": "workspace:*",
     "@boringos/db": "workspace:*",
     "@boringos/drive": "workspace:*",
-    "@boringos/pipeline": "workspace:*"
+    "@boringos/pipeline": "workspace:*",
+    "@boringos/connector": "workspace:*"
   },
   "devDependencies": {
     "@types/node": "^22.0.0",

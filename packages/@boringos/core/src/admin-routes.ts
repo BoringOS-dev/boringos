@@ -623,9 +623,23 @@ export function createAdminRoutes(
       ).limit(1);
       const parent = parentRows[0];
       if (parent) {
+        // Snapshot proposed_params into the comment so the parent
+        // agent gets the action call inline — no extra fetch round
+        // trip. The agent applies any modifications from the user's
+        // note before executing. See task_07.
+        let snapshot = "";
+        if (kind === "approve" && task.proposedParams) {
+          const params = task.proposedParams as Record<string, unknown>;
+          const kindField = typeof params.kind === "string" ? params.kind : "(unknown)";
+          snapshot =
+            `\n\n_Original \`proposed_params\` (apply any modifications from the comment above before executing):_\n` +
+            "```json\n" +
+            JSON.stringify({ kind: kindField, ...params }, null, 2) +
+            "\n```";
+        }
         const commentBody =
           kind === "approve"
-            ? `**Approved.**${userComment ? `\n\n${userComment}` : ""}`
+            ? `**Approved.**${userComment ? `\n\n${userComment}` : ""}${snapshot}`
             : `**Rejected.**${userComment ? `\n\n${userComment}` : ""}`;
         const commentId = generateId();
         await db.insert(taskComments).values({

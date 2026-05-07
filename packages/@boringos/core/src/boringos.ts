@@ -253,11 +253,20 @@ export class BoringOS {
     const callbackUrl = `http://localhost:${listenPort}`;
 
     // Resolve apiCatalog lazily so routes registered in `beforeStart` hooks
-    // (which run after engine creation) are still picked up.
-    const apiCatalog = () =>
-      this.extraRoutes
+    // (which run after engine creation) are still picked up. Walks BOTH
+    // sources: statically-mounted host routes (`app.route(...)`) and
+    // routes registered via the install pipeline (default apps,
+    // user-installed apps). Without the install-pipeline source, an
+    // app like the CRM that ships agentDocs would never reach the
+    // agent's prompt — see task_07.
+    let installedAppRouteRegistry: AppRouteRegistry | undefined;
+    const apiCatalog = () => {
+      const fromExtras = this.extraRoutes
         .filter((r) => r.agentDocs)
         .map((r) => ({ path: r.path, agentDocs: r.agentDocs! }));
+      const fromInstalled = installedAppRouteRegistry?.getCatalog() ?? [];
+      return [...fromExtras, ...fromInstalled];
+    };
 
     // If the app didn't register a queue adapter, spin up the default
     // in-process one here so we can honor `config.queue.concurrency`. The
@@ -265,6 +274,14 @@ export class BoringOS {
     const resolvedQueue =
       this.queueAdapter ??
       createInProcessQueue<AgentRunJob>({ concurrency: this.config.queue?.concurrency });
+
+    // Connector registry is created here (early) so the agent engine
+    // can pass it into the connector-actions catalog provider. The
+    // actual `register()` calls and actionRunner construction happen
+    // later (alongside event-bus setup) — but the registry reference
+    // is stable, so by the time an agent wakes the registry is fully
+    // populated and the provider's `list()` returns everything.
+    const connectorRegistry = createConnectorRegistry();
 
     const agentEngine = createAgentEngine({
       db: dbConn.db,
@@ -276,6 +293,7 @@ export class BoringOS {
       jwtSecret,
       queue: resolvedQueue,
       apiCatalog,
+      connectorRegistry,
     });
 
     // 7. Build workflow engine
@@ -365,8 +383,8 @@ export class BoringOS {
       pluginRegistry.register(def);
     }
 
-    // 10. Setup connectors
-    const connectorRegistry = createConnectorRegistry();
+    // 10. Setup connectors. The registry was created earlier so it
+    // could be passed into the agent engine; here we populate it.
     const eventBus = createEventBus();
     for (const def of this.connectorDefs) {
       connectorRegistry.register(def);
@@ -461,6 +479,9 @@ export class BoringOS {
     // installs) and the tenantProvisionedHook (auto-install of default
     // apps on signup).
     const appRouteRegistry: AppRouteRegistry = createAppRouteRegistry();
+    // Now that the registry exists, point the lazy apiCatalog getter
+    // at it so installed apps' agentDocs reach the agent prompt.
+    installedAppRouteRegistry = appRouteRegistry;
     // Note: appRouteRegistry.attachTo(app) is called AT THE END of route
     // mounting, so the per-app dispatcher catches /api/{appId}/* AFTER
     // all framework /api/* routes have been registered (otherwise the

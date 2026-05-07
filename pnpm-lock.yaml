@@ -78,6 +78,9 @@ importers:
 
   packages/@boringos/agent:
     dependencies:
+      '@boringos/connector':
+        specifier: workspace:*
+        version: link:../connector
       '@boringos/db':
         specifier: workspace:*
         version: link:../db

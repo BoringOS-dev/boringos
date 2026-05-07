@@ -6,6 +6,7 @@ export { memorySkillProvider } from "./memory-skill.js";
 export { agentInstructionsProvider } from "./agent-instructions.js";
 export { protocolProvider } from "./protocol.js";
 export { approvalsSkillProvider } from "./approvals-skill.js";
+export { createConnectorActionsCatalogProvider } from "./connector-actions-catalog.js";
 export { sessionProvider } from "./session.js";
 export { createTaskProvider } from "./task.js";
 export { createCommentsProvider } from "./comments.js";

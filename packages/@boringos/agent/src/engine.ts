@@ -5,6 +5,7 @@ import type { MemoryProvider } from "@boringos/memory";
 import type { RuntimeRegistry, AgentRunCallbacks, CostEvent } from "@boringos/runtime";
 import type { StorageBackend } from "@boringos/drive";
 import type { QueueAdapter } from "@boringos/pipeline";
+import type { ConnectorRegistry } from "@boringos/connector";
 import { createInProcessQueue } from "@boringos/pipeline";
 import { createHook, generateId } from "@boringos/shared";
 import type { Hook } from "@boringos/shared";
@@ -30,6 +31,7 @@ import {
   agentInstructionsProvider,
   protocolProvider,
   approvalsSkillProvider,
+  createConnectorActionsCatalogProvider,
   sessionProvider,
   memoryContextProvider,
   createTenantGuidelinesProvider,
@@ -58,6 +60,14 @@ export interface AgentEngineConfig {
    * A built-in context provider emits these into every agent's system prompt.
    */
   apiCatalog?: ApiCatalogEntry[] | (() => ApiCatalogEntry[]);
+  /**
+   * Connector registry — used by the connector-actions catalog
+   * provider to advertise every callable connector action in the
+   * agent's system prompt. Without this set, agents don't know
+   * what tools they have, and refuse-to-act / can't-act behaviors
+   * compound.
+   */
+  connectorRegistry?: ConnectorRegistry;
 }
 
 function registerDefaultProviders(pipeline: ContextPipeline, config: AgentEngineConfig): void {
@@ -72,6 +82,14 @@ function registerDefaultProviders(pipeline: ContextPipeline, config: AgentEngine
   pipeline.add(agentInstructionsProvider);
   pipeline.add(protocolProvider);
   pipeline.add(approvalsSkillProvider);
+  if (config.connectorRegistry) {
+    pipeline.add(
+      createConnectorActionsCatalogProvider({
+        registry: config.connectorRegistry,
+        db: config.db,
+      }),
+    );
+  }
   if (config.apiCatalog) {
     pipeline.add(createApiCatalogProvider(config.apiCatalog));
   }

@@ -91,6 +91,71 @@ the human's full reasoning — not just yes/no. Read it carefully.
   template"): those conditions are MANDATORY. Apply them.
 - If rejected: propose an alternative or close out gracefully.
   Never re-submit the same request without addressing the
-  rejection reason.`;
+  rejection reason.
+
+### Executing the approved action
+
+When you wake on a parent task and see a recent comment that
+starts with \`**Approved.**\`, the agent_action child task you
+created is now authorized. The decision endpoint includes the
+child's \`proposed_params\` snapshot inline in that comment, so
+you don't need to fetch the child task — everything you need is
+already in the conversation.
+
+**Procedure:**
+
+1. Read the approval comment carefully. It contains:
+   - The decision (\`**Approved.**\`)
+   - The user's note (any modifications they want — these
+     OVERRIDE your original \`proposed_params\`)
+   - A JSON block with the original \`proposed_params\`
+
+2. Build the final action call:
+   - Start from the \`proposed_params\` JSON in the comment
+   - Apply every modification the user noted in their comment
+     (e.g., "send to mira.arora@gmail.com instead" → change \`to\`)
+   - The user's words are AUTHORITATIVE over the original params
+
+3. Find the matching tool in the **"## Available tools — connector
+   actions"** section above. Use its curl skeleton.
+
+4. Execute via Bash + curl:
+   \`\`\`bash
+   curl -sS -X POST $BORINGOS_CALLBACK_URL/api/connectors/actions/<kind>/<action> \\
+     -H "Authorization: Bearer $BORINGOS_CALLBACK_TOKEN" \\
+     -H "Content-Type: application/json" \\
+     -d '<your final params JSON>'
+   \`\`\`
+
+5. Read the response. The framework returns \`{success, data?,
+   error?}\`. On success, \`data\` includes whatever the action
+   produced (Gmail message id, calendar event id, etc.).
+
+6. Post a confirmation comment on YOUR CURRENT TASK summarizing
+   what you did, including the return data so the user has the
+   audit trail:
+   \`\`\`
+   ✓ Sent. Gmail message id: <id>. Recipient: <to>. Subject: <subject>.
+   \`\`\`
+
+7. Mark the parent task done if the action completes the work.
+
+**Failure handling.** If the curl returns \`{"success": false}\`:
+- Check the \`error\` field. Common cases:
+  - \`401\` — auth issue, framework will refresh on retry; just
+    re-run the same call once.
+  - Validation error from the third party — re-read the user's
+    note and your proposed_params for an obvious mismatch.
+- After two failed retries, post a comment explaining the failure
+  and stop. Don't loop indefinitely.
+
+**Don't:**
+- Don't try to authenticate with the third party directly. The
+  bearer token is enough; the framework injects credentials.
+- Don't re-curl arbitrary URLs you weren't taught about. Only the
+  \`/api/connectors/actions/*\` endpoints listed in "Available
+  tools" are valid for this purpose.
+- Don't skip steps 5-7. Without the confirmation comment, the
+  user has no way to know whether you actually executed.`;
   },
 };
