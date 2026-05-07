@@ -10,7 +10,6 @@ import {
   agentRuns,
   agentWakeupRequests,
   runtimes,
-  approvals,
   costEvents,
   activityLog,
   budgetPolicies,
@@ -504,7 +503,8 @@ export function createAdminRoutes(
       assigneeUserId: (body.assigneeUserId as string) ?? c.get("userId") ?? undefined,
       parentId: body.parentId as string | undefined,
       identifier,
-      originKind: "manual",
+      originKind: (body.originKind as string) ?? "manual",
+      proposedParams: body.proposedParams as Record<string, unknown> | undefined,
     });
     const rows = await db.select().from(tasks).where(eq(tasks.id, id)).limit(1);
     emit("task:created", c.get("tenantId"), { taskId: id, title: body.title });
@@ -534,6 +534,128 @@ export function createAdminRoutes(
       and(eq(tasks.id, c.req.param("id")), eq(tasks.tenantId, c.get("tenantId"))),
     );
     return c.json({ ok: true });
+  });
+
+  // POST /tasks/:id/decision — approve / reject an `agent_action` task
+  // (the new approvals-as-tasks model from
+  // docs/blockers/done/task_06).
+  //
+  // Behaviour:
+  //   1. Validate the target is an open `agent_action` task.
+  //   2. Stamp `metadata.approval = { decision, decidedAt, ... }` on
+  //      the child task and flip its status (done / cancelled).
+  //   3. If a comment was supplied, post it on the PARENT task — that
+  //      's where the requesting agent's session lives, and the
+  //      existing auto-wake-on-comment hook will pick it up. If no
+  //      comment, synthesize a minimal "approved"/"rejected" stub so
+  //      the parent's transcript carries the decision either way.
+  //   4. Emit a realtime event + activity log entry.
+  app.post("/tasks/:id/decision", async (c) => {
+    const taskId = c.req.param("id");
+    const tenantId = c.get("tenantId");
+    const userId = c.get("userId");
+    const body = (await c.req.json().catch(() => ({}))) as Record<string, unknown>;
+
+    const kind = body.kind as string | undefined;
+    if (kind !== "approve" && kind !== "reject") {
+      return c.json({ error: "kind must be 'approve' or 'reject'" }, 400);
+    }
+    const userComment = (body.comment as string | undefined)?.trim() || null;
+
+    const taskRows = await db.select().from(tasks).where(
+      and(eq(tasks.id, taskId), eq(tasks.tenantId, tenantId)),
+    ).limit(1);
+    const task = taskRows[0];
+    if (!task) return c.json({ error: "Task not found" }, 404);
+
+    if (task.originKind !== "agent_action") {
+      return c.json(
+        { error: "Decisions only apply to agent_action tasks" },
+        400,
+      );
+    }
+    if (task.status === "done" || task.status === "cancelled") {
+      return c.json({ error: "Task is already decided" }, 409);
+    }
+
+    const decisionAt = new Date();
+    const existingMetadata =
+      (task.metadata as Record<string, unknown> | null) ?? {};
+    const nextMetadata = {
+      ...existingMetadata,
+      approval: {
+        decision: kind,
+        decidedAt: decisionAt.toISOString(),
+        decidedByUserId: userId,
+        comment: userComment,
+      },
+    };
+
+    const nextStatus = kind === "approve" ? "done" : "cancelled";
+    await db.update(tasks).set({
+      metadata: nextMetadata,
+      status: nextStatus,
+      completedAt: kind === "approve" ? decisionAt : null,
+      cancelledAt: kind === "reject" ? decisionAt : null,
+      updatedAt: decisionAt,
+    }).where(eq(tasks.id, taskId));
+
+    // Post the decision comment to the PARENT task (where the
+    // requesting agent's session lives). Without a parent we can't
+    // wake anything — surface a warning but still return success.
+    let parentWokenForAgentId: string | null = null;
+    if (task.parentId) {
+      const parentRows = await db.select().from(tasks).where(
+        and(eq(tasks.id, task.parentId), eq(tasks.tenantId, tenantId)),
+      ).limit(1);
+      const parent = parentRows[0];
+      if (parent) {
+        const commentBody =
+          kind === "approve"
+            ? `**Approved.**${userComment ? `\n\n${userComment}` : ""}`
+            : `**Rejected.**${userComment ? `\n\n${userComment}` : ""}`;
+        const commentId = generateId();
+        await db.insert(taskComments).values({
+          id: commentId,
+          taskId: parent.id,
+          tenantId,
+          body: commentBody,
+          authorUserId: userId,
+        });
+        emit("task:comment_added", tenantId, { taskId: parent.id, commentId });
+
+        // Wake the parent's assignee agent so it resumes its session
+        // and reads the comment. Same shape as the auto-wake-on-comment
+        // hook elsewhere in this file.
+        if (parent.assigneeAgentId) {
+          const outcome = await engine.wake({
+            agentId: parent.assigneeAgentId,
+            tenantId,
+            reason: "comment_posted",
+            taskId: parent.id,
+          });
+          if (outcome.kind === "created") {
+            await engine.enqueue(outcome.wakeupRequestId);
+            parentWokenForAgentId = parent.assigneeAgentId;
+          }
+        }
+      }
+    }
+
+    emit("task:decision_made", tenantId, { taskId, kind });
+    await logActivity(
+      tenantId,
+      kind === "approve" ? "task.approved" : "task.rejected",
+      "task",
+      taskId,
+      { kind, parentTaskId: task.parentId },
+    );
+
+    return c.json({
+      ok: true,
+      decision: kind,
+      parentWokenForAgentId,
+    });
   });
 
   app.post("/tasks/:id/comments", async (c) => {
@@ -797,51 +919,9 @@ export function createAdminRoutes(
     return c.json({ ok: true });
   });
 
-  // ── Approvals ───────────────────────────────────────────────────────────
-
-  app.get("/approvals", async (c) => {
-    const status = c.req.query("status") ?? "pending";
-    const rows = await db.select().from(approvals)
-      .where(and(eq(approvals.tenantId, c.get("tenantId")), eq(approvals.status, status)))
-      .orderBy(desc(approvals.createdAt));
-    return c.json({ approvals: rows });
-  });
-
-  app.get("/approvals/:id", async (c) => {
-    const rows = await db.select().from(approvals).where(
-      and(eq(approvals.id, c.req.param("id")), eq(approvals.tenantId, c.get("tenantId"))),
-    ).limit(1);
-    if (!rows[0]) return c.json({ error: "Approval not found" }, 404);
-    return c.json(rows[0]);
-  });
-
-  app.post("/approvals/:id/approve", async (c) => {
-    const body = (await c.req.json().catch(() => ({}))) as Record<string, unknown>;
-    await db.update(approvals).set({
-      status: "approved",
-      decisionNote: body.note as string | undefined,
-      decidedAt: new Date(),
-      updatedAt: new Date(),
-    }).where(eq(approvals.id, c.req.param("id")));
-
-    emit("approval:decided", c.get("tenantId"), { approvalId: c.req.param("id"), status: "approved" });
-    await logActivity(c.get("tenantId"), "approval.approved", "approval", c.req.param("id"));
-    return c.json({ ok: true });
-  });
-
-  app.post("/approvals/:id/reject", async (c) => {
-    const body = (await c.req.json().catch(() => ({}))) as Record<string, unknown>;
-    await db.update(approvals).set({
-      status: "rejected",
-      decisionNote: body.reason as string | undefined,
-      decidedAt: new Date(),
-      updatedAt: new Date(),
-    }).where(eq(approvals.id, c.req.param("id")));
-
-    emit("approval:decided", c.get("tenantId"), { approvalId: c.req.param("id"), status: "rejected" });
-    await logActivity(c.get("tenantId"), "approval.rejected", "approval", c.req.param("id"));
-    return c.json({ ok: true });
-  });
+  // Approvals routes removed — collapsed into tasks. See
+  // POST /tasks/:id/decision above and
+  // docs/blockers/done/task_06_collapse_approvals_into_tasks.md.
 
   // ── Activity Log ────────────────────────────────────────────────────────
 

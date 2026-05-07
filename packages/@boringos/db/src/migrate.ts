@@ -100,6 +100,8 @@ async function ensureSchema(db: Db): Promise<void> {
       identifier TEXT,
       origin_kind TEXT NOT NULL DEFAULT 'manual',
       origin_id TEXT,
+      proposed_params JSONB,
+      metadata JSONB,
       session_id TEXT,
       request_depth INTEGER NOT NULL DEFAULT 0,
       started_at TIMESTAMPTZ,
@@ -179,27 +181,9 @@ async function ensureSchema(db: Db): Promise<void> {
       created_at TIMESTAMPTZ NOT NULL DEFAULT now()
     );
 
-    CREATE TABLE IF NOT EXISTS approvals (
-      id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-      tenant_id UUID NOT NULL REFERENCES tenants(id),
-      type TEXT NOT NULL,
-      requested_by_agent_id UUID REFERENCES agents(id) ON DELETE SET NULL,
-      requested_by_user_id UUID,
-      status TEXT NOT NULL DEFAULT 'pending',
-      payload JSONB NOT NULL DEFAULT '{}',
-      decision_note TEXT,
-      decided_by_user_id UUID,
-      decided_at TIMESTAMPTZ,
-      created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
-      updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
-    );
-
-    CREATE TABLE IF NOT EXISTS task_approvals (
-      id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-      task_id UUID NOT NULL REFERENCES tasks(id),
-      approval_id UUID NOT NULL REFERENCES approvals(id),
-      created_at TIMESTAMPTZ NOT NULL DEFAULT now()
-    );
+    -- approvals + task_approvals removed: approvals are now tasks
+    -- (origin_kind="agent_action") with metadata.approval. See
+    -- docs/blockers/done/task_06_collapse_approvals_into_tasks.md.
 
     CREATE TABLE IF NOT EXISTS connectors (
       id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -499,6 +483,9 @@ async function ensureSchema(db: Db): Promise<void> {
     ALTER TABLE tasks ADD COLUMN IF NOT EXISTS checkout_run_id UUID;
     -- Pre-filled payload for agent_action tasks (Actions queue)
     ALTER TABLE tasks ADD COLUMN IF NOT EXISTS proposed_params JSONB;
+    -- Open-ended metadata jsonb. Stamps the approval decision on
+    -- agent_action tasks. See task_06 in docs/blockers/done.
+    ALTER TABLE tasks ADD COLUMN IF NOT EXISTS metadata JSONB;
     -- Index for the Actions queue: filter by assignee + status + origin_kind
     CREATE INDEX IF NOT EXISTS tasks_actions_idx ON tasks(tenant_id, assignee_user_id, status, origin_kind);
 

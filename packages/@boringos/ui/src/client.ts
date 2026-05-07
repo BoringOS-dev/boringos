@@ -3,7 +3,6 @@ import type {
   Task,
   TaskComment,
   AgentRun,
-  Approval,
 } from "@boringos/shared";
 
 // ── Client config ────────────────────────────────────────────────────────────
@@ -108,6 +107,16 @@ export interface BoringOSClient {
   deleteTask(taskId: string): Promise<void>;
   postComment(taskId: string, data: { body: string }): Promise<{ id: string }>;
   assignTask(taskId: string, agentId: string, wake?: boolean): Promise<Record<string, unknown>>;
+  /**
+   * Approve or reject an agent-action task. The optional comment is
+   * posted on the PARENT task (where the requesting agent's session
+   * lives) and auto-wakes that agent.
+   */
+  decideTask(
+    taskId: string,
+    kind: "approve" | "reject",
+    comment?: string,
+  ): Promise<{ ok: true; decision: string; parentWokenForAgentId: string | null }>;
   addWorkProduct(taskId: string, data: { kind: string; title: string; url?: string }): Promise<{ id: string }>;
 
   // Runs
@@ -123,11 +132,8 @@ export interface BoringOSClient {
   setDefaultRuntime(runtimeId: string): Promise<void>;
   getRuntimeModels(runtimeId: string): Promise<RuntimeModel[]>;
 
-  // Approvals
-  getApprovals(status?: string): Promise<Approval[]>;
-  getApproval(approvalId: string): Promise<Approval>;
-  approveApproval(approvalId: string, note?: string): Promise<void>;
-  rejectApproval(approvalId: string, reason?: string): Promise<void>;
+  // Approvals — collapsed into tasks (see decideTask above; tasks
+  // with origin_kind="agent_action" carry the decision affordance).
 
   // Cost
   getCosts(): Promise<Record<string, unknown>[]>;
@@ -260,6 +266,11 @@ export function createBoringOSClient(config: BoringOSClientConfig): BoringOSClie
     deleteTask: (taskId) => del(`${api}/tasks/${taskId}`),
     postComment: (taskId, data) => post<{ id: string }>(`${api}/tasks/${taskId}/comments`, data),
     assignTask: (taskId, agentId, wake?) => post<Record<string, unknown>>(`${api}/tasks/${taskId}/assign`, { agentId, wake }),
+    decideTask: (taskId, kind, comment) =>
+      post<{ ok: true; decision: string; parentWokenForAgentId: string | null }>(
+        `${api}/tasks/${taskId}/decision`,
+        { kind, comment },
+      ),
     addWorkProduct: (taskId, data) => post<{ id: string }>(`${api}/tasks/${taskId}/work-products`, data),
 
     // Runs
@@ -287,16 +298,6 @@ export function createBoringOSClient(config: BoringOSClientConfig): BoringOSClie
       const res = await get<{ models: RuntimeModel[] }>(`${api}/runtimes/${runtimeId}/models`);
       return res.models;
     },
-
-    // Approvals
-    getApprovals: async (status?) => {
-      const qs = status ? `?status=${status}` : "";
-      const res = await get<{ approvals: Approval[] }>(`${api}/approvals${qs}`);
-      return res.approvals;
-    },
-    getApproval: (approvalId) => get<Approval>(`${api}/approvals/${approvalId}`),
-    approveApproval: async (approvalId, note?) => { await post(`${api}/approvals/${approvalId}/approve`, { note }); },
-    rejectApproval: async (approvalId, reason?) => { await post(`${api}/approvals/${approvalId}/reject`, { reason }); },
 
     // Costs
     getCosts: async () => {

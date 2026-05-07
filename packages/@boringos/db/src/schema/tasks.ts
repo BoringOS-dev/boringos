@@ -28,6 +28,13 @@ export const tasks = pgTable(
      */
     proposedParams: jsonb("proposed_params").$type<Record<string, unknown>>(),
     /**
+     * Open-ended metadata jsonb. Used today by the approvals-as-tasks
+     * design to stamp `metadata.approval = { decision, decidedAt,
+     * decidedByUserId, comment }` on `origin_kind='agent_action'`
+     * tasks. Future fields can ride here without schema churn.
+     */
+    metadata: jsonb("metadata").$type<Record<string, unknown>>(),
+    /**
      * The Claude Code session id this task's conversation lives in.
      * Set on first run completion; resumed on every subsequent wake of
      * this task. One session per task, full stop — no per-agent

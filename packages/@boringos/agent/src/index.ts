@@ -29,11 +29,11 @@ export {
   memorySkillProvider,
   agentInstructionsProvider,
   protocolProvider,
+  approvalsSkillProvider,
   sessionProvider,
   createTaskProvider,
   createCommentsProvider,
   memoryContextProvider,
-  createApprovalProvider,
   createApiCatalogProvider,
   chiefOfStaffProvider,
 } from "./providers/index.js";

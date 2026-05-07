@@ -152,3 +152,59 @@ export function originLabel(kind: string): string {
 export function statusLabel(status: string): string {
   return status.replace(/_/g, " ");
 }
+
+// ── Approval decision helpers ───────────────────────────────────────
+
+export interface ApprovalDecision {
+  decision: "approve" | "reject";
+  decidedAt: string;
+  decidedByUserId: string | null;
+  comment: string | null;
+}
+
+export function readApprovalDecision(task: Task): ApprovalDecision | null {
+  const m = task.metadata;
+  if (!m || typeof m !== "object") return null;
+  const a = (m as { approval?: unknown }).approval;
+  if (!a || typeof a !== "object") return null;
+  const obj = a as Record<string, unknown>;
+  if (obj.decision !== "approve" && obj.decision !== "reject") return null;
+  if (typeof obj.decidedAt !== "string") return null;
+  return {
+    decision: obj.decision,
+    decidedAt: obj.decidedAt,
+    decidedByUserId:
+      typeof obj.decidedByUserId === "string" ? obj.decidedByUserId : null,
+    comment: typeof obj.comment === "string" ? obj.comment : null,
+  };
+}
+
+export function readProposedParams(task: Task): Record<string, unknown> | null {
+  return task.proposedParams ?? null;
+}
+
+/**
+ * Friendly one-line summary of proposed params for the decision card
+ * header — "send_email to mira@acme.com" / "spend $50 on credits".
+ * Falls back to the action `kind` if the shape isn't recognized.
+ */
+export function summarizeProposedParams(p: Record<string, unknown> | null): string {
+  if (!p) return "Action requested";
+  const kind = typeof p.kind === "string" ? p.kind : null;
+  if (!kind) return "Action requested";
+
+  switch (kind) {
+    case "send_email":
+      return `Send email to ${p.to ?? "?"}`;
+    case "modify_email":
+      return `Modify Gmail labels on ${p.messageId ?? "message"}`;
+    case "create_event":
+      return `Create calendar event "${p.summary ?? "event"}"`;
+    case "delete_event":
+      return `Delete calendar event ${p.eventId ?? ""}`;
+    case "spend":
+      return `Spend ${p.currency ?? "$"}${p.amount ?? "?"} on ${p.purpose ?? "(unspecified)"}`;
+    default:
+      return kind.replace(/_/g, " ");
+  }
+}

@@ -223,37 +223,10 @@ export function useSettings() {
   };
 }
 
-// ── Approvals ────────────────────────────────────────────────────────────────
-
-export function useApprovals(status?: string) {
-  const client = useClient();
-  const queryClient = useQueryClient();
-
-  const query = useQuery({
-    queryKey: ["approvals", status],
-    queryFn: () => client.getApprovals(status),
-  });
-
-  const approve = useMutation({
-    mutationFn: (params: { approvalId: string; note?: string }) =>
-      client.approveApproval(params.approvalId, params.note),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["approvals"] }),
-  });
-
-  const reject = useMutation({
-    mutationFn: (params: { approvalId: string; reason?: string }) =>
-      client.rejectApproval(params.approvalId, params.reason),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["approvals"] }),
-  });
-
-  return {
-    approvals: query.data ?? [],
-    isLoading: query.isLoading,
-    error: query.error,
-    approve: approve.mutateAsync,
-    reject: reject.mutateAsync,
-  };
-}
+// `useApprovals` removed — approvals collapsed into tasks
+// (origin_kind="agent_action"). Use `useTasks()` and pick rows where
+// origin_kind is `agent_action`; the DecisionCard in the Tasks UI
+// is the approve/reject affordance.
 
 // ── Connectors ───────────────────────────────────────────────────────────────
 

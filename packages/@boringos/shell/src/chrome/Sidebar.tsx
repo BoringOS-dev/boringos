@@ -33,7 +33,6 @@ const WORKSPACE_ITEMS: NavItem[] = [
   { to: "/inbox", label: "Inbox", icon: "✉" },
   { to: "/calendar", label: "Calendar", icon: "▦" },
   { to: "/tasks", label: "Tasks", icon: "☑" },
-  { to: "/approvals", label: "Approvals", icon: "→" },
 ];
 
 const TOOL_ITEMS: NavItem[] = [

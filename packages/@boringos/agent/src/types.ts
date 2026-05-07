@@ -63,7 +63,6 @@ export interface ContextBuildEvent {
   previousSessionSummary?: string;
   callbackUrl: string;
   callbackToken: string;
-  approvalId?: string;
   wakeCommentId?: string;
 }
 

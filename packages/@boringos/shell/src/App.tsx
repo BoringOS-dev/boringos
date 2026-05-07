@@ -78,8 +78,10 @@ export function App() {
                 <Route path="workflows" element={<Workflows />} />
                 <Route path="settings" element={<Settings />} />
 
+                {/* Approvals are tasks now — keep a redirect so old
+                    bookmarks still land somewhere useful. */}
+                <Route path="approvals" element={<Navigate to="/tasks?tab=my-todos" replace />} />
                 {/* Still placeholders */}
-                <Route path="approvals" element={<PlaceholderScreen title="Approvals" />} />
                 <Route path="drive" element={<PlaceholderScreen title="Drive" />} />
                 <Route path="connectors" element={<Connectors />} />
                 <Route path="apps" element={<Apps />} />

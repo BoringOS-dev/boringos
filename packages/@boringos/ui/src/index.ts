@@ -16,7 +16,6 @@ export type {
 export type {
   Agent,
   AgentRun,
-  Approval,
   Task,
   TaskComment,
 } from "@boringos/shared";
@@ -34,7 +33,6 @@ export {
   useRuntimes,
   useRuntimeModels,
   useSettings,
-  useApprovals,
   useConnectors,
   useProjects,
   useGoals,

@@ -5,7 +5,7 @@
 // slot registry (per A2 acceptance), so installed apps populate this
 // screen with their own tiles.
 
-import { useAgents, useApprovals, useInbox, useTasks } from "@boringos/ui";
+import { useAgents, useInbox, useTasks } from "@boringos/ui";
 
 import { useAuth } from "../auth/AuthProvider.js";
 import { useSlot } from "../slots/context.js";
@@ -28,7 +28,11 @@ export function Home() {
   const { tasks } = useTasks();
   const { agents } = useAgents();
   const inbox = useInbox("unread");
-  const { approvals } = useApprovals("pending");
+  // Approvals are agent_action tasks now — count them from the same
+  // tasks list so we don't fan out a second request.
+  const pendingApprovals = (tasks ?? []).filter(
+    (t) => t.originKind === "agent_action" && t.status !== "done" && t.status !== "cancelled",
+  );
 
   const widgets = useSlot("dashboardWidgets");
 
@@ -43,7 +47,7 @@ export function Home() {
           <StatTile label="Open tasks" value={tasks?.length ?? 0} />
           <StatTile label="Active agents" value={agents?.length ?? 0} />
           <StatTile label="Unread inbox" value={inbox.data?.length ?? 0} />
-          <StatTile label="Pending approvals" value={approvals?.length ?? 0} />
+          <StatTile label="Pending approvals" value={pendingApprovals.length} />
         </div>
 
         {widgets.length > 0 && (

@@ -35,8 +35,8 @@ export type TaskPriority = (typeof TASK_PRIORITIES)[number];
 export const RUN_STATUSES = ["queued", "running", "done", "failed", "cancelled", "skipped"] as const;
 export type RunStatus = (typeof RUN_STATUSES)[number];
 
-export const APPROVAL_STATUSES = ["pending", "approved", "rejected"] as const;
-export type ApprovalStatus = (typeof APPROVAL_STATUSES)[number];
+// APPROVAL_STATUSES removed — approvals are tasks now; their state
+// rides on tasks.status (todo / done / cancelled).
 
 export const ROUTINE_STATUSES = ["active", "paused", "archived"] as const;
 export type RoutineStatus = (typeof ROUTINE_STATUSES)[number];
@@ -85,6 +85,11 @@ export interface Task extends Identifiable, TenantScoped, Timestamped {
   identifier: string | null;
   originKind: string;
   originId: string | null;
+  /** Pre-filled payload for agent_action tasks. */
+  proposedParams: Record<string, unknown> | null;
+  /** Open-ended jsonb. Currently stamped with `approval` for
+   *  agent_action tasks after the user decides. */
+  metadata: Record<string, unknown> | null;
   requestDepth: number;
   startedAt: Date | null;
   completedAt: Date | null;
@@ -114,16 +119,9 @@ export interface AgentRun extends Identifiable, TenantScoped, Timestamped {
   finishedAt: Date | null;
 }
 
-export interface Approval extends Identifiable, TenantScoped, Timestamped {
-  type: string;
-  requestedByAgentId: string | null;
-  requestedByUserId: string | null;
-  status: ApprovalStatus;
-  payload: Record<string, unknown>;
-  decisionNote: string | null;
-  decidedByUserId: string | null;
-  decidedAt: Date | null;
-}
+// `Approval` interface removed — approvals are now tasks
+// (origin_kind="agent_action") with metadata.approval. See
+// docs/blockers/done/task_06_collapse_approvals_into_tasks.md.
 
 export interface Routine extends Identifiable, TenantScoped, Timestamped {
   title: string;

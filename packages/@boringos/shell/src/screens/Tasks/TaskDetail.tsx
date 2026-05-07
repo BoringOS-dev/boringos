@@ -12,6 +12,7 @@ import type { Agent } from "@boringos/ui";
 
 import { Markdown } from "../../components/Markdown.js";
 import { LoadingState } from "../_shared.js";
+import { DecisionCard } from "./DecisionCard.js";
 import { TaskActionToolbar } from "./TaskActionToolbar.js";
 import { TaskCommentsThread } from "./TaskCommentsThread.js";
 import { TaskReplyBox } from "./TaskReplyBox.js";
@@ -132,6 +133,13 @@ export function TaskDetail({ taskId, meId, onChanged }: TaskDetailProps) {
       </header>
 
       <div className="px-6 py-4 space-y-5">
+        {/* Decision card: only renders for `agent_action` tasks. Sits
+            above the description so the affordance is the first thing
+            the user sees when opening an approval-request task. */}
+        {t.originKind === "agent_action" && (
+          <DecisionCard task={t} onDecided={onChanged} />
+        )}
+
         {t.description && (
           <section>
             <h3 className="text-[10px] uppercase tracking-wider text-slate-500 font-medium">

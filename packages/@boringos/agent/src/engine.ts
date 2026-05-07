@@ -29,13 +29,13 @@ import {
   memorySkillProvider,
   agentInstructionsProvider,
   protocolProvider,
+  approvalsSkillProvider,
   sessionProvider,
   memoryContextProvider,
   createTenantGuidelinesProvider,
   createDriveSkillProvider,
   createTaskProvider,
   createCommentsProvider,
-  createApprovalProvider,
   createHierarchyProvider,
   createApiCatalogProvider,
   type ApiCatalogEntry,
@@ -71,6 +71,7 @@ function registerDefaultProviders(pipeline: ContextPipeline, config: AgentEngine
   pipeline.add(memorySkillProvider);
   pipeline.add(agentInstructionsProvider);
   pipeline.add(protocolProvider);
+  pipeline.add(approvalsSkillProvider);
   if (config.apiCatalog) {
     pipeline.add(createApiCatalogProvider(config.apiCatalog));
   }
@@ -80,7 +81,6 @@ function registerDefaultProviders(pipeline: ContextPipeline, config: AgentEngine
   pipeline.add(createTaskProvider({ db: config.db }));
   pipeline.add(createCommentsProvider({ db: config.db }));
   pipeline.add(memoryContextProvider);
-  pipeline.add(createApprovalProvider({ db: config.db }));
 }
 
 export function createAgentEngine(config: AgentEngineConfig): AgentEngine {
