@@ -56,6 +56,9 @@ The framework handles:
 - **Device auth** — CLI login flow (generate code → browser approve → poll for token)
 - **Evaluations** — A/B test agent quality with structured test cases
 - **Inbox** — receive and triage external messages, convert to tasks, assign to users via `assigneeUserId`
+- **Inbox UI (`@boringos/shell`)** — two-pane list + detail, threaded conversations, sender / time / triage chips, AI-drafted replies inline, click-to-open, bulk select (Cmd / Shift), snooze with live wake-in countdown, archive / mark-read / mark-unread, reply composer that sends through Gmail
+- **Bidirectional Gmail sync** — actions on Hebbs items mirror to Gmail labels (archive → remove `INBOX`, mark read/unread → toggle `UNREAD`, snooze → remove `INBOX` + add `Hebbs/Snoozed`, snooze wake → restore `INBOX`); reverse direction polls `users.history.list` every 2 minutes so changes made directly in Gmail flow back to Hebbs
+- **Per-task sessions** — every CLI session is bound to a task. Different tasks for the same agent get independent sessions; comments on a task resume that task's transcript. No per-agent shared transcript, no cross-task bleed-through (see [`docs/blockers/done/task_02_session_per_task.md`](docs/blockers/done/task_02_session_per_task.md))
 - **Custom schema** — `.schema(ddl)` to add your own tables that reference framework tables
 - **Entity linking** — link domain entities (contacts, deals) to tasks, runs, inbox items
 - **Event-driven architecture** — apps emit and subscribe to events via `EventBus`, agents wake reactively on `inbox.item_created` and custom events
@@ -122,13 +125,14 @@ await createTeam(db, "engineering", { tenantId });
 | `@boringos/runtime` | 6 runtime modules + registry + subprocess spawning |
 | `@boringos/memory` | `MemoryProvider` interface + Hebbs provider + null provider |
 | `@boringos/drive` | `StorageBackend` interface + local filesystem implementation |
-| `@boringos/db` | Drizzle schema (17 tables) + embedded Postgres + migration manager |
+| `@boringos/db` | Drizzle schema + embedded Postgres + migration manager |
 | `@boringos/workflow` | DAG workflow engine + block handlers + workflow store |
 | `@boringos/workflow-ui` | React components for visualizing + editing workflows — DAG canvas, block palette, config forms, run-diff view |
 | `@boringos/pipeline` | Pluggable job queue — in-process (default) or BullMQ (opt-in) |
 | `@boringos/connector` | Connector SDK — interfaces, registry, OAuth, EventBus, test harness |
 | `@boringos/connector-slack` | Slack reference connector (messages, threads, reactions) |
-| `@boringos/connector-google` | Google Workspace connector (Gmail + Calendar) |
+| `@boringos/connector-google` | Google Workspace connector — Gmail (`list_emails`, `read_email`, `send_email`, `reply_email`, `archive_email`, `modify_email`, `ensure_label`, `list_history`) and Calendar |
+| `@boringos/shell` | Hebbs shell SPA — Inbox / Tasks / Agents / Connectors / Settings screens |
 | `@boringos/ui` | Typed API client + headless React hooks (TanStack Query) |
 | `create-boringos` | CLI generator — `npx create-boringos my-app` |
 | `@boringos/shared` | Base types, constants, Hook utility, ID generation |
