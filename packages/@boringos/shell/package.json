@@ -14,12 +14,14 @@
     "@boringos/app-sdk": "workspace:^",
     "@boringos/ui": "workspace:*",
     "@tanstack/react-query": "^5.0.0",
+    "dompurify": "^3.2.0",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
     "react-router-dom": "^7.0.0"
   },
   "devDependencies": {
     "@tailwindcss/vite": "^4.0.0",
+    "@types/dompurify": "^3.0.5",
     "@types/react": "^19.0.0",
     "@types/react-dom": "^19.0.0",
     "@vitejs/plugin-react": "^4.0.0",

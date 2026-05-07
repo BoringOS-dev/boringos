@@ -556,6 +556,12 @@ async function ensureSchema(db: Db): Promise<void> {
     -- Add assignee_user_id to inbox_items if it doesn't exist (for existing DBs)
     ALTER TABLE inbox_items ADD COLUMN IF NOT EXISTS assignee_user_id TEXT;
 
+    -- Snooze: wall-clock when the framework should flip the row back to unread
+    ALTER TABLE inbox_items ADD COLUMN IF NOT EXISTS snooze_until TIMESTAMPTZ;
+    CREATE INDEX IF NOT EXISTS inbox_items_snooze_until_idx
+      ON inbox_items (snooze_until)
+      WHERE status = 'snoozed';
+
     -- Add model column to agent_runs for tracking which model was used
     ALTER TABLE agent_runs ADD COLUMN IF NOT EXISTS model TEXT;
 

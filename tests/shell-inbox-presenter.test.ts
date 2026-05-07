@@ -10,6 +10,14 @@ import {
   formatAbsoluteTime,
   parseSenderName,
   snippetFrom,
+  readTriage,
+  countDrafts,
+  readDrafts,
+  scoreTier,
+  classificationChipClass,
+  groupByThread,
+  readThreadId,
+  threadMatchesQuery,
 } from "@boringos/shell/screens/Inbox/presenter.js";
 
 const NOW = new Date("2026-05-07T12:00:00Z");
@@ -80,6 +88,237 @@ describe("parseSenderName", () => {
     expect(parseSenderName(null)).toBe("(unknown sender)");
     expect(parseSenderName(undefined)).toBe("(unknown sender)");
     expect(parseSenderName("")).toBe("(unknown sender)");
+  });
+});
+
+describe("readTriage", () => {
+  it("returns null when metadata is missing or has no triage", () => {
+    expect(readTriage({ metadata: null })).toBeNull();
+    expect(readTriage({ metadata: {} })).toBeNull();
+    expect(readTriage({ metadata: { other: "thing" } })).toBeNull();
+  });
+
+  it("parses a typical triage block", () => {
+    const t = readTriage({
+      metadata: {
+        triage: {
+          classification: "lead",
+          score: 82,
+          rationale: "High-quality lead",
+          classifiedAt: "2026-05-07T10:00:00Z",
+        },
+      },
+    });
+    expect(t).toEqual({
+      classification: "lead",
+      score: 82,
+      rationale: "High-quality lead",
+      classifiedAt: "2026-05-07T10:00:00Z",
+    });
+  });
+
+  it("normalizes unknown classification values", () => {
+    expect(
+      readTriage({ metadata: { triage: { classification: "weird-thing" } } })?.classification,
+    ).toBe("unknown");
+  });
+
+  it("normalizes case-insensitively", () => {
+    expect(
+      readTriage({ metadata: { triage: { classification: "LEAD" } } })?.classification,
+    ).toBe("lead");
+  });
+
+  it("defaults missing fields", () => {
+    const t = readTriage({ metadata: { triage: { classification: "spam" } } });
+    expect(t?.score).toBe(0);
+    expect(t?.rationale).toBe("");
+    expect(t?.classifiedAt).toBeNull();
+  });
+});
+
+describe("countDrafts", () => {
+  it("returns 0 when no drafts", () => {
+    expect(countDrafts({ metadata: null })).toBe(0);
+    expect(countDrafts({ metadata: { triage: {} } })).toBe(0);
+    expect(countDrafts({ metadata: { replyDrafts: "not-array" } })).toBe(0);
+  });
+
+  it("returns the array length", () => {
+    expect(countDrafts({ metadata: { replyDrafts: [{ body: "a" }, { body: "b" }] } })).toBe(2);
+  });
+});
+
+describe("readDrafts", () => {
+  it("returns [] when no metadata or no drafts", () => {
+    expect(readDrafts({ metadata: null })).toEqual([]);
+    expect(readDrafts({ metadata: {} })).toEqual([]);
+    expect(readDrafts({ metadata: { replyDrafts: "not-array" } })).toEqual([]);
+  });
+
+  it("normalizes well-formed drafts", () => {
+    const got = readDrafts({
+      metadata: {
+        replyDrafts: [
+          { author: "generic-replier", draftedAt: "2026-05-07T10:00:00Z", body: "Hi there" },
+          { body: "Just body" },
+        ],
+      },
+    });
+    expect(got).toHaveLength(2);
+    expect(got[0]?.author).toBe("generic-replier");
+    expect(got[0]?.draftedAt).toBe("2026-05-07T10:00:00Z");
+    expect(got[1]?.author).toBe("unknown");
+    expect(got[1]?.draftedAt).toBeNull();
+  });
+
+  it("filters drafts that have no body string", () => {
+    const got = readDrafts({
+      metadata: {
+        replyDrafts: [{ body: "" }, { body: 42 }, null, "string-not-object"],
+      },
+    });
+    expect(got).toEqual([]);
+  });
+});
+
+describe("scoreTier", () => {
+  it("90+ → high", () => {
+    expect(scoreTier(95)).toBe("high");
+  });
+  it("70–89 → high", () => {
+    expect(scoreTier(82)).toBe("high");
+    expect(scoreTier(70)).toBe("high");
+  });
+  it("40–69 → medium", () => {
+    expect(scoreTier(65)).toBe("medium");
+    expect(scoreTier(40)).toBe("medium");
+  });
+  it("20–39 → low", () => {
+    expect(scoreTier(25)).toBe("low");
+    expect(scoreTier(20)).toBe("low");
+  });
+  it("<20 → muted", () => {
+    expect(scoreTier(5)).toBe("muted");
+    expect(scoreTier(0)).toBe("muted");
+  });
+});
+
+describe("readThreadId", () => {
+  it("returns metadata.threadId when present", () => {
+    expect(
+      readThreadId({ id: "x", createdAt: new Date(), source: "google.gmail",
+        metadata: { threadId: "t123" } }),
+    ).toBe("t123");
+  });
+
+  it("falls back to item.id when threadId missing", () => {
+    expect(
+      readThreadId({ id: "abc", createdAt: new Date(), source: "google.gmail",
+        metadata: { other: "thing" } }),
+    ).toBe("abc");
+  });
+});
+
+describe("groupByThread", () => {
+  const mk = (id: string, threadId: string | null, when: string) => ({
+    id,
+    createdAt: new Date(when),
+    source: "google.gmail",
+    metadata: threadId ? { threadId } : null,
+  });
+
+  it("groups items sharing a threadId", () => {
+    const items = [
+      mk("a", "t1", "2026-05-01T10:00:00Z"),
+      mk("b", "t1", "2026-05-02T10:00:00Z"),
+      mk("c", "t1", "2026-05-03T10:00:00Z"),
+    ];
+    const threads = groupByThread(items);
+    expect(threads).toHaveLength(1);
+    expect(threads[0]?.threadId).toBe("t1");
+    expect(threads[0]?.items.map((i) => i.id)).toEqual(["a", "b", "c"]);
+    expect(threads[0]?.latest.id).toBe("c");
+  });
+
+  it("creates singleton threads for items without threadId", () => {
+    const items = [mk("solo1", null, "2026-05-01T10:00:00Z"), mk("solo2", null, "2026-05-02T10:00:00Z")];
+    const threads = groupByThread(items);
+    expect(threads).toHaveLength(2);
+    expect(threads[0]?.items).toHaveLength(1);
+    expect(threads[1]?.items).toHaveLength(1);
+  });
+
+  it("orders threads newest-first by latest message", () => {
+    const items = [
+      mk("oldA", "tA", "2026-05-01T10:00:00Z"),
+      mk("newB", "tB", "2026-05-05T10:00:00Z"),
+      mk("midA", "tA", "2026-05-04T10:00:00Z"),
+    ];
+    const threads = groupByThread(items);
+    expect(threads[0]?.threadId).toBe("tB"); // newest single message
+    expect(threads[1]?.threadId).toBe("tA"); // older overall but still after sort
+  });
+});
+
+describe("threadMatchesQuery", () => {
+  const thread = {
+    threadId: "t1",
+    items: [
+      {
+        id: "a",
+        createdAt: new Date("2026-05-01"),
+        source: "google.gmail",
+        subject: "Hello world",
+        from: "Alice <alice@example.com>",
+        body: "Discussing the Q2 roadmap",
+        metadata: { triage: { classification: "lead", rationale: "interesting prospect" } },
+      },
+    ],
+    latest: {
+      id: "a",
+      createdAt: new Date("2026-05-01"),
+      source: "google.gmail",
+      subject: "Hello world",
+      from: "Alice <alice@example.com>",
+      body: "Discussing the Q2 roadmap",
+      metadata: { triage: { classification: "lead", rationale: "interesting prospect" } },
+    },
+  };
+
+  it("matches against subject", () => {
+    expect(threadMatchesQuery(thread, "hello")).toBe(true);
+  });
+  it("matches against from", () => {
+    expect(threadMatchesQuery(thread, "alice")).toBe(true);
+  });
+  it("matches against body", () => {
+    expect(threadMatchesQuery(thread, "roadmap")).toBe(true);
+  });
+  it("matches against classification", () => {
+    expect(threadMatchesQuery(thread, "lead")).toBe(true);
+  });
+  it("matches against triage rationale", () => {
+    expect(threadMatchesQuery(thread, "prospect")).toBe(true);
+  });
+  it("returns false for non-matching queries", () => {
+    expect(threadMatchesQuery(thread, "xyz999")).toBe(false);
+  });
+  it("returns true for empty query", () => {
+    expect(threadMatchesQuery(thread, "")).toBe(true);
+    expect(threadMatchesQuery(thread, "   ")).toBe(true);
+  });
+});
+
+describe("classificationChipClass", () => {
+  it("returns distinct classes for each classification", () => {
+    const lead = classificationChipClass("lead");
+    const reply = classificationChipClass("reply");
+    expect(lead).not.toBe(reply);
+    expect(lead).toContain("emerald");
+    expect(reply).toContain("blue");
+    expect(classificationChipClass("spam")).toContain("rose");
+    expect(classificationChipClass("newsletter")).toContain("amber");
   });
 });
 

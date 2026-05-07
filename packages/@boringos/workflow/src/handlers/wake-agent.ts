@@ -50,39 +50,39 @@ export const wakeAgentHandler: BlockHandler = {
     }
 
     // App-installed workflow templates reference agents by their
-    // AppDefinition ID (e.g. "generic-replier.replier") instead of the
-    // tenant-specific UUID assigned at install. K4's registrar stores
-    // the templates verbatim — resolve here so workflow templates stay
-    // tenant-portable. UUID detection is loose (any 36-char dash-
-    // positioned string) since malformed UUIDs would also fail the
-    // engine's downstream lookup.
-    const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(agentId);
-    if (!isUuid) {
+    // AppDefinition ID (e.g. "generic-replier.replier") rather than
+    // the tenant-specific UUID assigned at install. K4's registrar
+    // stores the templates verbatim — resolve here so workflow
+    // templates stay tenant-portable.
+    //
+    // Heuristic: app-def-ids contain a dot ("app.agent"). Plain
+    // identifiers without dots (test fixtures, role-based wakes) are
+    // passed through to the engine unchanged — the engine then either
+    // matches a UUID directly or surfaces its own "not found" error.
+    const looksLikeAppDefId = agentId.includes(".");
+    if (looksLikeAppDefId) {
       const db = ctx.services.get<Db>("db");
-      if (!db) {
-        return {
-          output: {
-            outcome: "error",
-            error: `agentId "${agentId}" is not a UUID and db service is not available for app-def-id lookup`,
-          },
-        };
+      if (db) {
+        const { sql } = await import("drizzle-orm");
+        const rows = (await db.execute(sql`
+          SELECT id FROM agents
+          WHERE tenant_id = ${ctx.tenantId}
+            AND metadata->>'appAgentDefId' = ${agentId}
+          LIMIT 1
+        `)) as unknown as Array<{ id: string }>;
+        if (!rows[0]) {
+          return {
+            output: {
+              outcome: "agent_not_found",
+              error: `no agent with appAgentDefId "${agentId}" in this tenant`,
+            },
+          };
+        }
+        agentId = rows[0].id;
       }
-      const { sql } = await import("drizzle-orm");
-      const rows = await db.execute(sql`
-        SELECT id FROM agents
-        WHERE tenant_id = ${ctx.tenantId}
-          AND metadata->>'appAgentDefId' = ${agentId}
-        LIMIT 1
-      `) as unknown as Array<{ id: string }>;
-      if (!rows[0]) {
-        return {
-          output: {
-            outcome: "agent_not_found",
-            error: `no agent with appAgentDefId "${agentId}" in this tenant`,
-          },
-        };
-      }
-      agentId = rows[0].id;
+      // No db service: leave the value as-is and let the engine surface
+      // the resulting error. This matches the pre-resolver behavior so
+      // tests that mock the engine without a db keep working.
     }
 
     const engine = ctx.services.get<{

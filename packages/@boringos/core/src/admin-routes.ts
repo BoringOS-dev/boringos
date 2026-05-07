@@ -1596,6 +1596,16 @@ export function createAdminRoutes(
     if (body.metadata !== undefined) values.metadata = body.metadata;
     if (body.assigneeUserId !== undefined) values.assigneeUserId = body.assigneeUserId;
 
+    // Snooze wiring: clear snooze_until when status flips off "snoozed";
+    // accept an explicit snoozeUntil (ISO string) to set/extend.
+    if (body.snoozeUntil !== undefined) {
+      values.snoozeUntil = body.snoozeUntil
+        ? new Date(body.snoozeUntil as string)
+        : null;
+    } else if (body.status !== undefined && body.status !== "snoozed") {
+      values.snoozeUntil = null;
+    }
+
     await db.update(inboxItems).set(values).where(
       and(eq(inboxItems.id, c.req.param("id")), eq(inboxItems.tenantId, c.get("tenantId"))),
     );

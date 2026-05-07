@@ -14,6 +14,12 @@ export const inboxItems = pgTable("inbox_items", {
   metadata: jsonb("metadata").$type<Record<string, unknown>>(),
   linkedTaskId: uuid("linked_task_id"),
   archivedAt: timestamp("archived_at", { withTimezone: true }),
+  /**
+   * When status='snoozed', the wall-clock at which the framework's
+   * snooze ticker should flip the row back to 'unread'. NULL when
+   * the row isn't snoozed.
+   */
+  snoozeUntil: timestamp("snooze_until", { withTimezone: true }),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
 });

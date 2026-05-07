@@ -4,6 +4,221 @@
 // formatting/parsing logic can be unit-tested without a jsdom harness
 // (same pattern as Connectors/connectorsPresenter.ts).
 
+export type Classification =
+  | "lead"
+  | "reply"
+  | "internal"
+  | "newsletter"
+  | "spam"
+  | "unknown";
+
+export interface TriageView {
+  classification: Classification;
+  score: number;
+  rationale: string;
+  classifiedAt: string | null;
+}
+
+interface ItemLike {
+  metadata?: Record<string, unknown> | null;
+}
+
+interface ThreadingItem extends ItemLike {
+  id: string;
+  createdAt: string | Date;
+  source: string;
+}
+
+/** A thread is the visible unit in the inbox list. */
+export interface Thread<T extends ThreadingItem = ThreadingItem> {
+  /** Stable identifier — uses metadata.threadId when present, else item.id. */
+  threadId: string;
+  /** All items belonging to this thread, sorted oldest → newest. */
+  items: T[];
+  /** Latest item (most recent createdAt) — used for the list row. */
+  latest: T;
+}
+
+/** Read the threadId off an item's metadata, falling back to item.id. */
+export function readThreadId(item: ThreadingItem): string {
+  const m = item.metadata;
+  if (m && typeof m === "object") {
+    const tid = (m as { threadId?: unknown }).threadId;
+    if (typeof tid === "string" && tid.length > 0) return tid;
+  }
+  return item.id;
+}
+
+/**
+ * Group inbox items by Gmail's threadId (or any source's threadId
+ * field on metadata). Items without one form singleton threads.
+ *
+ * Output is ordered newest → oldest by the latest message in each
+ * thread, so the freshest activity bubbles to the top of the list.
+ */
+export function groupByThread<T extends ThreadingItem>(items: T[]): Thread<T>[] {
+  const byThread = new Map<string, T[]>();
+  for (const item of items) {
+    const tid = readThreadId(item);
+    const list = byThread.get(tid);
+    if (list) list.push(item);
+    else byThread.set(tid, [item]);
+  }
+
+  const threads: Thread<T>[] = [];
+  for (const [threadId, group] of byThread) {
+    const sorted = [...group].sort(
+      (a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime(),
+    );
+    threads.push({ threadId, items: sorted, latest: sorted[sorted.length - 1]! });
+  }
+
+  threads.sort(
+    (a, b) =>
+      new Date(b.latest.createdAt).getTime() - new Date(a.latest.createdAt).getTime(),
+  );
+  return threads;
+}
+
+/**
+ * Read the triage block (written by generic-triage agent) off an
+ * inbox item's metadata. Returns null when triage hasn't run yet —
+ * caller decides what to render in that gap.
+ */
+export function readTriage(item: ItemLike): TriageView | null {
+  const m = item.metadata;
+  if (!m || typeof m !== "object") return null;
+  const t = (m as { triage?: unknown }).triage;
+  if (!t || typeof t !== "object") return null;
+  const r = t as Record<string, unknown>;
+  const cls = typeof r.classification === "string" ? r.classification : "unknown";
+  return {
+    classification: normalizeClassification(cls),
+    score: typeof r.score === "number" ? r.score : 0,
+    rationale: typeof r.rationale === "string" ? r.rationale : "",
+    classifiedAt: typeof r.classifiedAt === "string" ? r.classifiedAt : null,
+  };
+}
+
+function normalizeClassification(raw: string): Classification {
+  const v = raw.toLowerCase();
+  if (v === "lead" || v === "reply" || v === "internal" || v === "newsletter" || v === "spam") {
+    return v;
+  }
+  return "unknown";
+}
+
+/**
+ * Number of reply drafts attached by replier agents.
+ * Returns 0 when no drafts.
+ */
+export function countDrafts(item: ItemLike): number {
+  const m = item.metadata;
+  if (!m || typeof m !== "object") return 0;
+  const drafts = (m as { replyDrafts?: unknown }).replyDrafts;
+  return Array.isArray(drafts) ? drafts.length : 0;
+}
+
+export interface ReplyDraft {
+  /** Identifier the agent that wrote this draft (e.g. "generic-replier"). */
+  author: string;
+  draftedAt: string | null;
+  body: string;
+}
+
+/** Read the replyDrafts array from metadata, normalizing missing fields. */
+export function readDrafts(item: ItemLike): ReplyDraft[] {
+  const m = item.metadata;
+  if (!m || typeof m !== "object") return [];
+  const arr = (m as { replyDrafts?: unknown }).replyDrafts;
+  if (!Array.isArray(arr)) return [];
+  return arr
+    .map((entry): ReplyDraft | null => {
+      if (!entry || typeof entry !== "object") return null;
+      const r = entry as Record<string, unknown>;
+      if (typeof r.body !== "string" || r.body.length === 0) return null;
+      return {
+        author: typeof r.author === "string" ? r.author : "unknown",
+        draftedAt: typeof r.draftedAt === "string" ? r.draftedAt : null,
+        body: r.body,
+      };
+    })
+    .filter((d): d is ReplyDraft => d !== null);
+}
+
+/**
+ * Score → semantic color tier. Bands match the triage agent's skill
+ * markdown:
+ *   90-100  urgent       → emerald (high signal)
+ *   70-89   active back-and-forth → emerald (slightly muted)
+ *   50-69   ambiguous urgency     → amber
+ *   20-49   informational         → slate
+ *   0-19    newsletter / spam     → slate (muted)
+ */
+export type ScoreTier = "high" | "medium" | "low" | "muted";
+
+export function scoreTier(score: number): ScoreTier {
+  if (score >= 70) return "high";
+  if (score >= 40) return "medium";
+  if (score >= 20) return "low";
+  return "muted";
+}
+
+/** Tailwind background+text classes for a small classification chip. */
+export function classificationChipClass(c: Classification): string {
+  switch (c) {
+    case "lead":
+      return "bg-emerald-50 text-emerald-700 ring-emerald-200";
+    case "reply":
+      return "bg-blue-50 text-blue-700 ring-blue-200";
+    case "internal":
+      return "bg-slate-100 text-slate-600 ring-slate-200";
+    case "newsletter":
+      return "bg-amber-50 text-amber-700 ring-amber-200";
+    case "spam":
+      return "bg-rose-50 text-rose-700 ring-rose-200";
+    default:
+      return "bg-slate-50 text-slate-500 ring-slate-200";
+  }
+}
+
+/**
+ * Case-insensitive client-side search over a thread. Matches against
+ * subject + from + body + classification of every message in the
+ * thread (so a thread surfaces if any reply contains the query).
+ */
+export function threadMatchesQuery<T extends ThreadingItem & {
+  subject?: string;
+  from?: string | null;
+  body?: string | null;
+}>(thread: Thread<T>, query: string): boolean {
+  const q = query.trim().toLowerCase();
+  if (!q) return true;
+  return thread.items.some((item) => {
+    const fields: string[] = [];
+    if (item.subject) fields.push(item.subject);
+    if (item.from) fields.push(item.from);
+    if (item.body) fields.push(item.body);
+    const triage = readTriage(item);
+    if (triage) fields.push(triage.classification, triage.rationale);
+    return fields.some((f) => f.toLowerCase().includes(q));
+  });
+}
+
+/** Tailwind dot color for a score badge. */
+export function scoreDotClass(tier: ScoreTier): string {
+  switch (tier) {
+    case "high":
+      return "bg-emerald-500";
+    case "medium":
+      return "bg-amber-500";
+    case "low":
+      return "bg-slate-400";
+    case "muted":
+      return "bg-slate-300";
+  }
+}
+
 /**
  * Compact relative-time string for list rows. Exact phrasing chosen so
  * the column never overflows ~36 px:

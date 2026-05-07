@@ -60,6 +60,7 @@ export interface InboxItem {
   metadata?: Record<string, unknown> | null;
   linkedTaskId?: string | null;
   archivedAt?: string | null;
+  snoozeUntil?: string | null;
   createdAt: string;
   updatedAt: string;
   assigneeUserId?: string | null;
@@ -140,7 +141,16 @@ export interface BoringOSClient {
   getInbox(filters?: { status?: string; limit?: number }): Promise<InboxItem[]>;
   getInboxItem(itemId: string): Promise<InboxItem>;
   archiveInboxItem(itemId: string): Promise<void>;
-  updateInboxItem(itemId: string, data: { status?: string; metadata?: Record<string, unknown>; assigneeUserId?: string | null }): Promise<InboxItem>;
+  updateInboxItem(
+    itemId: string,
+    data: {
+      status?: string;
+      metadata?: Record<string, unknown>;
+      assigneeUserId?: string | null;
+      snoozeUntil?: string | null;
+    },
+  ): Promise<InboxItem>;
+  createTaskFromInboxItem(itemId: string, data?: { title?: string; description?: string }): Promise<{ taskId: string }>;
 
   // Realtime
   subscribe(onEvent: (event: { type: string; data: Record<string, unknown> }) => void): () => void;
@@ -157,10 +167,17 @@ export function createBoringOSClient(config: BoringOSClientConfig): BoringOSClie
     return h;
   }
 
-  // Use admin API when authenticated as a human (apiKey OR session
-  // bearer token); callback API only when calling as a JWT-bearing
-  // agent (no apiKey, no token, just the JWT injected by the engine).
-  const api = config.apiKey || config.token ? "/api/admin" : "/api/agent";
+  // Use admin API for human callers (apiKey OR session bearer token);
+  // callback API for agent-spawned subprocesses bearing a signed JWT.
+  // Auth shape distinguishes them: agent JWTs are 3-segment dotted
+  // base64url; session tokens are plain UUIDs / opaque strings.
+  function isAgentJwt(t: string): boolean {
+    return /^[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+$/.test(t);
+  }
+  const isHumanCaller =
+    Boolean(config.apiKey) ||
+    (Boolean(config.token) && !isAgentJwt(config.token!));
+  const api = isHumanCaller ? "/api/admin" : "/api/agent";
 
   async function get<T>(path: string): Promise<T> {
     const res = await fetch(`${baseUrl}${path}`, { headers: headers() });
@@ -317,6 +334,8 @@ export function createBoringOSClient(config: BoringOSClientConfig): BoringOSClie
       await post(`${api}/inbox/${itemId}/archive`, {});
     },
     updateInboxItem: (itemId, data) => patch<InboxItem>(`${api}/inbox/${itemId}`, data),
+    createTaskFromInboxItem: (itemId, data) =>
+      post<{ taskId: string }>(`${api}/inbox/${itemId}/create-task`, data ?? {}),
 
     // Realtime SSE subscription
     subscribe: (onEvent) => {

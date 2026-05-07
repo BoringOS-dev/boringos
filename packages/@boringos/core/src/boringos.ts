@@ -68,6 +68,7 @@ import { bootstrapAuthTables } from "./auth.js";
 import { createAuthRoutes } from "./auth-routes.js";
 import { createDeviceAuthRoutes } from "./device-auth-routes.js";
 import { createRoutineScheduler } from "./scheduler.js";
+import { createInboxSnoozeTicker } from "./inbox-snooze-ticker.js";
 import { createCopilotRoutes } from "./copilot-routes.js";
 import { createPluginRegistry } from "./plugin-system.js";
 import type { PluginDefinition } from "./plugin-system.js";
@@ -625,6 +626,23 @@ export class BoringOS {
     const sseApp = createSSERoutes(realtimeBus, adminKeyValue);
     app.route("/api", sseApp);
 
+    // Bridge inbox.* connector events through to the realtime bus so
+    // SSE-subscribed clients (the shell) refresh their inbox lists
+    // without polling. Other connector events stay scoped to the
+    // workflow event bus.
+    eventBus.onAny((event) => {
+      if (!event.type.startsWith("inbox.")) return;
+      realtimeBus.publish({
+        type: event.type,
+        tenantId: event.tenantId,
+        data: event.data,
+        timestamp:
+          event.timestamp instanceof Date
+            ? event.timestamp.toISOString()
+            : new Date().toISOString(),
+      });
+    });
+
     // Wire engine events to realtime bus
     agentEngine.beforeRun.use((event) => {
       realtimeBus.publish({
@@ -794,6 +812,12 @@ export class BoringOS {
     // 13. Start routine scheduler
     const scheduler = createRoutineScheduler(dbConn.db, agentEngine, workflowEngine);
     scheduler.start();
+
+    // Inbox snooze ticker: flips snoozed rows back to unread when their
+    // snooze_until elapses. Cheap (one indexed UPDATE every 30s) so
+    // wired unconditionally.
+    const snoozeTicker = createInboxSnoozeTicker(dbConn.db);
+    snoozeTicker.start();
 
     // 13. Run afterStart hooks
     for (const hook of this.afterStartHooks) {
