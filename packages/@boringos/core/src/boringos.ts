@@ -796,34 +796,73 @@ export class BoringOS {
       const copilotApp = createCopilotRoutes(dbConn.db, agentEngine);
       app.route("/api/copilot", copilotApp);
 
-      // Auto-create copilot agent for existing first tenant (backward compat)
-      const { tenants: tenantsTable } = await import("@boringos/db");
+      // Auto-create Chief of Staff and Copilot for existing first tenant (backward compat)
+      const { tenants: tenantsTable, agents: agentsTable } = await import("@boringos/db");
+      const { eq, and } = await import("drizzle-orm");
       const tenantRows = await dbConn.db.select().from(tenantsTable).limit(1);
-      const firstTenantId = tenantRows[0]?.id;
+      const firstTenant = tenantRows[0];
 
-      if (firstTenantId) {
-        const existingCopilot = await dbConn.db.select().from(
-          (await import("@boringos/db")).agents
+      if (firstTenant?.id) {
+        const firstTenantId = firstTenant.id;
+        const { createAgentFromTemplate } = await import("@boringos/agent");
+
+        // Get available runtime for this tenant
+        const rtRows = await dbConn.db.select().from(
+          (await import("@boringos/db")).runtimes
         ).where(
-          (await import("drizzle-orm")).and(
-            (await import("drizzle-orm")).eq((await import("@boringos/db")).agents.tenantId, firstTenantId),
-            (await import("drizzle-orm")).eq((await import("@boringos/db")).agents.role, "copilot"),
+          eq((await import("@boringos/db")).runtimes.tenantId, firstTenantId),
+        ).limit(1);
+        const runtimeId = rtRows[0]?.id;
+
+        // Check for Chief of Staff
+        const existingCoS = await dbConn.db.select().from(agentsTable).where(
+          and(
+            eq(agentsTable.tenantId, firstTenantId),
+            eq(agentsTable.role, "chief-of-staff"),
           ),
         ).limit(1);
 
-        if (existingCopilot.length === 0) {
-          const { createAgentFromTemplate } = await import("@boringos/agent");
-          const rtRows = await dbConn.db.select().from(
-            (await import("@boringos/db")).runtimes
-          ).where(
-            (await import("drizzle-orm")).eq((await import("@boringos/db")).runtimes.tenantId, firstTenantId),
-          ).limit(1);
+        let cosId = existingCoS[0]?.id;
+        if (!cosId && runtimeId) {
+          // Create CoS if missing
+          const cosResult = await createAgentFromTemplate(dbConn.db, "chief-of-staff", {
+            tenantId: firstTenantId,
+            name: "Chief of Staff",
+            runtimeId,
+            source: "shell",
+          });
+          cosId = cosResult.id;
 
+          // Update tenant root_agent_id
+          await dbConn.db.execute((await import("drizzle-orm")).sql`
+            UPDATE tenants SET root_agent_id = ${cosId}, updated_at = now()
+            WHERE id = ${firstTenantId}
+          `);
+        }
+
+        // Check for Copilot
+        const existingCopilot = await dbConn.db.select().from(agentsTable).where(
+          and(
+            eq(agentsTable.tenantId, firstTenantId),
+            eq(agentsTable.role, "copilot"),
+          ),
+        ).limit(1);
+
+        if (existingCopilot.length === 0 && runtimeId) {
+          // Create Copilot under CoS
           await createAgentFromTemplate(dbConn.db, "copilot", {
             tenantId: firstTenantId,
             name: "Copilot",
-            runtimeId: rtRows[0]?.id,
+            runtimeId,
+            reportsTo: cosId,
+            source: "shell",
           });
+        } else if (existingCopilot[0] && cosId && !existingCopilot[0].reportsTo) {
+          // Wire existing orphaned Copilot under CoS
+          await dbConn.db.execute((await import("drizzle-orm")).sql`
+            UPDATE agents SET reports_to = ${cosId}, updated_at = now()
+            WHERE id = ${existingCopilot[0].id} AND reports_to IS NULL
+          `);
         }
       }
     }

@@ -547,6 +547,16 @@ async function ensureSchema(db: Db): Promise<void> {
     -- Add skills column to agents (tag list of capabilities, drives delegation router)
     ALTER TABLE agents ADD COLUMN IF NOT EXISTS skills JSONB NOT NULL DEFAULT '[]'::jsonb;
 
+    -- Task 07: Agent provenance tracking — distinguish shell/user/app agents
+    ALTER TABLE agents ADD COLUMN IF NOT EXISTS source TEXT NOT NULL DEFAULT 'user';
+    ALTER TABLE agents ADD COLUMN IF NOT EXISTS source_app_id TEXT;
+    ALTER TABLE agents ADD CONSTRAINT agents_source_check CHECK (source IN ('shell', 'user', 'app'));
+    ALTER TABLE agents ADD CONSTRAINT agents_source_app_id_check CHECK ((source = 'app') = (source_app_id IS NOT NULL));
+
+    -- Task 07: Tenant root agent pointer — every tenant has exactly one CoS at reports_to IS NULL
+    ALTER TABLE tenants ADD COLUMN IF NOT EXISTS root_agent_id UUID REFERENCES agents(id);
+    CREATE UNIQUE INDEX IF NOT EXISTS agents_tenant_one_root_idx ON agents(tenant_id) WHERE reports_to IS NULL;
+
     -- Invitations for multi-tenant team management
     CREATE TABLE IF NOT EXISTS invitations (
       id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -562,6 +572,8 @@ async function ensureSchema(db: Db): Promise<void> {
     );
 
     CREATE INDEX IF NOT EXISTS agents_tenant_status_idx ON agents(tenant_id, status);
+    CREATE INDEX IF NOT EXISTS agents_tenant_source_idx ON agents(tenant_id, source);
+    CREATE INDEX IF NOT EXISTS agents_tenant_source_app_idx ON agents(tenant_id, source_app_id);
     CREATE INDEX IF NOT EXISTS tasks_tenant_status_idx ON tasks(tenant_id, status);
     CREATE INDEX IF NOT EXISTS tasks_assignee_agent_idx ON tasks(assignee_agent_id);
     CREATE INDEX IF NOT EXISTS agent_runs_tenant_agent_idx ON agent_runs(tenant_id, agent_id);

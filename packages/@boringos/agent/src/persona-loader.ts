@@ -6,7 +6,7 @@ const __dirname = dirname(fileURLToPath(import.meta.url));
 const PERSONAS_DIR = join(__dirname, "personas");
 
 const PERSONA_ROLES = [
-  "ceo", "cto", "engineer", "researcher", "pm", "qa",
+  "ceo", "cto", "chief-of-staff", "engineer", "researcher", "pm", "qa",
   "devops", "designer", "personal-assistant", "content-creator", "finance", "copilot",
 ] as const;
 
@@ -27,7 +27,7 @@ const ALIASES: Record<string, string> = {
   assistant: "personal-assistant",
   "personal assistant": "personal-assistant",
   ea: "personal-assistant",
-  "chief of staff": "personal-assistant",
+  "chief of staff": "chief-of-staff",
   content: "content-creator",
   "social media": "content-creator",
   marketing: "content-creator",

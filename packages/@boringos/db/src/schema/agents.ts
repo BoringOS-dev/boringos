@@ -10,6 +10,8 @@ export const agents = pgTable(
     name: text("name").notNull(),
     role: text("role").notNull().default("general"),
     type: text("type").notNull().default("user"),
+    source: text("source").notNull().default("user"),
+    sourceAppId: text("source_app_id"),
     title: text("title"),
     icon: text("icon"),
     status: text("status").notNull().default("idle"),
@@ -30,6 +32,8 @@ export const agents = pgTable(
   },
   (table) => ({
     tenantStatusIdx: index("agents_tenant_status_idx").on(table.tenantId, table.status),
+    tenantSourceIdx: index("agents_tenant_source_idx").on(table.tenantId, table.source),
+    tenantSourceAppIdx: index("agents_tenant_source_app_idx").on(table.tenantId, table.sourceAppId),
   }),
 );
 

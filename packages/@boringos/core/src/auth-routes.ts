@@ -105,7 +105,8 @@ export function createAuthRoutes(
           (${randomUUID()}, ${tenantId}, 'webhook', 'webhook', '{}', null, 'active', now(), now())
       `);
 
-      // Auto-create copilot agent
+      // Auto-create Chief of Staff (organizational root) and Copilot
+      let rootAgentId: string | undefined;
       try {
         const { createAgentFromTemplate } = await import("@boringos/agent");
         const rtRows = await db.execute(sql`
@@ -113,14 +114,32 @@ export function createAuthRoutes(
         `);
         const runtimeId = (rtRows as unknown as Array<{ id: string }>)[0]?.id;
         if (runtimeId) {
+          // 1. Create Chief of Staff as organizational root
+          const cosResult = await createAgentFromTemplate(db as any, "chief-of-staff", {
+            tenantId,
+            name: "Chief of Staff",
+            runtimeId,
+            source: "shell",
+          });
+          rootAgentId = cosResult.id;
+
+          // 2. Update tenant root_agent_id
+          await db.execute(sql`
+            UPDATE tenants SET root_agent_id = ${rootAgentId}, updated_at = now()
+            WHERE id = ${tenantId}
+          `);
+
+          // 3. Create Copilot under Chief of Staff
           await createAgentFromTemplate(db as any, "copilot", {
             tenantId,
             name: "Copilot",
             runtimeId,
+            reportsTo: rootAgentId,
+            source: "shell",
           });
         }
       } catch {
-        // Non-fatal — copilot can be created later
+        // Non-fatal — agents can be created later, but provision may fail if hook depends on rootAgentId
       }
 
       // Link user as admin
@@ -129,9 +148,12 @@ export function createAuthRoutes(
         VALUES (${randomUUID()}, ${userId}, ${tenantId}, 'admin')
       `);
 
-      // App-specific provisioning hook
+      // App-specific provisioning hook (pass rootAgentId for app provisioning)
       if (provisionTenant) {
         try {
+          // Pass rootAgentId in a context object if the hook supports it
+          // For backward compatibility, still call with just (db, tenantId)
+          // Apps can query tenants.root_agent_id if they need it
           await provisionTenant(db, tenantId);
         } catch {
           // Non-fatal

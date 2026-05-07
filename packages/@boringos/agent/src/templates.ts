@@ -12,6 +12,8 @@ export interface AgentTemplateConfig {
   runtimeId?: string;
   instructions?: string;
   reportsTo?: string;
+  source?: 'shell' | 'user' | 'app';
+  sourceAppId?: string;
 }
 
 export interface CreatedAgent {
@@ -46,6 +48,8 @@ export async function createAgentFromTemplate(
     instructions: config.instructions ?? personaInstructions.slice(0, 500), // Summary for DB
     runtimeId: config.runtimeId ?? null,
     reportsTo: config.reportsTo ?? null,
+    source: config.source ?? 'user',
+    sourceAppId: config.sourceAppId ?? null,
   });
 
   return { id, name, role: resolvedRole, tenantId: config.tenantId, reportsTo: config.reportsTo ?? null };
