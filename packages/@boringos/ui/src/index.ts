@@ -8,6 +8,7 @@ export type {
   WorkflowInfo,
   HealthStatus,
   RuntimeModel,
+  InboxItem,
 } from "./client.js";
 
 // React provider

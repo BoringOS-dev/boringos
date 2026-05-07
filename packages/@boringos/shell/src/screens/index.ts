@@ -2,7 +2,7 @@
 
 export { Home } from "./Home.js";
 export { Copilot } from "./Copilot.js";
-export { Inbox } from "./Inbox.js";
+export { Inbox } from "./Inbox/index.js";
 export { Tasks } from "./Tasks.js";
 export { Agents } from "./Agents.js";
 export { Workflows } from "./Workflows.js";
