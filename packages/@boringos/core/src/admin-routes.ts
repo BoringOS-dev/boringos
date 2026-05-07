@@ -198,7 +198,27 @@ export function createAdminRoutes(
   app.patch("/agents/:id", async (c) => {
     const denied = requireAdmin(c); if (denied) return denied;
     const body = await c.req.json() as Record<string, unknown>;
+    const agentId = c.req.param("id");
+    const tenantId = c.get("tenantId");
     const values: Record<string, unknown> = { updatedAt: new Date() };
+
+    // Task 07: Guard against reparenting violations
+    if (body.reportsTo !== undefined) {
+      const { validateReparenting } = await import("@boringos/agent");
+      const validation = await validateReparenting(db as any, agentId, body.reportsTo as string | null, tenantId);
+      if (!validation.valid) {
+        return c.json({ error: validation.reason }, 400);
+      }
+      values.reportsTo = body.reportsTo;
+    }
+
+    // Task 07: Protect shell agents from modification
+    const agentRows = await db.select({ source: (await import("@boringos/db")).agents.source })
+      .from((await import("@boringos/db")).agents).where(eq((await import("@boringos/db")).agents.id, agentId)).limit(1) as Array<{ source: string }>;
+    if (agentRows[0]?.source === "shell") {
+      return c.json({ error: "Framework agents (source='shell') cannot be modified" }, 403);
+    }
+
     if (body.name !== undefined) values.name = body.name;
     if (body.role !== undefined) values.role = body.role;
     if (body.title !== undefined) values.title = body.title;

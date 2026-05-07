@@ -245,3 +245,55 @@ async function walkParentChain(db: Db, taskId: string): Promise<Array<{ id: stri
   }
   return chain;
 }
+
+/**
+ * Task 07: Validate reparenting to prevent cycles and structural violations.
+ * Returns { valid: true } or { valid: false, reason: string }
+ */
+export async function validateReparenting(
+  db: Db,
+  agentId: string,
+  newParentId: string | null,
+  tenantId: string,
+): Promise<{ valid: true } | { valid: false; reason: string }> {
+  // Fetch the agent being reparented
+  const agentRows = await db.select().from(agents).where(eq(agents.id, agentId)).limit(1) as Array<{ source: string; reportsTo: string | null }>;
+  const agent = agentRows[0];
+  if (!agent) return { valid: false, reason: "Agent not found" };
+
+  // Shell agents cannot be reparented
+  if (agent.source === "shell") {
+    return { valid: false, reason: "Framework agents (source='shell') cannot be reparented" };
+  }
+
+  // Reject self as parent
+  if (newParentId === agentId) {
+    return { valid: false, reason: "Agent cannot be its own parent" };
+  }
+
+  // If newParentId is null, only CoS can have null parent (enforced by DB constraint)
+  if (newParentId === null) {
+    return { valid: false, reason: "Only the Chief of Staff can have no parent" };
+  }
+
+  // Build org tree to check for cycles
+  const allAgents = await db.select({ id: agents.id, reportsTo: agents.reportsTo })
+    .from(agents).where(eq(agents.tenantId, tenantId)) as Array<{ id: string; reportsTo: string | null }>;
+
+  // Check if newParentId is a descendant of agentId (would create a cycle)
+  const isDescendant = (parentId: string, childId: string): boolean => {
+    let current = childId;
+    while (current) {
+      if (current === parentId) return true;
+      const parent = allAgents.find((a) => a.id === current);
+      current = parent?.reportsTo ?? null as any;
+    }
+    return false;
+  };
+
+  if (isDescendant(agentId, newParentId)) {
+    return { valid: false, reason: "Reparenting would create a cycle in the hierarchy" };
+  }
+
+  return { valid: true };
+}
