@@ -46,7 +46,16 @@ export function Inbox() {
         }
       />
       <ScreenBody>
-        {isLoading ? (
+        {query.error ? (
+          <div className="rounded-md bg-red-50 border border-red-200 px-4 py-3 text-sm text-red-700">
+            <div className="font-medium">Couldn't load inbox.</div>
+            <div className="text-xs mt-1 font-mono">
+              {query.error instanceof Error
+                ? query.error.message
+                : String(query.error)}
+            </div>
+          </div>
+        ) : isLoading ? (
           <LoadingState />
         ) : !items || items.length === 0 ? (
           <EmptyState

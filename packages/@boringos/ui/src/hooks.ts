@@ -308,7 +308,11 @@ export function useEvals() {
 // ── Inbox ────────────────────────────────────────────────────────────────────
 
 export function useInbox(status?: string) {
-  return useQuery({ queryKey: ["inbox", status], queryFn: async () => [] as Record<string, unknown>[] });
+  const client = useClient();
+  return useQuery({
+    queryKey: ["inbox", status],
+    queryFn: () => client.getInbox(status ? { status } : undefined),
+  });
 }
 
 // ── Health ────────────────────────────────────────────────────────────────────

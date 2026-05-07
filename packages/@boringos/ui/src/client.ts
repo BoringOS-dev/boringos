@@ -48,6 +48,23 @@ export interface HealthStatus {
 
 // ── The client ───────────────────────────────────────────────────────────────
 
+export interface InboxItem {
+  id: string;
+  tenantId: string;
+  source: string;
+  sourceId?: string | null;
+  subject: string;
+  body?: string | null;
+  from?: string | null;
+  status: string;
+  metadata?: Record<string, unknown> | null;
+  linkedTaskId?: string | null;
+  archivedAt?: string | null;
+  createdAt: string;
+  updatedAt: string;
+  assigneeUserId?: string | null;
+}
+
 export interface RuntimeModel {
   id: string;
   label: string;
@@ -118,6 +135,12 @@ export interface BoringOSClient {
   // Connectors
   getConnectors(): Promise<ConnectorInfo[]>;
   invokeAction(kind: string, action: string, inputs: Record<string, unknown>): Promise<{ success: boolean; data?: Record<string, unknown>; error?: string }>;
+
+  // Inbox
+  getInbox(filters?: { status?: string; limit?: number }): Promise<InboxItem[]>;
+  getInboxItem(itemId: string): Promise<InboxItem>;
+  archiveInboxItem(itemId: string): Promise<void>;
+  updateInboxItem(itemId: string, data: { status?: string; metadata?: Record<string, unknown>; assigneeUserId?: string | null }): Promise<InboxItem>;
 
   // Realtime
   subscribe(onEvent: (event: { type: string; data: Record<string, unknown> }) => void): () => void;
@@ -277,6 +300,23 @@ export function createBoringOSClient(config: BoringOSClientConfig): BoringOSClie
         `/api/connectors/actions/${kind}/${action}`,
         inputs,
       ),
+
+    // Inbox
+    getInbox: async (filters) => {
+      const params = new URLSearchParams();
+      if (filters?.status) params.set("status", filters.status);
+      if (filters?.limit !== undefined) params.set("limit", String(filters.limit));
+      const qs = params.toString();
+      const res = await get<{ items: InboxItem[] }>(
+        `${api}/inbox${qs ? `?${qs}` : ""}`,
+      );
+      return res.items;
+    },
+    getInboxItem: (itemId) => get<InboxItem>(`${api}/inbox/${itemId}`),
+    archiveInboxItem: async (itemId) => {
+      await post(`${api}/inbox/${itemId}/archive`, {});
+    },
+    updateInboxItem: (itemId, data) => patch<InboxItem>(`${api}/inbox/${itemId}`, data),
 
     // Realtime SSE subscription
     subscribe: (onEvent) => {
