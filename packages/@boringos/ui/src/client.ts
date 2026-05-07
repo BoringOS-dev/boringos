@@ -102,7 +102,16 @@ export interface BoringOSClient {
   // Tasks
   getTasks(filters?: { status?: string; assigneeAgentId?: string }): Promise<Task[]>;
   getTask(taskId: string): Promise<TaskWithComments>;
-  createTask(data: { title: string; description?: string; priority?: string; assigneeAgentId?: string; parentId?: string }): Promise<Task>;
+  createTask(data: {
+    title: string;
+    description?: string;
+    priority?: string;
+    assigneeAgentId?: string;
+    assigneeUserId?: string;
+    parentId?: string;
+    originKind?: string;
+    proposedParams?: Record<string, unknown>;
+  }): Promise<Task>;
   updateTask(taskId: string, data: { status?: string; title?: string; description?: string; priority?: string; assigneeAgentId?: string }): Promise<Task>;
   deleteTask(taskId: string): Promise<void>;
   postComment(taskId: string, data: { body: string }): Promise<{ id: string }>;

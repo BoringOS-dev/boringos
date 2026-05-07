@@ -5,11 +5,12 @@
 // per docs/blockers/done/task_05_tasks_rich_ux.md.
 
 import { useEffect, useMemo, useState } from "react";
-import { useTasks } from "@boringos/ui";
-import { useQueryClient } from "@tanstack/react-query";
+import { useTasks, useClient } from "@boringos/ui";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 
 import { ScreenBody, ScreenHeader } from "../_shared.js";
 import { useAuth } from "../../auth/AuthProvider.js";
+import { NewTaskModal } from "./NewTaskModal.js";
 import { TaskList } from "./TaskList.js";
 import { TaskDetail } from "./TaskDetail.js";
 import { TaskEmptyState } from "./TaskEmptyState.js";
@@ -25,13 +26,23 @@ import { useNeedsAttention } from "./useNeedsAttention.js";
 export function Tasks() {
   const { user } = useAuth();
   const meId = user?.id ?? "";
+  const client = useClient();
   const queryClient = useQueryClient();
 
   const [tab, setTab] = useState<TaskTab>("my-todos");
   const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [composeOpen, setComposeOpen] = useState(false);
 
   const { tasks, isLoading } = useTasks();
   const allTasks = tasks ?? [];
+
+  // Agents list — needed for the New-task modal's assignee picker.
+  // Cached query so the dropdown opens instantly.
+  const { data: agentsData } = useQuery({
+    queryKey: ["agents"],
+    queryFn: () => client.getAgents(),
+  });
+  const agents = agentsData ?? [];
 
   const needsAttention = useNeedsAttention(allTasks);
 
@@ -74,38 +85,47 @@ export function Tasks() {
         title="Tasks"
         subtitle="Things waiting on you, and things in flight"
         actions={
-          <div className="flex items-center gap-1 rounded-md border border-slate-200 bg-white p-0.5">
-            {TAB_ORDER.map((t) => (
-              <button
-                key={t}
-                type="button"
-                onClick={() => setTab(t)}
-                className={`px-2.5 py-1 text-xs rounded inline-flex items-center gap-1 ${
-                  tab === t
-                    ? "bg-slate-100 text-slate-900 font-medium"
-                    : "text-slate-500 hover:text-slate-900"
-                }`}
-              >
-                {TAB_LABEL[t]}
-                {counts[t] > 0 && (
-                  <span
-                    className={`text-[10px] tabular-nums px-1 rounded ${
-                      tab === t ? "bg-slate-200 text-slate-700" : "bg-slate-100 text-slate-500"
-                    }`}
-                  >
-                    {counts[t]}
-                  </span>
-                )}
-              </button>
-            ))}
-          </div>
+          <>
+            <div className="flex items-center gap-1 rounded-md border border-slate-200 bg-white p-0.5">
+              {TAB_ORDER.map((t) => (
+                <button
+                  key={t}
+                  type="button"
+                  onClick={() => setTab(t)}
+                  className={`px-2.5 py-1 text-xs rounded inline-flex items-center gap-1 ${
+                    tab === t
+                      ? "bg-slate-100 text-slate-900 font-medium"
+                      : "text-slate-500 hover:text-slate-900"
+                  }`}
+                >
+                  {TAB_LABEL[t]}
+                  {counts[t] > 0 && (
+                    <span
+                      className={`text-[10px] tabular-nums px-1 rounded ${
+                        tab === t ? "bg-slate-200 text-slate-700" : "bg-slate-100 text-slate-500"
+                      }`}
+                    >
+                      {counts[t]}
+                    </span>
+                  )}
+                </button>
+              ))}
+            </div>
+            <button
+              type="button"
+              onClick={() => setComposeOpen(true)}
+              className="text-xs font-medium px-3 py-1.5 rounded-md bg-slate-900 text-white hover:bg-slate-800"
+            >
+              + New task
+            </button>
+          </>
         }
       />
       <ScreenBody>
         <div className="flex h-[calc(100vh-160px)] gap-4">
           <div className="w-96 border border-slate-200 rounded-lg bg-white overflow-hidden flex flex-col">
             {filtered.length === 0 && !isLoading ? (
-              <TaskEmptyState tab={tab} />
+              <TaskEmptyState tab={tab} onNewTask={() => setComposeOpen(true)} />
             ) : (
               <TaskList
                 tasks={filtered}
@@ -126,6 +146,18 @@ export function Tasks() {
           </div>
         </div>
       </ScreenBody>
+
+      {composeOpen && (
+        <NewTaskModal
+          agents={agents}
+          onClose={() => setComposeOpen(false)}
+          onCreated={(newId) => {
+            setComposeOpen(false);
+            queryClient.invalidateQueries({ queryKey: ["tasks"] });
+            setSelectedId(newId);
+          }}
+        />
+      )}
     </>
   );
 }

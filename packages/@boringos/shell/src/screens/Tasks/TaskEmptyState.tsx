@@ -9,20 +9,42 @@ import { Link } from "react-router-dom";
 import { EmptyState } from "../_shared.js";
 import type { TaskTab } from "./presenter.js";
 
-export function TaskEmptyState({ tab }: { tab: TaskTab }) {
+export interface TaskEmptyStateProps {
+  tab: TaskTab;
+  /** Triggers the New-task modal — passed in by the parent screen. */
+  onNewTask?: () => void;
+}
+
+function NewTaskButton({ onClick }: { onClick?: () => void }) {
+  if (!onClick) return null;
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className="text-xs font-medium px-3 py-1.5 rounded-md bg-slate-900 text-white hover:bg-slate-800"
+    >
+      + New task
+    </button>
+  );
+}
+
+export function TaskEmptyState({ tab, onNewTask }: TaskEmptyStateProps) {
   switch (tab) {
     case "my-todos":
       return (
         <EmptyState
           title="Inbox zero on tasks too."
-          description="Nothing waiting on you right now. Watch agents work, or send a message in Copilot to delegate something."
+          description="Nothing waiting on you right now. Add a task or delegate something via Copilot."
           cta={
-            <Link
-              to="/copilot"
-              className="text-xs font-medium px-3 py-1.5 rounded-md bg-slate-900 text-white hover:bg-slate-800"
-            >
-              Open Copilot
-            </Link>
+            <div className="flex items-center gap-2">
+              <NewTaskButton onClick={onNewTask} />
+              <Link
+                to="/copilot"
+                className="text-xs font-medium px-3 py-1.5 rounded-md text-slate-700 hover:bg-slate-100"
+              >
+                Open Copilot
+              </Link>
+            </div>
           }
         />
       );
@@ -31,6 +53,7 @@ export function TaskEmptyState({ tab }: { tab: TaskTab }) {
         <EmptyState
           title="Nothing in flight."
           description="When you ask an agent to do something, it'll show up here while it's working."
+          cta={<NewTaskButton onClick={onNewTask} />}
         />
       );
     case "done":
@@ -61,6 +84,7 @@ export function TaskEmptyState({ tab }: { tab: TaskTab }) {
         <EmptyState
           title="No tasks yet."
           description="Tasks are created by you, by agents, or by workflows."
+          cta={<NewTaskButton onClick={onNewTask} />}
         />
       );
   }

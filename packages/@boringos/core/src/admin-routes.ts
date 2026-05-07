@@ -500,7 +500,14 @@ export function createAdminRoutes(
       status: (body.status as string) ?? "todo",
       priority: (body.priority as string) ?? "medium",
       assigneeAgentId: body.assigneeAgentId as string | undefined,
-      assigneeUserId: (body.assigneeUserId as string) ?? c.get("userId") ?? undefined,
+      // Default assignee = current user, but only when no agent is
+      // assigned. Setting both fields creates ambiguity (whose
+      // queue does it land in?) and the auto-wake-on-comment hook
+      // ends up firing the agent for tasks that were really meant
+      // to live on the user's todo list.
+      assigneeUserId:
+        (body.assigneeUserId as string) ??
+        (body.assigneeAgentId ? undefined : c.get("userId") ?? undefined),
       parentId: body.parentId as string | undefined,
       identifier,
       originKind: (body.originKind as string) ?? "manual",
