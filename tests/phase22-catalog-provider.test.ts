@@ -273,4 +273,168 @@ describe("catalog provider: connector-actions catalog appears in prompt", () => 
       await server.close();
     }
   }, 60000);
+
+  it("catalog includes multiple connector action sets when multiple connectors are connected", async () => {
+    const { BoringOS } = await import("@boringos/core");
+    const { google } = await import("@boringos/connector-google");
+    const { slack } = await import("@boringos/connector-slack");
+    const { tenants, agents, tasks, runtimes, agentRuns, connectors } = await import("@boringos/db");
+    const { eq } = await import("drizzle-orm");
+    const { generateId } = await import("@boringos/shared");
+
+    const dataDir = await mkdtemp(join(tmpdir(), "boringos-catalog-multi-test-"));
+    const stdinCapture = join(dataDir, "captured-stdin.txt");
+
+    // Create a script that captures stdin to file
+    const scriptPath = join(dataDir, "test-agent.sh");
+    await writeFile(scriptPath, [
+      "#!/bin/bash",
+      `cat > "${stdinCapture}"`,
+      "exit 0",
+    ].join("\n"));
+    await chmod(scriptPath, 0o755);
+
+    // Boot BoringOS with both Google and Slack connectors registered
+    const app = new BoringOS({
+      database: { embedded: true, dataDir: join(dataDir, "pg"), port: 5599 },
+      drive: { root: join(dataDir, "drive") },
+    });
+
+    app.connector(google({
+      clientId: "test-client-id",
+      clientSecret: "test-client-secret",
+    }));
+
+    app.connector(slack({
+      signingSecret: "test-signing-secret",
+    }));
+
+    const server = await app.listen(0);
+
+    try {
+      const db = server.context.db as import("@boringos/db").Db;
+
+      // 1. Create tenant
+      const tenantId = generateId();
+      await db.insert(tenants).values({
+        id: tenantId,
+        name: "Test Corp",
+        slug: "test-corp",
+      });
+
+      // 2. Connect both Google and Slack connectors for this tenant
+      const googleConnectorId = generateId();
+      await db.insert(connectors).values({
+        id: googleConnectorId,
+        tenantId,
+        kind: "google",
+        name: "Google Workspace",
+        status: "active",
+        config: {
+          clientId: "test-client-id",
+          clientSecret: "test-client-secret",
+        },
+      });
+
+      const slackConnectorId = generateId();
+      await db.insert(connectors).values({
+        id: slackConnectorId,
+        tenantId,
+        kind: "slack",
+        name: "Slack Workspace",
+        status: "active",
+        config: {
+          signingSecret: "test-signing-secret",
+        },
+      });
+
+      // 3. Create a command runtime that runs our test script
+      const runtimeId = generateId();
+      await db.insert(runtimes).values({
+        id: runtimeId,
+        tenantId,
+        name: "test-script",
+        type: "command",
+        config: { command: scriptPath },
+      });
+
+      // 4. Create agent
+      const agentId = generateId();
+      await db.insert(agents).values({
+        id: agentId,
+        tenantId,
+        name: "Test Engineer",
+        role: "engineer",
+        instructions: "Focus on writing clean code with tests.",
+        runtimeId,
+      });
+
+      // 5. Create task
+      const taskId = generateId();
+      await db.insert(tasks).values({
+        id: taskId,
+        tenantId,
+        title: "Sync email and Slack messages",
+        description: "Integrate email and Slack data.",
+        status: "todo",
+        priority: "high",
+        assigneeAgentId: agentId,
+        identifier: "AR-001",
+        originKind: "manual",
+      });
+
+      // 6. Wake the agent
+      const engine = server.context.agentEngine!;
+      const outcome = await engine.wake({
+        agentId,
+        tenantId,
+        reason: "manual_request",
+        taskId,
+      });
+
+      expect(outcome.kind).toBe("created");
+      const wakeupId = (outcome as { kind: "created"; wakeupRequestId: string }).wakeupRequestId;
+
+      // 7. Enqueue and wait for execution
+      await engine.enqueue(wakeupId);
+
+      // Wait for the in-process queue to finish (poll for run completion)
+      let attempts = 0;
+      let runStatus = "queued";
+      while (attempts < 20 && runStatus !== "done" && runStatus !== "failed") {
+        await new Promise((r) => setTimeout(r, 200));
+        const runs = await db.select().from(agentRuns).where(eq(agentRuns.agentId, agentId)).limit(1);
+        runStatus = runs[0]?.status ?? "queued";
+        attempts++;
+      }
+
+      // 8. Verify run completed
+      const runs = await db.select().from(agentRuns).where(eq(agentRuns.agentId, agentId)).limit(1);
+      expect(runs).toHaveLength(1);
+      expect(runs[0].status).toBe("done");
+      expect(runs[0].exitCode).toBe(0);
+
+      // 9. Verify both catalogs appear in the system prompt
+      const capturedStdin = await readFile(stdinCapture, "utf8");
+
+      // Check for the catalog header
+      expect(capturedStdin).toContain("## Available tools — connector actions");
+
+      // Check for Google connector section
+      expect(capturedStdin).toContain("### Google Workspace (`google`)");
+      expect(capturedStdin).toContain("google.send_email");
+      expect(capturedStdin).toContain("google.list_emails");
+
+      // Check for Slack connector section
+      expect(capturedStdin).toContain("### Slack (`slack`)");
+      expect(capturedStdin).toContain("slack.send_message");
+      expect(capturedStdin).toContain("slack.reply_in_thread");
+
+      // Verify both use the same authorization method
+      const tokenCount = (capturedStdin.match(/BORINGOS_CALLBACK_TOKEN/g) || []).length;
+      expect(tokenCount).toBeGreaterThanOrEqual(2); // At least one per connector section
+    } finally {
+      await server.close();
+    }
+  }, 60000);
 });
