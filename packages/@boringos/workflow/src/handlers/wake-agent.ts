@@ -64,10 +64,15 @@ export const wakeAgentHandler: BlockHandler = {
       const db = ctx.services.get<Db>("db");
       if (db) {
         const { sql } = await import("drizzle-orm");
+        // ORDER BY created_at DESC: re-installs of an app insert a new
+        // `agents` row instead of upserting, so the same appAgentDefId
+        // can match multiple rows. Picking the newest ensures a fresh
+        // re-install (with updated instructions) actually takes effect.
         const rows = (await db.execute(sql`
           SELECT id FROM agents
           WHERE tenant_id = ${ctx.tenantId}
             AND metadata->>'appAgentDefId' = ${agentId}
+          ORDER BY created_at DESC
           LIMIT 1
         `)) as unknown as Array<{ id: string }>;
         if (!rows[0]) {

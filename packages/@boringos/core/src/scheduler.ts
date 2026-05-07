@@ -1,8 +1,9 @@
 import { eq } from "drizzle-orm";
 import type { Db } from "@boringos/db";
-import { routines } from "@boringos/db";
+import { routines, tasks } from "@boringos/db";
 import type { AgentEngine } from "@boringos/agent";
 import type { WorkflowEngine } from "@boringos/workflow";
+import { generateId } from "@boringos/shared";
 
 export interface RoutineScheduler {
   start(): void;
@@ -41,10 +42,25 @@ export function createRoutineScheduler(
               },
             });
           } else if (routine.assigneeAgentId) {
-            // Agent-triggered routine — wake the agent directly
+            // Agent-triggered routine — every wake must be bound to a
+            // task, so create a fresh task per fire. The task is the
+            // session boundary; subsequent fires get fresh sessions.
+            const taskId = generateId();
+            await db.insert(tasks).values({
+              id: taskId,
+              tenantId: routine.tenantId,
+              title: `Routine: ${routine.title}`,
+              description: routine.description ?? "",
+              status: "todo",
+              originKind: "routine",
+              originId: routine.id,
+              assigneeAgentId: routine.assigneeAgentId,
+            });
+
             const outcome = await engine.wake({
               agentId: routine.assigneeAgentId,
               tenantId: routine.tenantId,
+              taskId,
               reason: "routine_triggered",
             });
 

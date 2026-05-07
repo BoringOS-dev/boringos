@@ -7,6 +7,8 @@
 
 import { sql } from "drizzle-orm";
 import type { Db } from "@boringos/db";
+import type { ActionRunner } from "@boringos/connector";
+import { syncSnoozeWake } from "./inbox-gmail-sync.js";
 
 export interface InboxSnoozeTicker {
   start(): void;
@@ -19,13 +21,14 @@ const DEFAULT_INTERVAL_MS = 30_000;
 
 export function createInboxSnoozeTicker(
   db: Db,
-  options: { intervalMs?: number } = {},
+  options: { intervalMs?: number; actionRunner?: ActionRunner } = {},
 ): InboxSnoozeTicker {
   const intervalMs = options.intervalMs ?? DEFAULT_INTERVAL_MS;
+  const actionRunner = options.actionRunner;
   let interval: ReturnType<typeof setInterval> | null = null;
 
   async function tickOnce(): Promise<number> {
-    const result = await db.execute<{ count: number }>(sql`
+    const result = await db.execute<{ id: string; tenant_id: string }>(sql`
       WITH wakes AS (
         UPDATE inbox_items
            SET status = 'unread',
@@ -34,12 +37,20 @@ export function createInboxSnoozeTicker(
          WHERE status = 'snoozed'
            AND snooze_until IS NOT NULL
            AND snooze_until <= now()
-        RETURNING id
+        RETURNING id, tenant_id
       )
-      SELECT count(*)::int AS count FROM wakes;
+      SELECT id, tenant_id FROM wakes;
     `);
-    const row = (result as unknown as Array<{ count: number }>)[0];
-    return row?.count ?? 0;
+    const rows = result as unknown as Array<{ id: string; tenant_id: string }>;
+    // Mirror the wake to Gmail (re-add INBOX, remove Hebbs/Snoozed) for
+    // each item — fire-and-forget. Failures are logged inside the
+    // helper; the local DB flip is the source of truth.
+    if (actionRunner) {
+      for (const row of rows) {
+        void syncSnoozeWake({ db, actionRunner }, row.tenant_id, row.id);
+      }
+    }
+    return rows.length;
   }
 
   return {

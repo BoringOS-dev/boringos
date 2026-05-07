@@ -27,6 +27,13 @@ export const tasks = pgTable(
      * `kind: 'schedule_meeting'`, target stage for `kind: 'update_stage'`.
      */
     proposedParams: jsonb("proposed_params").$type<Record<string, unknown>>(),
+    /**
+     * The Claude Code session id this task's conversation lives in.
+     * Set on first run completion; resumed on every subsequent wake of
+     * this task. One session per task, full stop — no per-agent
+     * sessions, no shared transcripts.
+     */
+    sessionId: text("session_id"),
     requestDepth: integer("request_depth").notNull().default(0),
     startedAt: timestamp("started_at", { withTimezone: true }),
     completedAt: timestamp("completed_at", { withTimezone: true }),

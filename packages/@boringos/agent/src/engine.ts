@@ -1,6 +1,6 @@
 import { eq, and } from "drizzle-orm";
 import type { Db } from "@boringos/db";
-import { agents, agentRuntimeState, agentWakeupRequests, agentRuns, costEvents, tenantSettings } from "@boringos/db";
+import { agents, agentWakeupRequests, agentRuns, costEvents, tasks, tenantSettings } from "@boringos/db";
 import type { MemoryProvider } from "@boringos/memory";
 import type { RuntimeRegistry, AgentRunCallbacks, CostEvent } from "@boringos/runtime";
 import type { StorageBackend } from "@boringos/drive";
@@ -160,13 +160,23 @@ export function createAgentEngine(config: AgentEngineConfig): AgentEngine {
     // Fire beforeRun hooks
     await beforeRun.run({ agentId: job.agentId, tenantId: job.tenantId, runId, taskId: job.taskId });
 
-    // Get previous session state
-    const stateRows = await db
-      .select()
-      .from(agentRuntimeState)
-      .where(eq(agentRuntimeState.agentId, job.agentId))
+    // Sessions are task-scoped. Every wake must be bound to a task;
+    // the task's session_id is what we resume. Two different tasks for
+    // the same agent get two different sessions — no transcript
+    // bleed-through. See docs/blockers/task_02_session_per_task.md.
+    if (!job.taskId) {
+      await lifecycle.updateStatus(runId, "failed", {
+        error: `Wake for agent ${job.agentId} has no taskId. Every wake must be bound to a task.`,
+        errorCode: "missing_task_id",
+      });
+      return;
+    }
+    const taskRows = await db
+      .select({ sessionId: tasks.sessionId })
+      .from(tasks)
+      .where(eq(tasks.id, job.taskId))
       .limit(1);
-    const previousState = stateRows[0];
+    const previousSessionId = taskRows[0]?.sessionId ?? undefined;
 
     // Generate signed callback JWT (4-hour expiry)
     const callbackToken = signCallbackToken(
@@ -203,8 +213,8 @@ export function createAgentEngine(config: AgentEngineConfig): AgentEngine {
       taskId: job.taskId,
       wakeReason: job.wakeReason,
       memory,
-      previousSessionId: previousState?.sessionId ?? undefined,
-      previousSessionSummary: (previousState?.stateJson as Record<string, string> | null)?.sessionSummary ?? undefined,
+      previousSessionId,
+      previousSessionSummary: undefined,
       callbackUrl,
       callbackToken,
     };
@@ -278,26 +288,14 @@ export function createAgentEngine(config: AgentEngineConfig): AgentEngine {
             .catch(() => {});
         }
 
-        // Persist session state
-        if (result.sessionId) {
-          const stateValues = {
-            agentId: job.agentId,
-            tenantId: job.tenantId,
-            sessionId: result.sessionId,
-            stateJson: { sessionSummary: result.summary },
-            updatedAt: new Date(),
-          };
-
-          if (previousState) {
-            db.update(agentRuntimeState)
-              .set(stateValues)
-              .where(eq(agentRuntimeState.agentId, job.agentId))
-              .catch(() => {});
-          } else {
-            db.insert(agentRuntimeState)
-              .values({ id: generateId(), ...stateValues })
-              .catch(() => {});
-          }
+        // Persist the session id back to the task. Next wake on this
+        // same task will resume from this session; wakes on any other
+        // task will start fresh.
+        if (result.sessionId && job.taskId) {
+          db.update(tasks)
+            .set({ sessionId: result.sessionId, updatedAt: new Date() })
+            .where(eq(tasks.id, job.taskId))
+            .catch(() => {});
         }
       },
       onError(error) {
@@ -319,7 +317,7 @@ export function createAgentEngine(config: AgentEngineConfig): AgentEngine {
           contextMarkdown,
           callbackUrl,
           callbackToken,
-          previousSessionId: previousState?.sessionId ?? undefined,
+          previousSessionId,
         },
         callbacks,
       );

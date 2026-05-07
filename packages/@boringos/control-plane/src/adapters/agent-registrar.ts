@@ -36,19 +36,24 @@ export interface RegisterAppAgentsResult {
 /**
  * Idempotently register an app's agents inside an install transaction.
  *
- * Strategy: delete every prior row with `metadata.appId = <appId>` for
- * this tenant, then insert the current definition set. This is the
- * "delete-by-app-id then re-insert" pattern from the K3 spec.
+ * Strategy: UPSERT by (tenant_id, metadata->>'appAgentDefId'). For each
+ * agent in the definition, find an existing row with the same
+ * `appAgentDefId` for this tenant and UPDATE it; otherwise INSERT.
+ * Then delete any orphan rows for this app whose def-id is no longer
+ * in the definition (e.g., the app removed an agent in a new version).
  *
- * The pre-delete uses a `(tenant_id, app_id) → metadata->>appId` jsonb
- * filter so prior rows planted by an earlier install are wiped before
- * the new set lands.
+ * Why upsert and not delete-then-insert: deletion changes the row's
+ * primary key, which orphans every FK reference (agent_runs,
+ * agent_wakeup_requests, tasks.assignee_agent_id, …). Even with
+ * ON DELETE SET NULL on those FKs, the historical lineage is lost
+ * and live tasks become un-assigned.
  *
- * Note on referential cleanup: this function only deletes rows in the
- * `agents` table. Dependent rows (agent_runs, agent_wakeup_requests,
- * etc.) are out of scope; if a real re-install is triggered against an
- * agent with run history, callers should soft-replace via the uninstall
- * pipeline first. v1 install/re-install assumes a clean app slate.
+ * Why upsert and not blind-insert: the previous "delete-by-appId then
+ * insert" pattern was supposed to be idempotent but failed silently
+ * when the version short-circuit in tenant-provisioning skipped this
+ * function entirely on re-installs. Result: duplicate rows for the
+ * same `appAgentDefId` accumulated across re-installs (observed
+ * 2026-05-07: 4 rows for two def-ids).
  */
 export async function registerAppAgents(
   tx: DrizzleTx,
@@ -56,19 +61,19 @@ export async function registerAppAgents(
 ): Promise<RegisterAppAgentsResult> {
   const { tenantId, appId, agents } = args;
 
-  // Wipe prior registrations for this app.
-  const deleted = (await tx.execute(sql`
-    DELETE FROM agents
-    WHERE tenant_id = ${tenantId}
-      AND metadata @> ${JSON.stringify({ appId })}::jsonb
-    RETURNING id
-  `)) as Array<{ id: string }>;
-
   if (agents.length === 0) {
-    return { inserted: [], removed: deleted.length };
+    // Nothing to register — just remove any stale rows for this app.
+    const removed = (await tx.execute(sql`
+      DELETE FROM agents
+      WHERE tenant_id = ${tenantId}
+        AND metadata @> ${JSON.stringify({ appId })}::jsonb
+      RETURNING id
+    `)) as Array<{ id: string }>;
+    return { inserted: [], removed: removed.length };
   }
 
   const inserted: RegisteredAgent[] = [];
+  const keepDefIds: string[] = [];
 
   for (const def of agents) {
     if (!def.id) {
@@ -81,6 +86,7 @@ export async function registerAppAgents(
         `Agent definition "${def.id}" for app "${appId}" missing \`name\``,
       );
     }
+    keepDefIds.push(def.id);
 
     const persona = typeof def.persona === "string" ? def.persona : null;
     const role = persona ?? "general";
@@ -98,14 +104,6 @@ export async function registerAppAgents(
       persona,
     };
 
-    // Resolve runtime_id by looking up the tenant's runtime row whose
-    // `type` matches def.runtime (or "claude" as the default for app
-    // agents that don't pin a runtime). Without this, the agent engine
-    // spawns the bare CLI with no --model flag and the local CLI's
-    // default model wins (often Opus). Tenant runtimes are seeded by
-    // signup (auth-routes.ts), so by the time we install apps every
-    // tenant has at least { claude, chatgpt, gemini, ollama, command,
-    // webhook }.
     const runtimeKind = runtime ?? "claude";
     const runtimeRows = (await tx.execute(sql`
       SELECT id FROM runtimes
@@ -114,33 +112,72 @@ export async function registerAppAgents(
     `)) as Array<{ id: string }>;
     const runtimeId = runtimeRows[0]?.id ?? null;
 
-    const rows = (await tx.execute(sql`
-      INSERT INTO agents (
-        tenant_id, name, role, instructions, skills, metadata, runtime_id
-      )
-      VALUES (
-        ${tenantId},
-        ${def.name},
-        ${role},
-        ${instructions},
-        ${JSON.stringify(skills)}::jsonb,
-        ${JSON.stringify(metadata)}::jsonb,
-        ${runtimeId}
-      )
-      RETURNING id
+    // Find existing agent for (tenant, appAgentDefId).
+    const existing = (await tx.execute(sql`
+      SELECT id FROM agents
+       WHERE tenant_id = ${tenantId}
+         AND metadata->>'appAgentDefId' = ${def.id}
+       LIMIT 1
     `)) as Array<{ id: string }>;
 
-    const id = rows[0]?.id;
-    if (!id) {
-      throw new AgentRegistrarError(
-        `Insert for agent "${def.id}" did not return an id`,
-      );
+    let id: string;
+    if (existing[0]) {
+      // UPDATE in place — preserves all FK references.
+      id = existing[0].id;
+      await tx.execute(sql`
+        UPDATE agents SET
+          name         = ${def.name},
+          role         = ${role},
+          instructions = ${instructions},
+          skills       = ${JSON.stringify(skills)}::jsonb,
+          metadata     = ${JSON.stringify(metadata)}::jsonb,
+          runtime_id   = ${runtimeId},
+          updated_at   = NOW()
+         WHERE id = ${id}
+      `);
+    } else {
+      const rows = (await tx.execute(sql`
+        INSERT INTO agents (
+          tenant_id, name, role, instructions, skills, metadata, runtime_id
+        )
+        VALUES (
+          ${tenantId},
+          ${def.name},
+          ${role},
+          ${instructions},
+          ${JSON.stringify(skills)}::jsonb,
+          ${JSON.stringify(metadata)}::jsonb,
+          ${runtimeId}
+        )
+        RETURNING id
+      `)) as Array<{ id: string }>;
+      id = rows[0]?.id ?? "";
+      if (!id) {
+        throw new AgentRegistrarError(
+          `Insert for agent "${def.id}" did not return an id`,
+        );
+      }
     }
 
     inserted.push({ id, appAgentDefId: def.id, name: def.name });
   }
 
-  return { inserted, removed: deleted.length };
+  // Remove rows for this app whose def-id is no longer present.
+  // Use jsonb containment to scope by appId, then check the
+  // appAgentDefId is not in the keep-list.
+  const orphanLiterals = keepDefIds.map((d) => `'${d.replace(/'/g, "''")}'`).join(",");
+  const orphanFilter = orphanLiterals.length > 0
+    ? sql.raw(`AND metadata->>'appAgentDefId' NOT IN (${orphanLiterals})`)
+    : sql.raw("");
+  const removed = (await tx.execute(sql`
+    DELETE FROM agents
+    WHERE tenant_id = ${tenantId}
+      AND metadata @> ${JSON.stringify({ appId })}::jsonb
+      ${orphanFilter}
+    RETURNING id
+  `)) as Array<{ id: string }>;
+
+  return { inserted, removed: removed.length };
 }
 
 /**

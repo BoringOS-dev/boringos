@@ -75,14 +75,25 @@ export async function provisionDefaultApps(
 
   for (const entry of args.catalog) {
     try {
-      // Re-install protection: if the same app + version is already
-      // installed for this tenant, leave it alone.
+      // Re-install protection: short-circuit only if the bundle
+      // contents are byte-identical (manifest_hash match). Comparing
+      // by version was unreliable — instruction edits without a
+      // version bump silently never reached the DB. Hash-based check
+      // means: contents changed → re-register agents/workflows;
+      // contents identical → skip.
       const existing = await args.db.execute(sql`
-        SELECT version FROM tenant_apps
+        SELECT version, manifest_hash FROM tenant_apps
         WHERE tenant_id = ${args.tenantId} AND app_id = ${entry.id}
       `);
-      const existingRow = (existing as unknown as Array<{ version: string }>)[0];
-      if (existingRow && existingRow.version === entry.manifest.version) {
+      const existingRow = (existing as unknown as Array<{
+        version: string;
+        manifest_hash: string | null;
+      }>)[0];
+      if (
+        existingRow &&
+        entry.manifestHash &&
+        existingRow.manifest_hash === entry.manifestHash
+      ) {
         outcomes.push({
           appId: entry.id,
           installed: true,

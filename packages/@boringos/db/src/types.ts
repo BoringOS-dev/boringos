@@ -30,7 +30,6 @@ export const FRAMEWORK_TABLES = [
   "agents",
   "agent_runs",
   "agent_wakeup_requests",
-  "agent_runtime_state",
   "agent_config_revisions",
   "agent_skills",
   "tasks",

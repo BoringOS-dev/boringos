@@ -33,14 +33,6 @@ export const agents = pgTable(
   }),
 );
 
-export const agentRuntimeState = pgTable("agent_runtime_state", {
-  id: uuid("id").primaryKey().defaultRandom(),
-  agentId: uuid("agent_id").notNull().references(() => agents.id).unique(),
-  tenantId: uuid("tenant_id").notNull().references(() => tenants.id),
-  sessionId: text("session_id"),
-  stateJson: jsonb("state_json").$type<Record<string, unknown>>(),
-  cumulativeInputTokens: integer("cumulative_input_tokens").notNull().default(0),
-  cumulativeOutputTokens: integer("cumulative_output_tokens").notNull().default(0),
-  cumulativeCostUsd: text("cumulative_cost_usd").notNull().default("0"),
-  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
-});
+// Removed: agent_runtime_state. Sessions are now task-scoped — see
+// tasks.session_id. Cumulative token/cost tracking moved to per-run
+// aggregation via agent_runs.usage_json.

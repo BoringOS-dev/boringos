@@ -24,7 +24,7 @@ class GoogleWorkspaceClient implements ConnectorClient {
 
   async executeAction(action: string, inputs: Record<string, unknown>): Promise<ActionResult> {
     // Route to the right sub-client
-    const gmailActions = ["list_emails", "read_email", "send_email", "search_emails", "get_thread", "archive_email", "reply_email"];
+    const gmailActions = ["list_emails", "read_email", "send_email", "search_emails", "get_thread", "archive_email", "reply_email", "modify_email", "ensure_label", "list_history"];
     const calendarActions = ["list_events", "create_event", "update_event", "find_free_slots"];
 
     if (gmailActions.includes(action)) return this.gmail.executeAction(action, inputs);
@@ -91,6 +91,30 @@ export function google(config: GoogleConfig): ConnectorDefinition & { clientId: 
         inputs: {
           query: { type: "string", description: "Gmail search query", required: true },
           maxResults: { type: "number", description: "Max results (default: 10)" },
+        },
+      },
+      {
+        name: "modify_email",
+        description: "Add and/or remove labels on a Gmail message (used to mirror inbox state changes)",
+        inputs: {
+          messageId: { type: "string", description: "Gmail message ID", required: true },
+          addLabelIds: { type: "array", description: "Label IDs to add" },
+          removeLabelIds: { type: "array", description: "Label IDs to remove" },
+        },
+      },
+      {
+        name: "ensure_label",
+        description: "Find a Gmail label by name; create it if missing",
+        inputs: {
+          name: { type: "string", description: "Label name (e.g., 'Hebbs/Snoozed')", required: true },
+        },
+      },
+      {
+        name: "list_history",
+        description: "List label-add/remove/delete events since a Gmail history cursor",
+        inputs: {
+          startHistoryId: { type: "string", description: "Gmail history id to start from", required: true },
+          maxResults: { type: "number", description: "Max events to return (default 500)" },
         },
       },
       // Calendar

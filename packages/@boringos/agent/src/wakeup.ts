@@ -19,7 +19,11 @@ export async function createWakeup(db: Db, request: WakeRequest): Promise<Wakeup
     return { kind: "agent_not_invokable", agentStatus: agent.status };
   }
 
-  // Check for existing pending wakeup for same agent + task
+  // Coalesce only when a pending wakeup already exists for the SAME
+  // (agent, task). Two tasks for the same agent are independent — each
+  // gets its own session, so each must get its own wakeup. Coalescing
+  // by agent alone (the original bug) silently drops every wake after
+  // the first when a batch of tasks lands at once.
   if (request.taskId) {
     const existing = await db
       .select()
@@ -28,13 +32,13 @@ export async function createWakeup(db: Db, request: WakeRequest): Promise<Wakeup
         and(
           eq(agentWakeupRequests.agentId, request.agentId),
           eq(agentWakeupRequests.tenantId, request.tenantId),
+          eq(agentWakeupRequests.taskId, request.taskId),
           eq(agentWakeupRequests.status, "pending"),
         ),
       )
       .limit(1);
 
     if (existing[0]) {
-      // Coalesce — increment count
       await db
         .update(agentWakeupRequests)
         .set({ coalescedCount: (existing[0].coalescedCount ?? 0) + 1, updatedAt: new Date() })

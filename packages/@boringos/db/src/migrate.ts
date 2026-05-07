@@ -81,17 +81,8 @@ async function ensureSchema(db: Db): Promise<void> {
       updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
     );
 
-    CREATE TABLE IF NOT EXISTS agent_runtime_state (
-      id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-      agent_id UUID NOT NULL UNIQUE REFERENCES agents(id),
-      tenant_id UUID NOT NULL REFERENCES tenants(id),
-      session_id TEXT,
-      state_json JSONB,
-      cumulative_input_tokens INTEGER NOT NULL DEFAULT 0,
-      cumulative_output_tokens INTEGER NOT NULL DEFAULT 0,
-      cumulative_cost_usd TEXT NOT NULL DEFAULT '0',
-      updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
-    );
+    -- agent_runtime_state removed: sessions are now task-scoped via
+    -- tasks.session_id (one session per task, not per agent).
 
     CREATE TABLE IF NOT EXISTS tasks (
       id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -109,6 +100,7 @@ async function ensureSchema(db: Db): Promise<void> {
       identifier TEXT,
       origin_kind TEXT NOT NULL DEFAULT 'manual',
       origin_id TEXT,
+      session_id TEXT,
       request_depth INTEGER NOT NULL DEFAULT 0,
       started_at TIMESTAMPTZ,
       completed_at TIMESTAMPTZ,

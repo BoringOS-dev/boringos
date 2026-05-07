@@ -69,6 +69,7 @@ import { createAuthRoutes } from "./auth-routes.js";
 import { createDeviceAuthRoutes } from "./device-auth-routes.js";
 import { createRoutineScheduler } from "./scheduler.js";
 import { createInboxSnoozeTicker } from "./inbox-snooze-ticker.js";
+import { createInboxGmailReverseSyncTicker } from "./inbox-gmail-reverse-sync.js";
 import { createCopilotRoutes } from "./copilot-routes.js";
 import { createPluginRegistry } from "./plugin-system.js";
 import type { PluginDefinition } from "./plugin-system.js";
@@ -496,6 +497,8 @@ export class BoringOS {
         // nothing to register (manifest alone doesn't carry agents/workflows).
         const { resolve: resolvePath } = await import("node:path");
         const { pathToFileURL } = await import("node:url");
+        const { readFileSync, existsSync } = await import("node:fs");
+        const { createHash } = await import("node:crypto");
         const enriched: DefaultAppCatalogEntry[] = [];
         for (const entry of loaded.entries) {
           const candidate = entry as unknown as DefaultAppCatalogEntry & { bundleDir?: string };
@@ -504,10 +507,10 @@ export class BoringOS {
           // loader didn't supply one (current K8 loader doesn't).
           const bundleDir =
             candidate.bundleDir ?? resolvePath(this.config.defaultAppsDir!, entry.id);
+          const indexPath = resolvePath(bundleDir, "dist", "index.js");
           if (!definition) {
             try {
-              const entryPath = resolvePath(bundleDir, "dist", "index.js");
-              const mod = await import(pathToFileURL(entryPath).href);
+              const mod = await import(pathToFileURL(indexPath).href);
               definition =
                 (mod.default as typeof candidate.definition) ??
                 (mod as typeof candidate.definition);
@@ -518,7 +521,23 @@ export class BoringOS {
               );
             }
           }
-          enriched.push({ ...candidate, bundleDir, definition });
+          // Re-hash to include the agents bundle (dist/index.js). The
+          // disk-catalog loader only sees the UI bundle (dist/ui.js)
+          // and the manifest; instruction edits in src/agents/*.ts go
+          // through dist/index.js, which it never reads. Without this
+          // step, edits to agent instructions don't invalidate the
+          // re-install-protection cache and silently never reach the
+          // DB on a re-install.
+          let manifestHash = entry.manifestHash;
+          if (existsSync(indexPath)) {
+            const indexBytes = readFileSync(indexPath);
+            manifestHash = createHash("sha256")
+              .update(entry.manifestHash ?? "")
+              .update(" ")
+              .update(indexBytes)
+              .digest("hex");
+          }
+          enriched.push({ ...candidate, bundleDir, definition, manifestHash });
         }
         defaultAppsCatalog = enriched;
       } catch (err) {
@@ -586,7 +605,7 @@ export class BoringOS {
     // Now that the bus exists, connect the workflow engine's event sink.
     realtimeBusRef = realtimeBus;
 
-    const adminApp = createAdminRoutes(dbConn.db, agentEngine, adminKeyValue, realtimeBus, workflowEngine, runtimes);
+    const adminApp = createAdminRoutes(dbConn.db, agentEngine, adminKeyValue, realtimeBus, workflowEngine, runtimes, actionRunner);
     app.route("/api/admin", adminApp);
 
     // K10/K11 — apps install/uninstall HTTP endpoints. Mounted with an
@@ -700,27 +719,32 @@ export class BoringOS {
         }
       }
 
-      // Auto-re-wake: if agent has remaining 'todo' tasks assigned to it, wake again
-      // — but ONLY when the current run succeeded. Rewaking after a failed run
-      // just replays the same failure: the pending task count is unchanged,
-      // so we'd spin in a tight loop (observed: a broken agent + 1 stale todo
-      // = ~500 wakes in 30 min). The next user-initiated wake (comment, routine,
-      // assignment) will pick up the todos normally once the underlying issue
-      // clears.
+      // Auto-re-wake: if agent has remaining 'todo' tasks assigned to
+      // it, wake on the next one — but ONLY when the current run
+      // succeeded. Rewaking after a failed run just replays the same
+      // failure (~500 wakes in 30 min observed). The next user-
+      // initiated wake will pick up the todos normally once the
+      // underlying issue clears.
+      //
+      // Sessions are task-scoped, so the wake must target a specific
+      // task (the oldest pending one).
       if (event.result.exitCode === 0) {
         try {
           const { sql } = await import("drizzle-orm");
-          const pendingTasks = await dbConn.db.execute(sql`
-            SELECT count(*) as c FROM tasks
+          const nextTaskRows = await dbConn.db.execute(sql`
+            SELECT id FROM tasks
             WHERE assignee_agent_id = ${event.agentId}
               AND tenant_id = ${event.tenantId}
               AND status = 'todo'
+            ORDER BY created_at ASC
+            LIMIT 1
           `);
-          const pendingCount = Number((pendingTasks as any)[0]?.c ?? 0);
-          if (pendingCount > 0) {
+          const nextTaskId = (nextTaskRows as unknown as Array<{ id: string }>)[0]?.id;
+          if (nextTaskId) {
             const outcome = await agentEngine.wake({
               agentId: event.agentId,
               tenantId: event.tenantId,
+              taskId: nextTaskId,
               reason: "comment_posted", // re-wake reason
             });
             if (outcome.kind === "created") {
@@ -816,8 +840,15 @@ export class BoringOS {
     // Inbox snooze ticker: flips snoozed rows back to unread when their
     // snooze_until elapses. Cheap (one indexed UPDATE every 30s) so
     // wired unconditionally.
-    const snoozeTicker = createInboxSnoozeTicker(dbConn.db);
+    const snoozeTicker = createInboxSnoozeTicker(dbConn.db, { actionRunner });
     snoozeTicker.start();
+
+    // Reverse sync — pull state changes from Gmail back into Hebbs
+    // every 2 minutes. Skipped silently if no Gmail connector is wired
+    // (the ticker iterates connected Gmail tenants; an empty set is a
+    // no-op).
+    const reverseSyncTicker = createInboxGmailReverseSyncTicker(dbConn.db, actionRunner);
+    reverseSyncTicker.start();
 
     // 13. Run afterStart hooks
     for (const hook of this.afterStartHooks) {

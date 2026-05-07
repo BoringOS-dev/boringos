@@ -38,8 +38,10 @@ import {
 import type { AgentEngine } from "@boringos/agent";
 import type { WorkflowEngine, TriggerType } from "@boringos/workflow";
 import type { RuntimeRegistry } from "@boringos/runtime";
+import type { ActionRunner } from "@boringos/connector";
 import { generateId } from "@boringos/shared";
 import type { RealtimeBus } from "./realtime.js";
+import { syncArchive, syncStatusChange } from "./inbox-gmail-sync.js";
 
 type AdminEnv = {
   Variables: {
@@ -56,6 +58,7 @@ export function createAdminRoutes(
   realtimeBus?: RealtimeBus,
   workflowEngine?: WorkflowEngine,
   runtimeRegistry?: RuntimeRegistry,
+  actionRunner?: ActionRunner,
 ): Hono<AdminEnv> {
 
   function emit(type: string, tenantId: string, data: Record<string, unknown>) {
@@ -260,18 +263,39 @@ export function createAdminRoutes(
   app.post("/agents/:id/wake", async (c) => {
     const denied = requireAdmin(c); if (denied) return denied;
     const body = (await c.req.json().catch(() => ({}))) as Record<string, unknown>;
+    const tenantId = c.get("tenantId");
+    const agentId = c.req.param("id");
+
+    // Every wake must be bound to a task. If the caller supplied one,
+    // use it; otherwise mint a manual task so the session has somewhere
+    // to live.
+    let taskId = body.taskId as string | undefined;
+    if (!taskId) {
+      const newTaskId = generateId();
+      await db.insert(tasks).values({
+        id: newTaskId,
+        tenantId,
+        title: (body.title as string | undefined) ?? "Manual wake",
+        description: (body.description as string | undefined) ?? "",
+        status: "todo",
+        originKind: "manual",
+        assigneeAgentId: agentId,
+      });
+      taskId = newTaskId;
+    }
+
     const outcome = await engine.wake({
-      agentId: c.req.param("id"),
-      tenantId: c.get("tenantId"),
+      agentId,
+      tenantId,
+      taskId,
       reason: "manual_request",
-      taskId: body.taskId as string | undefined,
     });
 
     if (outcome.kind === "created") {
       await engine.enqueue(outcome.wakeupRequestId);
     }
 
-    return c.json(outcome);
+    return c.json({ ...outcome, taskId });
   });
 
   app.get("/agents/:id/runs", async (c) => {
@@ -1047,16 +1071,32 @@ export function createAdminRoutes(
       return c.json({ error: "Routine has no agent or workflow target" }, 400);
     }
 
+    // Manual routine trigger — same task-per-fire pattern as the
+    // scheduler. Each fire gets its own task → its own session.
+    const tenantId = c.get("tenantId");
+    const taskId = generateId();
+    await db.insert(tasks).values({
+      id: taskId,
+      tenantId,
+      title: `Routine: ${routine.title}`,
+      description: routine.description ?? "",
+      status: "todo",
+      originKind: "routine",
+      originId: routine.id,
+      assigneeAgentId: routine.assigneeAgentId,
+    });
+
     const outcome = await engine.wake({
       agentId: routine.assigneeAgentId,
-      tenantId: c.get("tenantId"),
+      tenantId,
+      taskId,
       reason: "routine_triggered",
     });
     if (outcome.kind === "created") {
       await engine.enqueue(outcome.wakeupRequestId);
     }
 
-    return c.json(outcome);
+    return c.json({ ...outcome, taskId });
   });
 
   // ── Workflows ──────────────────────────────────────────────────────────
@@ -1369,20 +1409,23 @@ export function createAdminRoutes(
     const settings: Record<string, string | null> = {};
     for (const row of rows) settings[row.key] = row.value;
 
-    // When agents are resumed, re-wake all agents with pending todo tasks
+    // When agents are resumed, re-wake every (agent, task) pair that
+    // was sitting in todo. Sessions are per-task, so the wake must
+    // carry the taskId — otherwise the engine will reject it.
     if (body.agents_paused === "false" || body.agents_paused === false) {
       try {
-        const pendingAgents = await db.execute(sql`
-          SELECT DISTINCT t.assignee_agent_id as agent_id
-          FROM tasks t
-          WHERE t.tenant_id = ${tenantId}
-            AND t.status = 'todo'
-            AND t.assignee_agent_id IS NOT NULL
+        const pending = await db.execute(sql`
+          SELECT t.assignee_agent_id AS agent_id, t.id AS task_id
+            FROM tasks t
+           WHERE t.tenant_id = ${tenantId}
+             AND t.status = 'todo'
+             AND t.assignee_agent_id IS NOT NULL
         `);
-        for (const row of pendingAgents as unknown as Array<{ agent_id: string }>) {
+        for (const row of pending as unknown as Array<{ agent_id: string; task_id: string }>) {
           const outcome = await engine.wake({
             agentId: row.agent_id,
             tenantId,
+            taskId: row.task_id,
             reason: "manual_request",
           });
           if (outcome.kind === "created") {
@@ -1584,6 +1627,15 @@ export function createAdminRoutes(
     // Mark as read
     if (rows[0].status === "unread") {
       await db.update(inboxItems).set({ status: "read", updatedAt: new Date() }).where(eq(inboxItems.id, rows[0].id));
+      // Mirror to Gmail: remove UNREAD label.
+      if (actionRunner) {
+        void syncStatusChange(
+          { db, actionRunner },
+          c.get("tenantId"),
+          rows[0].id,
+          "read",
+        );
+      }
     }
 
     return c.json(rows[0]);
@@ -1606,20 +1658,38 @@ export function createAdminRoutes(
       values.snoozeUntil = null;
     }
 
+    const itemId = c.req.param("id");
+    const tenantId = c.get("tenantId");
     await db.update(inboxItems).set(values).where(
-      and(eq(inboxItems.id, c.req.param("id")), eq(inboxItems.tenantId, c.get("tenantId"))),
+      and(eq(inboxItems.id, itemId), eq(inboxItems.tenantId, tenantId)),
     );
-    const rows = await db.select().from(inboxItems).where(eq(inboxItems.id, c.req.param("id"))).limit(1);
+    // Mirror status changes to Gmail. Fire-and-forget — local state is
+    // source of truth; Gmail can lag without rolling back the user's
+    // action.
+    if (actionRunner && body.status !== undefined && typeof body.status === "string") {
+      void syncStatusChange(
+        { db, actionRunner },
+        tenantId,
+        itemId,
+        body.status,
+      );
+    }
+    const rows = await db.select().from(inboxItems).where(eq(inboxItems.id, itemId)).limit(1);
     if (!rows[0]) return c.json({ error: "Inbox item not found" }, 404);
     return c.json(rows[0]);
   });
 
   app.post("/inbox/:id/archive", async (c) => {
+    const itemId = c.req.param("id");
+    const tenantId = c.get("tenantId");
     await db.update(inboxItems).set({
       status: "archived",
       archivedAt: new Date(),
       updatedAt: new Date(),
-    }).where(and(eq(inboxItems.id, c.req.param("id")), eq(inboxItems.tenantId, c.get("tenantId"))));
+    }).where(and(eq(inboxItems.id, itemId), eq(inboxItems.tenantId, tenantId)));
+    if (actionRunner) {
+      void syncArchive({ db, actionRunner }, tenantId, itemId);
+    }
     return c.json({ ok: true });
   });
 

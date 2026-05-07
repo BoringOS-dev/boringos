@@ -1,6 +1,6 @@
 export { tenants, tenantSettings } from "./tenants.js";
 export { runtimes } from "./runtimes.js";
-export { agents, agentRuntimeState } from "./agents.js";
+export { agents } from "./agents.js";
 export { tasks, taskComments, taskWorkProducts } from "./tasks.js";
 export { agentWakeupRequests, agentRuns, costEvents } from "./runs.js";
 export { approvals, taskApprovals } from "./approvals.js";

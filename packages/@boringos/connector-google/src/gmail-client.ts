@@ -78,6 +78,16 @@ export class GmailClient {
       case "search_emails": return this.listEmails(inputs.query as string, inputs.maxResults as number | undefined);
       case "get_thread": return this.getThread(inputs.threadId as string);
       case "archive_email": return this.archiveEmail(inputs.messageId as string);
+      case "modify_email": return this.modifyEmail(
+        inputs.messageId as string,
+        (inputs.addLabelIds as string[] | undefined) ?? [],
+        (inputs.removeLabelIds as string[] | undefined) ?? [],
+      );
+      case "ensure_label": return this.ensureLabel(inputs.name as string);
+      case "list_history": return this.listHistory(
+        inputs.startHistoryId as string,
+        inputs.maxResults as number | undefined,
+      );
       case "reply_email": return this.replyEmail(
         inputs.messageId as string,
         inputs.threadId as string,
@@ -87,6 +97,139 @@ export class GmailClient {
       );
       default: return { success: false, error: `Unknown Gmail action: ${action}` };
     }
+  }
+
+  /**
+   * Generic message-modify wrapper. Adds/removes labels on a Gmail
+   * message. Used by Hebbs→Gmail sync to mirror archive / read /
+   * unread / snooze state to the underlying Gmail message.
+   */
+  private async modifyEmail(
+    messageId: string,
+    addLabelIds: string[],
+    removeLabelIds: string[],
+  ): Promise<ActionResult> {
+    if (!messageId) return { success: false, error: "messageId is required" };
+    if (addLabelIds.length === 0 && removeLabelIds.length === 0) {
+      return { success: true, data: { id: messageId, noop: true } };
+    }
+    const res = await fetch(`${GMAIL_API}/messages/${messageId}/modify`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${this.token}`,
+      },
+      body: JSON.stringify({ addLabelIds, removeLabelIds }),
+    });
+    if (!res.ok) return { success: false, error: `Gmail modify failed: ${res.status}` };
+    const data = (await res.json()) as Record<string, unknown>;
+    return { success: true, data: { id: messageId, labelIds: data.labelIds } };
+  }
+
+  /**
+   * Find a label by name; create it if missing. Used to lazily
+   * provision the `Hebbs/Snoozed` label on first snooze.
+   */
+  private async ensureLabel(name: string): Promise<ActionResult> {
+    if (!name) return { success: false, error: "name is required" };
+
+    const listRes = await this.api(`${GMAIL_API}/labels`);
+    if (!listRes.ok) {
+      return { success: false, error: `Gmail labels list failed: ${listRes.status}` };
+    }
+    const listData = (await listRes.json()) as { labels?: Array<{ id: string; name: string }> };
+    const existing = (listData.labels ?? []).find((l) => l.name === name);
+    if (existing) {
+      return { success: true, data: { id: existing.id, name: existing.name, created: false } };
+    }
+
+    const createRes = await fetch(`${GMAIL_API}/labels`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${this.token}`,
+      },
+      body: JSON.stringify({
+        name,
+        labelListVisibility: "labelShow",
+        messageListVisibility: "show",
+      }),
+    });
+    if (!createRes.ok) {
+      return { success: false, error: `Gmail label create failed: ${createRes.status}` };
+    }
+    const created = (await createRes.json()) as { id: string; name: string };
+    return { success: true, data: { id: created.id, name: created.name, created: true } };
+  }
+
+  /**
+   * Reverse-sync: list label-added/-removed/-deleted events since
+   * `startHistoryId`. Caller persists the returned `historyId` cursor
+   * for the next call.
+   */
+  private async listHistory(
+    startHistoryId: string,
+    maxResults?: number,
+  ): Promise<ActionResult> {
+    if (!startHistoryId) return { success: false, error: "startHistoryId is required" };
+
+    const allEvents: Array<{
+      messageId: string;
+      labelsAdded?: string[];
+      labelsRemoved?: string[];
+      deleted?: boolean;
+    }> = [];
+    let pageToken: string | undefined;
+    let latestHistoryId = startHistoryId;
+    let pages = 0;
+    const max = maxResults ?? 500;
+
+    do {
+      const params = new URLSearchParams({ startHistoryId });
+      params.set("historyTypes", "labelAdded");
+      params.append("historyTypes", "labelRemoved");
+      params.append("historyTypes", "messageDeleted");
+      if (pageToken) params.set("pageToken", pageToken);
+
+      const res = await this.api(`${GMAIL_API}/history?${params}`);
+      if (!res.ok) {
+        // 404 means startHistoryId is too old — caller should re-seed.
+        return { success: false, error: `Gmail history failed: ${res.status}` };
+      }
+      const data = (await res.json()) as {
+        history?: Array<{
+          id: string;
+          messages?: Array<{ id: string }>;
+          labelsAdded?: Array<{ message: { id: string }; labelIds: string[] }>;
+          labelsRemoved?: Array<{ message: { id: string }; labelIds: string[] }>;
+          messagesDeleted?: Array<{ message: { id: string } }>;
+        }>;
+        historyId?: string;
+        nextPageToken?: string;
+      };
+
+      for (const h of data.history ?? []) {
+        if (h.id) latestHistoryId = h.id;
+        for (const e of h.labelsAdded ?? []) {
+          allEvents.push({ messageId: e.message.id, labelsAdded: e.labelIds });
+        }
+        for (const e of h.labelsRemoved ?? []) {
+          allEvents.push({ messageId: e.message.id, labelsRemoved: e.labelIds });
+        }
+        for (const e of h.messagesDeleted ?? []) {
+          allEvents.push({ messageId: e.message.id, deleted: true });
+        }
+      }
+      if (data.historyId) latestHistoryId = data.historyId;
+      pageToken = data.nextPageToken;
+      pages += 1;
+      if (allEvents.length >= max || pages >= 20) break;
+    } while (pageToken);
+
+    return {
+      success: true,
+      data: { events: allEvents, historyId: latestHistoryId },
+    };
   }
 
   private async listEmails(query?: string, maxResults?: number): Promise<ActionResult> {
