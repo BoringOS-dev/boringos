@@ -11,6 +11,16 @@ export type {
   InboxItem,
 } from "./client.js";
 
+// Re-export the core domain types from @boringos/shared so consumers
+// of the SDK don't need to depend on shared directly.
+export type {
+  Agent,
+  AgentRun,
+  Approval,
+  Task,
+  TaskComment,
+} from "@boringos/shared";
+
 // React provider
 export { BoringOSProvider, useClient } from "./provider.js";
 export type { BoringOSProviderProps } from "./provider.js";

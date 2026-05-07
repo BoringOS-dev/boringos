@@ -675,7 +675,29 @@ export function createAdminRoutes(
     if (agentId) filtered = filtered.filter((r) => r.agentId === agentId);
     if (status) filtered = filtered.filter((r) => r.status === status);
 
-    return c.json({ runs: filtered });
+    // Enrich with taskId via the wakeup-request join. The Tasks UI's
+    // "needs attention" surfacing (Task D in task_05) needs to know
+    // which task each failed run belongs to; doing the join here is a
+    // single-query lookup instead of N round-trips from the client.
+    const wakeupIds = filtered.map((r) => r.wakeupRequestId).filter((x): x is string => !!x);
+    let wakeupToTask = new Map<string, string>();
+    if (wakeupIds.length > 0) {
+      const wRows = await db.select({
+        id: agentWakeupRequests.id,
+        taskId: agentWakeupRequests.taskId,
+      }).from(agentWakeupRequests)
+        .where(sql`${agentWakeupRequests.id} = ANY(ARRAY[${sql.join(wakeupIds.map(id => sql`${id}::uuid`), sql`, `)}])`);
+      for (const w of wRows) {
+        if (w.taskId) wakeupToTask.set(w.id, w.taskId);
+      }
+    }
+
+    const enriched = filtered.map((r) => ({
+      ...r,
+      taskId: r.wakeupRequestId ? wakeupToTask.get(r.wakeupRequestId) ?? null : null,
+    }));
+
+    return c.json({ runs: enriched });
   });
 
   app.get("/runs/:id", async (c) => {
