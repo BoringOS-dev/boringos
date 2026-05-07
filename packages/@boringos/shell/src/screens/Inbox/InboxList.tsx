@@ -12,6 +12,7 @@ import {
   countDrafts,
   formatRelativeTime,
   parseSenderName,
+  readSentReply,
   readTriage,
   scoreDotClass,
   scoreTier,
@@ -19,6 +20,7 @@ import {
   type Thread,
 } from "./presenter.js";
 import { formatWakeIn } from "./snooze.js";
+import { useNow } from "./useNow.js";
 
 export interface InboxListProps {
   threads: Thread<InboxItem>[];
@@ -31,6 +33,10 @@ export interface InboxListProps {
 }
 
 export function InboxList({ threads, isLoading, status, selectedId, bulkSelected, onSelect }: InboxListProps) {
+  // Tick every minute so wake-in countdowns and "Replied N ago" stay
+  // current without refresh.
+  const now = useNow();
+
   if (isLoading) {
     return <LoadingState />;
   }
@@ -100,7 +106,7 @@ export function InboxList({ threads, isLoading, status, selectedId, bulkSelected
                     )}
                   </span>
                   <span className="text-[10px] text-slate-400 shrink-0 tabular-nums">
-                    {formatRelativeTime(item.createdAt)}
+                    {formatRelativeTime(item.createdAt, now)}
                   </span>
                 </div>
                 <div
@@ -118,9 +124,23 @@ export function InboxList({ threads, isLoading, status, selectedId, bulkSelected
                 {/* Snoozed badge — shown only on the snoozed tab */}
                 {item.status === "snoozed" && item.snoozeUntil && (
                   <p className="text-[10px] text-amber-700 mt-1">
-                    Wakes {formatWakeIn(item.snoozeUntil)}
+                    Wakes {formatWakeIn(item.snoozeUntil, now)}
                   </p>
                 )}
+                {/* Replied indicator — surfaces "you sent a reply" so
+                    archived-tab items still feel actionable. */}
+                {(() => {
+                  const sentReply = readSentReply(item);
+                  if (!sentReply) return null;
+                  return (
+                    <div className="mt-1.5 flex items-center gap-1 text-[10px] text-emerald-700">
+                      <span className="font-medium">↩ Replied</span>
+                      <span className="text-slate-400">
+                        {formatRelativeTime(sentReply.sentAt, now)}
+                      </span>
+                    </div>
+                  );
+                })()}
                 {/* Triage chip + score + drafts indicator row */}
                 {(triage || drafts > 0) && (
                   <div className="mt-1.5 flex items-center gap-1.5">

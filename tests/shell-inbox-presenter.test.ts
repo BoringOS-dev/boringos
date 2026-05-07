@@ -18,6 +18,8 @@ import {
   groupByThread,
   readThreadId,
   threadMatchesQuery,
+  buildQuotedReply,
+  readSentReply,
 } from "@boringos/shell/screens/Inbox/presenter.js";
 
 const NOW = new Date("2026-05-07T12:00:00Z");
@@ -258,6 +260,105 @@ describe("groupByThread", () => {
     const threads = groupByThread(items);
     expect(threads[0]?.threadId).toBe("tB"); // newest single message
     expect(threads[1]?.threadId).toBe("tA"); // older overall but still after sort
+  });
+});
+
+describe("readSentReply", () => {
+  it("returns null when missing", () => {
+    expect(readSentReply({ metadata: null })).toBeNull();
+    expect(readSentReply({ metadata: {} })).toBeNull();
+    expect(readSentReply({ metadata: { sentReply: "not-an-object" } })).toBeNull();
+  });
+
+  it("parses well-formed reply", () => {
+    const got = readSentReply({
+      metadata: {
+        sentReply: { sentAt: "2026-05-07T10:00:00Z", body: "thanks!", via: "google.gmail" },
+      },
+    });
+    expect(got).toEqual({
+      sentAt: "2026-05-07T10:00:00Z",
+      body: "thanks!",
+      via: "google.gmail",
+    });
+  });
+
+  it("requires both sentAt and body strings", () => {
+    expect(
+      readSentReply({ metadata: { sentReply: { sentAt: "x" } } }),
+    ).toBeNull();
+    expect(
+      readSentReply({ metadata: { sentReply: { body: "x" } } }),
+    ).toBeNull();
+  });
+
+  it("defaults via to 'unknown' when missing", () => {
+    expect(
+      readSentReply({
+        metadata: { sentReply: { sentAt: "x", body: "y" } },
+      })?.via,
+    ).toBe("unknown");
+  });
+});
+
+describe("buildQuotedReply", () => {
+  it("appends a quoted block under the draft", () => {
+    const out = buildQuotedReply({
+      draft: "Hi Jordan, sounds good.",
+      originalSender: "Jordan <jordan@x.com>",
+      originalDate: "2026-05-07T10:00:00Z",
+      originalBody: "Original line 1\nOriginal line 2",
+    });
+    expect(out).toContain("Hi Jordan, sounds good.");
+    expect(out).toContain("Jordan <jordan@x.com> wrote:");
+    expect(out).toContain("> Original line 1");
+    expect(out).toContain("> Original line 2");
+  });
+
+  it("strips HTML tags from quoted content", () => {
+    const out = buildQuotedReply({
+      draft: "ack",
+      originalSender: "x",
+      originalDate: null,
+      originalBody: "<p>Hello <b>World</b></p>",
+    });
+    // No <p> or <b> in the quoted lines.
+    expect(out).not.toContain("<p>");
+    expect(out).not.toContain("<b>");
+    expect(out).toContain("Hello");
+    expect(out).toContain("World");
+  });
+
+  it("does not double-quote when draft already has a > block", () => {
+    const draft = "ack\n\n> previous line\n> another previous";
+    const out = buildQuotedReply({
+      draft,
+      originalSender: "x",
+      originalDate: null,
+      originalBody: "should not appear",
+    });
+    expect(out).toBe("ack\n\n> previous line\n> another previous");
+  });
+
+  it("returns just the draft when there's no original body", () => {
+    expect(
+      buildQuotedReply({
+        draft: "Just a fresh reply.",
+        originalSender: "x",
+        originalDate: null,
+        originalBody: null,
+      }),
+    ).toBe("Just a fresh reply.");
+  });
+
+  it("uses 'the sender wrote:' fallback when sender missing", () => {
+    const out = buildQuotedReply({
+      draft: "ack",
+      originalSender: null,
+      originalDate: null,
+      originalBody: "hi",
+    });
+    expect(out).toContain("the sender wrote:");
   });
 });
 

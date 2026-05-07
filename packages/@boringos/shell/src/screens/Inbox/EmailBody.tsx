@@ -51,36 +51,40 @@ const PURIFY_CONFIG: DOMPurifyConfig = {
   ],
 };
 
+interface SanitizeResult {
+  html: string;
+  /** Number of <img> tags whose external src was hidden behind data-src. */
+  blockedImageCount: number;
+}
+
 /**
  * Returns sanitized HTML with external `src` attributes hidden behind
  * `data-src` (revealed when the user clicks "Show images"), and links
- * rewritten to open in a new tab.
+ * rewritten to open in a new tab. Reports the count of blocked images
+ * so the UI can hide the "Show images" toggle on emails that don't
+ * have any.
  */
-function sanitizeAndRewrite(rawHtml: string, blockImages: boolean): string {
+function sanitizeAndRewrite(rawHtml: string, blockImages: boolean): SanitizeResult {
   const cleaned = DOMPurify.sanitize(rawHtml, PURIFY_CONFIG) as unknown as string;
 
-  // We need to walk the DOM to rewrite. Build a fragment in a detached
-  // template (no script execution; happens in a doc fragment).
   const tpl = document.createElement("template");
   tpl.innerHTML = cleaned;
   const root = tpl.content;
 
-  // Block images: stash src on data-src; replace with 1x1 transparent
-  // placeholder so layout shifts don't surprise the user when they
-  // click "Show images".
-  if (blockImages) {
-    root.querySelectorAll<HTMLImageElement>("img").forEach((img) => {
-      const src = img.getAttribute("src");
-      if (src && !src.startsWith("data:") && !src.startsWith("cid:")) {
-        img.setAttribute("data-src", src);
-        img.setAttribute(
-          "src",
-          "data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg'/>",
-        );
-        img.setAttribute("data-blocked", "true");
-      }
-    });
-  }
+  let blockedImageCount = 0;
+  root.querySelectorAll<HTMLImageElement>("img").forEach((img) => {
+    const src = img.getAttribute("src");
+    if (!src || src.startsWith("data:") || src.startsWith("cid:")) return;
+    if (blockImages) {
+      img.setAttribute("data-src", src);
+      img.setAttribute(
+        "src",
+        "data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg'/>",
+      );
+      img.setAttribute("data-blocked", "true");
+    }
+    blockedImageCount++;
+  });
 
   // Anchors: target=_blank + rel=noopener noreferrer.
   root.querySelectorAll<HTMLAnchorElement>("a[href]").forEach((a) => {
@@ -88,7 +92,7 @@ function sanitizeAndRewrite(rawHtml: string, blockImages: boolean): string {
     a.setAttribute("rel", "noopener noreferrer");
   });
 
-  return tpl.innerHTML;
+  return { html: tpl.innerHTML, blockedImageCount };
 }
 
 export function EmailBody({ html, text }: EmailBodyProps) {
@@ -101,12 +105,15 @@ export function EmailBody({ html, text }: EmailBodyProps) {
   const hasText = Boolean(text && text.trim().length > 0);
 
   const sanitized = useMemo(
-    () => (hasHtml ? sanitizeAndRewrite(html!, !showImages) : ""),
+    () =>
+      hasHtml
+        ? sanitizeAndRewrite(html!, !showImages)
+        : { html: "", blockedImageCount: 0 },
     [html, hasHtml, showImages],
   );
 
   const iframeDoc = useMemo(() => {
-    if (!sanitized) return "";
+    if (!sanitized.html) return "";
     // Whole HTML doc so the iframe gets a body context. The CSS
     // sets a clean reading style and disables max-width tricks that
     // could break out of the iframe.
@@ -126,7 +133,7 @@ export function EmailBody({ html, text }: EmailBodyProps) {
   hr { border: 0; border-top: 1px solid rgb(226, 232, 240); margin: 12px 0; }
 </style>
 </head>
-<body>${sanitized}</body>
+<body>${sanitized.html}</body>
 </html>`;
   }, [sanitized]);
 
@@ -190,13 +197,14 @@ export function EmailBody({ html, text }: EmailBodyProps) {
   return (
     <div>
       <div className="flex items-center gap-3 mb-2 text-[11px]">
-        {!showImages && (
+        {!showImages && sanitized.blockedImageCount > 0 && (
           <button
             type="button"
             onClick={() => setShowImages(true)}
             className="text-blue-700 hover:text-blue-900"
           >
-            Show images
+            Show {sanitized.blockedImageCount} image
+            {sanitized.blockedImageCount === 1 ? "" : "s"}
           </button>
         )}
         {hasText && (

@@ -10,6 +10,7 @@ import type { InboxItem } from "@boringos/ui";
 import { useClient } from "@boringos/ui";
 
 import type { ReplyDraft } from "./presenter.js";
+import { buildQuotedReply } from "./presenter.js";
 
 export interface ReplyComposerProps {
   item: InboxItem;
@@ -50,7 +51,14 @@ export function ReplyComposer({
 
   const [to, setTo] = useState(defaultTo);
   const [subject, setSubject] = useState(defaultSubject);
-  const [body, setBody] = useState(initialDraft?.body ?? "");
+  const [body, setBody] = useState(() =>
+    buildQuotedReply({
+      draft: initialDraft?.body ?? "",
+      originalSender: item.from,
+      originalDate: item.createdAt,
+      originalBody: item.body,
+    }),
+  );
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [sent, setSent] = useState(false);

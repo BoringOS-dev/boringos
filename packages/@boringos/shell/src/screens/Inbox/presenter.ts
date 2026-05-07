@@ -182,6 +182,85 @@ export function classificationChipClass(c: Classification): string {
   }
 }
 
+export interface SentReply {
+  sentAt: string;
+  body: string;
+  /** Source the reply was sent through (e.g. "google.gmail" or "clipboard"). */
+  via: string;
+}
+
+/**
+ * Read the sentReply block off metadata. Stamped by the shell's reply
+ * composer right after a successful send. Drives the "Replied" badge
+ * + the "Your reply" card in the detail pane.
+ */
+export function readSentReply(item: ItemLike): SentReply | null {
+  const m = item.metadata;
+  if (!m || typeof m !== "object") return null;
+  const r = (m as { sentReply?: unknown }).sentReply;
+  if (!r || typeof r !== "object") return null;
+  const obj = r as Record<string, unknown>;
+  if (typeof obj.body !== "string" || typeof obj.sentAt !== "string") return null;
+  return {
+    sentAt: obj.sentAt,
+    body: obj.body,
+    via: typeof obj.via === "string" ? obj.via : "unknown",
+  };
+}
+
+/**
+ * Compose a quoted reply body. Standard email convention:
+ *   <draft body>
+ *
+ *   On <date>, <sender> wrote:
+ *   > line 1
+ *   > line 2
+ *
+ * Drafts that already contain a quoted block (replier agents
+ * sometimes paste one in) are returned as-is so we don't double-quote.
+ */
+export function buildQuotedReply(args: {
+  draft: string;
+  originalSender: string | null | undefined;
+  originalDate: string | Date | null | undefined;
+  originalBody: string | null | undefined;
+}): string {
+  const { draft, originalSender, originalDate, originalBody } = args;
+  const draftClean = (draft ?? "").trimEnd();
+
+  if (!originalBody) return draftClean;
+
+  // Already has a quoted block?
+  const lines = draftClean.split(/\r?\n/);
+  const hasQuoteBlock = lines.some(
+    (l, i) => l.startsWith("> ") && (lines[i + 1]?.startsWith("> ") ?? false),
+  );
+  if (hasQuoteBlock) return draftClean;
+
+  const sender = (originalSender ?? "").trim() || "the sender";
+  const dateStr = originalDate ? formatAbsoluteTime(originalDate) : "";
+
+  // Strip HTML, decode common entities, dedupe blank lines, prefix `> `.
+  const stripped = originalBody
+    .replace(/<[^>]+>/g, " ")
+    .replace(/&nbsp;/g, " ")
+    .replace(/&amp;/g, "&")
+    .replace(/&lt;/g, "<")
+    .replace(/&gt;/g, ">")
+    .replace(/\r/g, "")
+    .replace(/\n{3,}/g, "\n\n")
+    .trim();
+
+  const quoted = stripped
+    .split("\n")
+    .map((l) => (l.length === 0 ? ">" : `> ${l}`))
+    .join("\n");
+
+  const header = dateStr ? `On ${dateStr}, ${sender} wrote:` : `${sender} wrote:`;
+  const sep = draftClean.length > 0 ? "\n\n" : "";
+  return `${draftClean}${sep}${header}\n${quoted}\n`;
+}
+
 /**
  * Case-insensitive client-side search over a thread. Matches against
  * subject + from + body + classification of every message in the

@@ -18,6 +18,7 @@ import {
   formatAbsoluteTime,
   parseSenderName,
   readDrafts,
+  readSentReply,
   readTriage,
   scoreDotClass,
   scoreTier,
@@ -80,6 +81,7 @@ export function InboxDetail({
 
   const latest = thread.latest;
   const triage = readTriage(latest);
+  const sentReply = readSentReply(latest);
   const tier = triage ? scoreTier(triage.score) : null;
   const drafts = readDrafts(latest);
 
@@ -115,6 +117,30 @@ export function InboxDetail({
       </header>
 
       <div className="px-6 py-4 space-y-4">
+        {/* Your reply — surfaces what was sent if metadata.sentReply
+            exists. Stamped by the composer's onSent handler. */}
+        {sentReply && (
+          <section
+            data-testid="sent-reply-card"
+            className="rounded-lg border border-emerald-200 bg-emerald-50/40 px-4 py-3"
+          >
+            <div className="flex items-center gap-2">
+              <span className="text-[10px] uppercase tracking-wider text-emerald-800 font-medium">
+                ↩ Your reply
+              </span>
+              <span className="text-[10px] text-emerald-700/70">
+                {formatAbsoluteTime(sentReply.sentAt)}
+              </span>
+              <span className="text-[10px] font-mono text-emerald-700/60 ml-auto">
+                via {sentReply.via}
+              </span>
+            </div>
+            <pre className="mt-2 text-sm text-slate-800 whitespace-pre-wrap font-sans leading-relaxed">
+              {sentReply.body}
+            </pre>
+          </section>
+        )}
+
         {/* Triage card — written by generic-triage agent on the latest item. */}
         {triage && (
           <section

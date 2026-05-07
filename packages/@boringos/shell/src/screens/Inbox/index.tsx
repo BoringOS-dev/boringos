@@ -5,7 +5,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { useInbox, useClient, type InboxItem } from "@boringos/ui";
-import { useQueryClient } from "@tanstack/react-query";
+import { useQuery as useReactQuery, useQueryClient } from "@tanstack/react-query";
 
 import { ScreenBody, ScreenHeader } from "../_shared.js";
 import { BulkActionBar } from "./BulkActionBar.js";
@@ -14,7 +14,9 @@ import { InboxList } from "./InboxList.js";
 import { InboxDetail } from "./InboxDetail.js";
 import { ReplyComposer } from "./ReplyComposer.js";
 import { SearchBox } from "./SearchBox.js";
+import { useNow } from "./useNow.js";
 import {
+  formatRelativeTime,
   groupByThread,
   readTriage,
   threadMatchesQuery,
@@ -38,6 +40,44 @@ export function Inbox() {
   const [bulkAnchorId, setBulkAnchorId] = useState<string | null>(null);
   const [bulkBusy, setBulkBusy] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
+  const tickNow = useNow();
+
+  // Last-sync timestamp drives the small "Synced Nm" indicator.
+  // Pulled from /api/connectors/status which already lists per-tenant
+  // connector rows. We watch the `connectors-status` key independently
+  // so refresh + initial load both invalidate it.
+  const connectorStatusQuery = useReactQuery({
+    queryKey: ["connectors-status"],
+    queryFn: async () => {
+      type Cfg = { url?: string; token?: string; tenantId?: string };
+      const cfg = (client as { config?: Cfg }).config ?? {};
+      const res = await fetch(`${cfg.url ?? ""}/api/connectors/status`, {
+        headers: {
+          ...(cfg.token ? { Authorization: `Bearer ${cfg.token}` } : {}),
+          ...(cfg.tenantId ? { "X-Tenant-Id": cfg.tenantId } : {}),
+        },
+      });
+      if (!res.ok) return { connectors: [] as Array<{ lastSyncAt?: string | null }> };
+      return (await res.json()) as { connectors: Array<{ lastSyncAt?: string | null }> };
+    },
+    staleTime: 30_000,
+  });
+
+  const lastSyncAt = (() => {
+    const list = connectorStatusQuery.data?.connectors ?? [];
+    let latest: string | null = null;
+    for (const c of list) {
+      if (typeof c.lastSyncAt === "string" && (!latest || c.lastSyncAt > latest)) {
+        latest = c.lastSyncAt;
+      }
+    }
+    return latest;
+  })();
+
+  const handleRefresh = () => {
+    queryClient.invalidateQueries({ queryKey: ["inbox"] });
+    queryClient.invalidateQueries({ queryKey: ["connectors-status"] });
+  };
 
   // Fetch each status independently so the tab badges show live
   // counts. Tanstack dedupes identical query keys, and our react-query
@@ -400,7 +440,24 @@ export function Inbox() {
         title="Inbox"
         subtitle="Unified stream from connectors and apps"
         actions={
-          <div className="flex items-center gap-1 rounded-md border border-slate-200 bg-white p-0.5">
+          <div className="flex items-center gap-2">
+            {lastSyncAt && (
+              <span
+                className="text-[10px] text-slate-500 tabular-nums"
+                title={`Last connector sync: ${lastSyncAt}`}
+              >
+                Synced {formatRelativeTime(lastSyncAt, tickNow)}
+              </span>
+            )}
+            <button
+              type="button"
+              onClick={handleRefresh}
+              className="text-xs px-2 py-1 rounded text-slate-600 hover:bg-slate-100"
+              title="Refresh"
+            >
+              ↻
+            </button>
+            <div className="flex items-center gap-1 rounded-md border border-slate-200 bg-white p-0.5">
             {STATUSES.map((s) => (
               <button
                 key={s}
@@ -429,6 +486,7 @@ export function Inbox() {
                 )}
               </button>
             ))}
+            </div>
           </div>
         }
       />
