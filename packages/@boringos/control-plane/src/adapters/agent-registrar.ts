@@ -136,9 +136,22 @@ export async function registerAppAgents(
          WHERE id = ${id}
       `);
     } else {
+      // Inherit the tenant's existing root agent (Chief of Staff /
+      // Copilot) as our reports_to. Required since the
+      // `agents_tenant_one_root_idx` unique partial index allows only
+      // one agent per tenant with reports_to IS NULL — installing a
+      // default app agent without a parent would collide.
+      const rootRows = (await tx.execute(sql`
+        SELECT id FROM agents
+         WHERE tenant_id = ${tenantId} AND reports_to IS NULL
+         ORDER BY created_at ASC
+         LIMIT 1
+      `)) as Array<{ id: string }>;
+      const reportsTo = rootRows[0]?.id ?? null;
+
       const rows = (await tx.execute(sql`
         INSERT INTO agents (
-          tenant_id, name, role, instructions, skills, metadata, runtime_id
+          tenant_id, name, role, instructions, skills, metadata, runtime_id, reports_to
         )
         VALUES (
           ${tenantId},
@@ -147,7 +160,8 @@ export async function registerAppAgents(
           ${instructions},
           ${JSON.stringify(skills)}::jsonb,
           ${JSON.stringify(metadata)}::jsonb,
-          ${runtimeId}
+          ${runtimeId},
+          ${reportsTo}
         )
         RETURNING id
       `)) as Array<{ id: string }>;
