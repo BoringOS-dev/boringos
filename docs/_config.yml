@@ -1,0 +1,35 @@
+# GitHub Pages Jekyll Configuration for BoringOS Docs
+
+# Site settings
+title: "BoringOS Framework Documentation"
+description: "Open-source platform for building agentic applications"
+url: "https://docs.hebbs.ai"
+
+# Theme (using GitHub's default theme)
+theme: jekyll-theme-cayman
+
+# Build settings
+markdown: kramdown
+exclude:
+  - .git
+  - .gitignore
+  - node_modules
+  - package.json
+  - pnpm-lock.yaml
+
+# Permalink structure
+permalink: /:path/
+
+# Collections
+collections_dir: .
+
+# Enable all collections (all markdown files)
+include:
+  - "*.md"
+
+# Ensure markdown files are treated as regular content
+defaults:
+  - scope:
+      path: "*.md"
+    values:
+      layout: default

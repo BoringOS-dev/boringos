@@ -1,0 +1,200 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>BoringOS Framework Documentation</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+            line-height: 1.6;
+            color: #333;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 40px 20px;
+        }
+        .container {
+            max-width: 900px;
+            margin: 0 auto;
+            background: white;
+            border-radius: 8px;
+            padding: 40px;
+            box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+        }
+        h1 {
+            color: #667eea;
+            margin-bottom: 10px;
+            font-size: 2.5em;
+        }
+        .subtitle {
+            color: #666;
+            font-size: 1.1em;
+            margin-bottom: 30px;
+            border-bottom: 2px solid #667eea;
+            padding-bottom: 20px;
+        }
+        .docs-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+            gap: 20px;
+            margin-top: 30px;
+        }
+        .doc-card {
+            background: #f8f9fa;
+            border-left: 4px solid #667eea;
+            padding: 20px;
+            border-radius: 4px;
+            transition: all 0.3s ease;
+            cursor: pointer;
+        }
+        .doc-card:hover {
+            background: #f0f2ff;
+            transform: translateX(5px);
+            box-shadow: 0 4px 12px rgba(102, 126, 234, 0.2);
+        }
+        .doc-card h3 {
+            color: #667eea;
+            margin-bottom: 10px;
+            font-size: 1.2em;
+        }
+        .doc-card p {
+            color: #666;
+            font-size: 0.95em;
+            line-height: 1.5;
+        }
+        .doc-card a {
+            display: inline-block;
+            margin-top: 15px;
+            color: #667eea;
+            text-decoration: none;
+            font-weight: 500;
+        }
+        .doc-card a:hover {
+            text-decoration: underline;
+        }
+        .badge {
+            display: inline-block;
+            background: #667eea;
+            color: white;
+            padding: 4px 8px;
+            border-radius: 3px;
+            font-size: 0.8em;
+            margin-right: 5px;
+        }
+        .note {
+            background: #fff3cd;
+            border: 1px solid #ffeaa7;
+            border-radius: 4px;
+            padding: 15px;
+            margin: 20px 0;
+            color: #856404;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>📚 BoringOS Framework</h1>
+        <p class="subtitle">Open-source platform for building agentic applications</p>
+
+        <div class="note">
+            <strong>Note:</strong> This documentation is currently being served from GitHub Pages. For the most up-to-date content, please visit the <a href="https://github.com/hebbs-ai/boringos" style="color: inherit;">GitHub repository</a>.
+        </div>
+
+        <h2 style="margin-top: 40px; margin-bottom: 20px; color: #333;">Core Documentation</h2>
+
+        <div class="docs-grid">
+            <div class="doc-card">
+                <h3>📖 Index</h3>
+                <p>Start here for an overview of all documentation topics and guides.</p>
+                <a href="INDEX.md">View Documentation Index →</a>
+            </div>
+
+            <div class="doc-card">
+                <h3>🧠 Thesis</h3>
+                <p>The foundational thesis behind BoringOS and how agents, skills, tools, and modules work together.</p>
+                <a href="thesis.md">Read the Thesis →</a>
+            </div>
+
+            <div class="doc-card">
+                <h3>🏗️ Architecture</h3>
+                <p>Understanding BoringOS architecture, Skills, Tools, and the Module system.</p>
+                <a href="install-flow.md">Module Install Flow →</a>
+            </div>
+
+            <div class="doc-card">
+                <h3>🔧 Setup Guides</h3>
+                <p>Step-by-step guides for setting up BoringOS, including external Postgres and EC2 deployment.</p>
+                <a href="external-postgres.md">External Postgres Setup →</a>
+            </div>
+
+            <div class="doc-card">
+                <h3>🚀 Integration</h3>
+                <p>Complete guide to Pi Runtime integration and live thinking window configuration.</p>
+                <a href="pi-runtime-integration.md">Pi Runtime Guide →</a>
+            </div>
+
+            <div class="doc-card">
+                <h3>⚖️ Licensing</h3>
+                <p>Information about BoringOS licensing (AGPL-3.0, LGPL-3.0, Apache-2.0).</p>
+                <a href="licensing.md">View License Details →</a>
+            </div>
+
+            <div class="doc-card">
+                <h3>📦 MDK Upgrade</h3>
+                <p>Guide for module authors upgrading to the latest Module SDK (MDK).</p>
+                <a href="MDK-UPGRADE-GUIDE.md">MDK Upgrade Guide →</a>
+            </div>
+
+            <div class="doc-card">
+                <h3>📋 Blockers</h3>
+                <p>Current blockers and issues being tracked in the framework development.</p>
+                <a href="blockers/">View Active Blockers →</a>
+            </div>
+
+            <div class="doc-card">
+                <h3>🗂️ Archive</h3>
+                <p>Historical documentation and archived guides.</p>
+                <a href="archive/">View Archive →</a>
+            </div>
+        </div>
+
+        <h2 style="margin-top: 50px; margin-bottom: 20px; color: #333;">Key Resources</h2>
+        <ul style="margin-left: 20px; color: #666;">
+            <li><strong>GitHub:</strong> <a href="https://github.com/hebbs-ai/boringos" style="color: #667eea;">hebbs-ai/boringos</a></li>
+            <li><strong>Main README:</strong> Check the root README.md for quick start and overview</li>
+            <li><strong>Tech Stack:</strong> TypeScript, Hono, Drizzle, Postgres, Vitest</li>
+        </ul>
+
+        <hr style="margin: 40px 0; border: none; border-top: 1px solid #ddd;">
+
+        <p style="text-align: center; color: #999; font-size: 0.9em;">
+            Last updated: <span id="timestamp"></span> |
+            <a href="https://github.com/hebbs-ai/boringos" style="color: #667eea;">GitHub Repository</a>
+        </p>
+    </div>
+
+    <script>
+        // Convert markdown links to clickable paths
+        document.querySelectorAll('a[href*=".md"]').forEach(link => {
+            const href = link.getAttribute('href');
+            // Keep relative paths as-is for GitHub Pages to serve markdown
+            link.setAttribute('href', href);
+        });
+
+        // Set timestamp
+        const now = new Date();
+        document.getElementById('timestamp').textContent = now.toLocaleDateString('en-US', {
+            year: 'numeric',
+            month: 'long',
+            day: 'numeric',
+            hour: '2-digit',
+            minute: '2-digit'
+        });
+    </script>
+</body>
+</html>
