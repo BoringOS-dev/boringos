@@ -295,11 +295,22 @@ export function createAdminRoutes(
       values.reportsTo = body.reportsTo;
     }
 
-    // Task 07: Protect shell agents from modification
-    const agentRows = await db.select({ source: (await import("@boringos/db")).agents.source })
-      .from((await import("@boringos/db")).agents).where(eq((await import("@boringos/db")).agents.id, agentId)).limit(1) as Array<{ source: string }>;
+    // Task 07: Protect shell (framework) agents from STRUCTURAL/identity
+    // edits — but allow operational overrides (model, status/pause, budget,
+    // reportsTo handled separately) so operators can still tune them from
+    // Settings → Agents (e.g. pick Opus for Chief of Staff). Blocking every
+    // field made the per-agent model picker silently no-op on shell agents.
+    const agentRows = await db.select({ source: agents.source })
+      .from(agents).where(eq(agents.id, agentId)).limit(1) as Array<{ source: string }>;
     if (agentRows[0]?.source === "shell") {
-      return c.json({ error: "Framework agents (source='shell') cannot be modified" }, 403);
+      const PROTECTED_SHELL_FIELDS = ["name", "role", "title", "icon", "instructions", "routingTags", "skills"];
+      const blocked = PROTECTED_SHELL_FIELDS.filter((k) => body[k] !== undefined);
+      if (blocked.length > 0) {
+        return c.json(
+          { error: `Framework agents (source='shell') cannot modify: ${blocked.join(", ")}` },
+          403,
+        );
+      }
     }
 
     if (body.name !== undefined) values.name = body.name;
