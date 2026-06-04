@@ -1,5 +1,28 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
+/**
+ * A single MIME part of a message payload. Gmail nests parts (multipart/
+ * mixed → multipart/alternative + attachment parts), so `parts` recurses.
+ * Attachment parts carry a `filename` and a `body.attachmentId` to fetch
+ * the bytes via `GmailClient.getAttachment`.
+ */
+export interface MessagePart {
+  partId?: string;
+  mimeType?: string;
+  filename?: string;
+  headers?: { name: string; value: string }[];
+  body?: { attachmentId?: string; size?: number; data?: string };
+  parts?: MessagePart[];
+}
+
+/** Attachment metadata surfaced by `GmailClient.listAttachments`. */
+export interface GmailAttachment {
+  attachmentId: string;
+  filename: string;
+  mimeType: string;
+  size: number;
+}
+
 export interface GmailMessage {
   id: string;
   threadId: string;
@@ -8,7 +31,7 @@ export interface GmailMessage {
   payload?: {
     headers: { name: string; value: string }[];
     body?: { data?: string; size: number };
-    parts?: unknown[];
+    parts?: MessagePart[];
   };
   internalDate: string;
 }

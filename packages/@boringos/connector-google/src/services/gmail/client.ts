@@ -5,7 +5,7 @@
 // either a static string or an async token-provider function.
 
 import { fetchWithAuth, resolveToken, type TokenSource } from "../../helpers.js";
-import type { GmailMessage, Thread, HistoryEvent } from "./types.js";
+import type { GmailMessage, Thread, HistoryEvent, MessagePart, GmailAttachment } from "./types.js";
 
 const GMAIL_API = "https://gmail.googleapis.com/gmail/v1/users/me";
 
@@ -130,6 +130,43 @@ export class GmailClient {
     if (!createRes.ok) throw new Error(`Gmail label create failed: ${createRes.status}`);
     const created = (await createRes.json()) as { id: string };
     return { labelId: created.id };
+  }
+
+  /**
+   * Walk a message's MIME tree and return metadata for every attachment
+   * part (a part with both a `filename` and a `body.attachmentId`). Pure —
+   * no network call; operates on an already-fetched message.
+   */
+  listAttachments(message: GmailMessage): GmailAttachment[] {
+    const out: GmailAttachment[] = [];
+    const walk = (parts?: MessagePart[]): void => {
+      for (const p of parts ?? []) {
+        if (p.filename && p.body?.attachmentId) {
+          out.push({
+            attachmentId: p.body.attachmentId,
+            filename: p.filename,
+            mimeType: p.mimeType ?? "application/octet-stream",
+            size: p.body.size ?? 0,
+          });
+        }
+        if (p.parts) walk(p.parts);
+      }
+    };
+    walk(message.payload?.parts);
+    return out;
+  }
+
+  /**
+   * Download one attachment's bytes. Gmail returns base64url-encoded data;
+   * this decodes to a Buffer. Pair with `getMessage` + `listAttachments`
+   * to enumerate the `attachmentId`s.
+   */
+  async getAttachment(messageId: string, attachmentId: string): Promise<Buffer> {
+    const url = `${GMAIL_API}/messages/${encodeURIComponent(messageId)}/attachments/${encodeURIComponent(attachmentId)}`;
+    const res = await fetchWithAuth(this.getToken, this.fetchImpl, url, { method: "GET" });
+    if (!res.ok) throw new Error(`Gmail getAttachment failed: ${res.status}`);
+    const body = (await res.json()) as { data?: string; size?: number };
+    return Buffer.from(body.data ?? "", "base64url");
   }
 
   async listHistory(startHistoryId: string): Promise<HistoryEvent[]> {

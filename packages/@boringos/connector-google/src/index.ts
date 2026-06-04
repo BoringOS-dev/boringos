@@ -16,7 +16,7 @@ export { PeopleClient } from "./services/contacts/index.js";
 export { DriveClient } from "./services/drive/index.js";
 
 // Service types
-export type { GmailMessage, Thread, HistoryEvent, EmailHeaders } from "./services/gmail/index.js";
+export type { GmailMessage, Thread, HistoryEvent, EmailHeaders, MessagePart, GmailAttachment } from "./services/gmail/index.js";
 export type { CalendarEvent, FreeBusySlot } from "./services/calendar/index.js";
 export type { Contact, ContactGroup } from "./services/contacts/index.js";
 export type { DriveFile } from "./services/drive/index.js";

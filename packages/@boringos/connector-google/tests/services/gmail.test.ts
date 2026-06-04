@@ -14,6 +14,47 @@ describe("GmailClient (v2 typed)", () => {
     expect(fetchMock).toHaveBeenCalled();
   });
 
+  it("listAttachments walks nested parts and skips inline/non-file parts", () => {
+    const client = new GmailClient("token");
+    const message = {
+      id: "m1",
+      threadId: "t1",
+      labelIds: [],
+      snippet: "",
+      internalDate: "",
+      payload: {
+        headers: [],
+        parts: [
+          { mimeType: "text/plain", body: { size: 10 } }, // body text, no filename → skipped
+          {
+            mimeType: "multipart/mixed",
+            parts: [
+              { mimeType: "application/pdf", filename: "deck.pdf", body: { attachmentId: "att-1", size: 2048 } },
+              { mimeType: "image/png", filename: "logo.png", body: { attachmentId: "att-2", size: 512 } },
+              { mimeType: "text/html", body: { size: 99 } }, // no filename → skipped
+            ],
+          },
+        ],
+      },
+    };
+    const atts = client.listAttachments(message);
+    expect(atts).toHaveLength(2);
+    expect(atts[0]).toMatchObject({ attachmentId: "att-1", filename: "deck.pdf", mimeType: "application/pdf", size: 2048 });
+    expect(atts[1]?.filename).toBe("logo.png");
+  });
+
+  it("getAttachment decodes base64url data to a Buffer", async () => {
+    const original = Buffer.from("%PDF-1.7 hello", "utf8");
+    const fetchMock = vi.fn(async (url: string) => {
+      expect(url).toContain("/messages/m1/attachments/att-1");
+      return new Response(JSON.stringify({ data: original.toString("base64url"), size: original.length }), { status: 200 });
+    });
+    const client = new GmailClient("token", fetchMock as unknown as typeof fetch);
+    const bytes = await client.getAttachment("m1", "att-1");
+    expect(Buffer.isBuffer(bytes)).toBe(true);
+    expect(bytes.toString("utf8")).toBe("%PDF-1.7 hello");
+  });
+
   it("returns empty array when no messages", async () => {
     const fetchMock = vi.fn(async () =>
       new Response(JSON.stringify({}), { status: 200 }),
