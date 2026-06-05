@@ -39,19 +39,28 @@ export const REPLIER_AGENT_INSTRUCTIONS_FOR_TEST = [
   "  Step 2. SKIP immediately (go to Step 5) if TRIAGE_LABEL is `noise` or `fyi`.",
   "    These categories do not warrant a reply. Do not call `framework.inbox.read`.",
   "",
-  "  Step 3. Only if you are going to draft — read the item to get sender headers and body:",
+  "  Step 3. Read the item in plain text — no parsing needed:",
   "      curl -sS -X POST $BORINGOS_CALLBACK_URL/api/tools/framework.inbox.read \\",
   "        -H \"Authorization: Bearer $BORINGOS_CALLBACK_TOKEN\" \\",
   "        -H 'Content-Type: application/json' \\",
-  "        -d \"{\\\"itemId\\\":\\\"$ITEM_ID\\\"}\"",
-  "    Pull `result.from`, `result.body`, `result.metadata`, and `result.metadata.email.headers`.",
+  "        -d \"{\\\"itemId\\\":\\\"$ITEM_ID\\\",\\\"format\\\":\\\"simpleText\\\"}\"",
+  "    The response is {ok:true, result:{text:'...'}}. Read result.text — it contains From, Subject,",
+  "    Body, Triage label, and any existing drafts in plain markdown. Extract SENDER from the From line.",
+  "",
+  "  Step 3b. Search for the last 4 emails from the same sender — no parsing needed:",
+  "      curl -sS -X POST $BORINGOS_CALLBACK_URL/api/tools/framework.inbox.search \\",
+  "        -H \"Authorization: Bearer $BORINGOS_CALLBACK_TOKEN\" \\",
+  "        -H 'Content-Type: application/json' \\",
+  "        -d \"{\\\"from\\\":\\\"$SENDER\\\",\\\"limit\\\":4}\"",
+  "    Read result.items — each has subject and body. Use this as prior context when drafting.",
+  "    Do not skip this step even if existing drafts are present — always write a fresh draft.",
   "",
   "  Step 4. SKIP (go to Step 5 without drafting) if any of these hold:",
   "    - `metadata.email.headers.listUnsubscribe` is non-empty, OR `listId` is non-empty, OR `precedence` is `bulk`/`list`/`junk` — bulk mailer.",
   "    - `metadata.email.headers.autoSubmitted` is anything other than `null` / `no` — auto-generated mail.",
   "    - The body looks like a newsletter footer (single paragraph + 'unsubscribe' link), or `from` is `noreply@` / `no-reply@` / `notifications@` AND `replyTo` is empty.",
   "    - The `from` address is the user's own address.",
-  "    Otherwise — draft a polite, generic reply (3-6 sentences, plain text, no HTML). APPEND via `framework.inbox.update`. The tool shallow-merges `metadata`, so pass ONLY `replyDrafts` (sibling keys like `triage` / `email` are preserved). The `replyDrafts` array is replaced, so include any prior drafts:",
+  "    Otherwise — draft a reply that references prior context where relevant (3-6 sentences, plain text, no HTML). APPEND via `framework.inbox.update`. The tool shallow-merges `metadata`, so pass ONLY `replyDrafts` (sibling keys like `triage` / `email` are preserved). The `replyDrafts` array is replaced, so include any prior drafts:",
   "      curl -sS -X POST $BORINGOS_CALLBACK_URL/api/tools/framework.inbox.update \\",
   "        -H \"Authorization: Bearer $BORINGOS_CALLBACK_TOKEN\" \\",
   "        -H 'Content-Type: application/json' \\",
@@ -101,9 +110,10 @@ For each classified inbox item:
 1. Parse \`inbox-item-id\` and \`triage-label\` from your task description headers
 2. Skip immediately if \`triage-label\` is \`noise\` or \`fyi\` (belt-and-suspenders guard)
 3. If not skipping: read the item (\`framework.inbox.read\`) for headers and body
-4. Skip on bulk/automated-mail signals in headers (\`listUnsubscribe\`, \`listId\`, \`precedence\`, \`autoSubmitted\`)
-5. Otherwise draft a reply and append to \`metadata.replyDrafts\` via \`framework.inbox.update\`
-6. Mark the task done (\`framework.tasks.patch\`) — whether you drafted or skipped
+4. Search for the last 4 emails from the same sender (\`framework.inbox.search\` with \`from=<sender>\`) — use this as context when drafting; if the email references a previous email, you now have it
+5. Skip on bulk/automated-mail signals in headers (\`listUnsubscribe\`, \`listId\`, \`precedence\`, \`autoSubmitted\`)
+6. Otherwise draft a context-aware reply and append to \`metadata.replyDrafts\` via \`framework.inbox.update\`
+7. Mark the task done (\`framework.tasks.patch\`) — whether you drafted or skipped
 
 ## Skip rules — be aggressive
 

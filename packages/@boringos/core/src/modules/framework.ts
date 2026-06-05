@@ -10,7 +10,7 @@
 // Drizzle operations. (legacy routes are gone) in parallel
 // during the migration; cutover removes them.
 
-import { and, eq, sql } from "drizzle-orm";
+import { and, desc, eq, ilike, sql } from "drizzle-orm";
 import type { Db } from "@boringos/db";
 import {
   tasks,
@@ -608,10 +608,13 @@ function makeCreateAgent(db: Db): Tool {
 function makeReadInbox(db: Db): Tool {
   return {
     name: "inbox.read",
-    description: "Read an inbox item",
-    inputs: z.object({ itemId: z.string().uuid() }),
+    description: "Read an inbox item. Pass format=simpleText to get a plain markdown summary instead of raw JSON — easier to read in agent context.",
+    inputs: z.object({
+      itemId: z.string().uuid(),
+      format: z.enum(["json", "simpleText"]).optional().default("json"),
+    }),
     async handler(
-      input: { itemId: string },
+      input: { itemId: string; format?: "json" | "simpleText" },
       ctx: ToolContext,
     ): Promise<ToolResult> {
       const rows = await db.select().from(inboxItems).where(eq(inboxItems.id, input.itemId)).limit(1);
@@ -625,7 +628,68 @@ function makeReadInbox(db: Db): Tool {
           error: { code: "permission_denied", message: "Inbox item belongs to another tenant", retryable: false },
         };
       }
+      if (input.format === "simpleText") {
+        const meta = (item.metadata ?? {}) as Record<string, unknown>;
+        const headers = (meta.email as Record<string, unknown> | undefined)?.headers as Record<string, unknown> | undefined;
+        const drafts = (meta.replyDrafts as { body: string; author: string; draftedAt: string }[] | undefined) ?? [];
+        const triage = meta.triage as { label?: string; rationale?: string; reason?: string } | undefined;
+        const lines = [
+          `**From:** ${item.from ?? "unknown"}`,
+          `**Subject:** ${item.subject}`,
+          `**Status:** ${item.status}`,
+          `**Received:** ${item.createdAt.toISOString()}`,
+          triage?.label ? `**Triage:** ${triage.label}${triage.rationale || triage.reason ? ` — ${triage.rationale ?? triage.reason}` : ""}` : null,
+          headers?.listUnsubscribe ? `**List-Unsubscribe:** ${headers.listUnsubscribe}` : null,
+          headers?.autoSubmitted && headers.autoSubmitted !== "no" ? `**Auto-Submitted:** ${headers.autoSubmitted}` : null,
+          "",
+          "**Body:**",
+          item.body ?? "(no body)",
+          drafts.length > 0 ? `\n**Existing drafts (${drafts.length}):**\n${drafts.map((d, i) => `${i + 1}. [${d.author} @ ${d.draftedAt}]: ${d.body}`).join("\n")}` : null,
+        ].filter((l) => l !== null).join("\n");
+        return { ok: true, result: { text: lines } as Record<string, unknown> };
+      }
       return { ok: true, result: item as unknown as Record<string, unknown> };
+    },
+  };
+}
+
+function makeSearchInbox(db: Db): Tool {
+  return {
+    name: "inbox.search",
+    description:
+      "Search inbox items by sender, subject, or status. Returns matching items ordered by most recent first. Use to load prior emails from the same sender before drafting a reply.",
+    inputs: z.object({
+      from: z.string().optional().describe("Filter by sender address or name (partial match)"),
+      subject: z.string().optional().describe("Filter by subject line (partial match)"),
+      status: z.string().optional().describe("Filter by status: unread, read, archived, snoozed"),
+      limit: z.number().int().min(1).max(20).optional().default(5),
+    }),
+    async handler(
+      input: { from?: string; subject?: string; status?: string; limit?: number },
+      ctx: ToolContext,
+    ): Promise<ToolResult> {
+      const limit = input.limit ?? 5;
+      const conditions = [eq(inboxItems.tenantId, ctx.tenantId)];
+      if (input.from) conditions.push(ilike(inboxItems.from, `%${input.from}%`));
+      if (input.subject) conditions.push(ilike(inboxItems.subject, `%${input.subject}%`));
+      if (input.status) conditions.push(eq(inboxItems.status, input.status));
+
+      const rows = await db
+        .select({
+          id: inboxItems.id,
+          subject: inboxItems.subject,
+          from: inboxItems.from,
+          status: inboxItems.status,
+          body: inboxItems.body,
+          createdAt: inboxItems.createdAt,
+          metadata: inboxItems.metadata,
+        })
+        .from(inboxItems)
+        .where(and(...conditions))
+        .orderBy(desc(inboxItems.createdAt))
+        .limit(limit);
+
+      return { ok: true, result: { items: rows, total: rows.length } };
     },
   };
 }
@@ -957,6 +1021,7 @@ export const createFrameworkModule: ModuleFactory = (deps) => {
       makeReportCost(db),
       makeCreateAgent(db),
       makeReadInbox(db),
+      makeSearchInbox(db),
       makeUpdateInbox(fwDeps),
       makeWakeAgent(fwDeps),
       makeGetBusinessProfile(db),

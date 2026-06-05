@@ -685,6 +685,60 @@ close the reported case. Punted per scope.
 
 ---
 
+## 2026-06-01 — Inbox-replier agent + workflow not created for pre-existing tenants
+
+### 15. `defaultInstall` onInstall never runs for tenants created before the module's installHandler was wired
+
+**What I expected:** every tenant with `inbox-replier` in `module_installs` has a
+Generic Email Replier agent row and a "Draft generic reply for incoming items" workflow row.
+
+**What I saw:** the install row existed (module was registered with `defaultInstall: true`), but no agent and no workflow had been created. Reply drafts never appeared even after triage classified emails as `important`. The tenant had signed up before commits #33 (3911e55) and #37 (6dc05e3) landed, so `onTenantCreate` ran against the old version of `installHandler` which did not yet create the agent + workflow.
+
+**Repro:** any tenant created before 2026-05-21. Check:
+```sql
+SELECT tenant_id FROM module_installs WHERE module_id = 'inbox-replier';
+-- then confirm no matching agent row:
+SELECT id FROM agents WHERE tenant_id = '<id>' AND role = 'operations';
+```
+
+**Workaround used:** called `POST /api/admin/modules/install` with `{ moduleId: "inbox-replier" }` for the affected tenant. This re-runs `installHandler` and creates the missing agent + workflow rows.
+
+**Root cause:** `defaultInstall` fires `onTenantCreate` at signup time. If the module's `installHandler` changes after tenants already exist, those tenants are never backfilled — they silently have a stale (or no-op) install. There is no reconciliation pass on boot.
+
+**Fix needed:** add a backfill sweep to `BoringOS.listen()` (alongside the existing `recoverPending` and shared-memory scaffold sweeps). For every tenant that has an `inbox-replier` install row but no agent row, re-run `installHandler`. Generalise as a module-level `onInstallMigrate(ctx)` hook or a version field on the install row so modules can detect stale installs and self-heal.
+
+---
+
+## 2026-06-01 — Inbox-replier context gaps
+
+### 16. Replier has no tool to search prior emails from the same sender ✅ FIXED 2026-06-01
+
+**What I expected:** when drafting a reply the agent fetches the last 3–4 emails from the same sender so it can reference prior context, answer "please check my previous email"-style requests, and personalise the draft.
+
+**What I saw:** the replier only calls `framework.inbox.read` on the current item. No prior thread context is loaded. When Anushi's email said "please check my previous email," the agent had no way to find it.
+
+**Root cause:** `framework` module exposes `inbox.read` and `inbox.update` but no `inbox.search`. There is no tool to query `inbox_items` by sender, date range, subject, etc. — despite the data being fully available locally in the DB (synced by the forward-sync ticker).
+
+**Fix needed:** add `framework.inbox.search` tool — query `inbox_items` by `from`, `subject` (LIKE), date range, `status`, `triageLabel`. Returns a list of items (id, subject, from, createdAt, body snippet). Then update the replier skill (Step 3) to call `inbox.search` with `from = sender` before drafting, loading the last 3–4 matches as context.
+
+**No external API call required** — `inbox_items` is a local Postgres table already populated by forward-sync.
+
+---
+
+### 17. Agents only get tools for their own module — no cross-module read access
+
+**What I expected:** the replier (and any agent doing inbox work) can read from all locally-mirrored connector data: past emails, CRM contacts, Slack messages, etc. Write actions (send email, post tweet) are gated. Read queries are free.
+
+**What I saw:** the replier skill only lists `framework.inbox.read/update` and `framework.tasks.patch`. It has no access to `google.*` tools, CRM read tools, or any other connector's query surface — even though all that data is already mirrored in local DB tables (`inbox_items`, `crm__contacts`, `crm__activities`, etc.).
+
+**Root cause:** `appliesTo` scoping controls which skills are injected but agents also only see tools registered on modules that expose them. There is no "read-only access to all installed connector data" concept. The replier would have to call raw Gmail API (external round-trip) rather than the local mirror.
+
+**Fix needed:** two-part:
+1. Add read-only query tools to each module that mirrors data locally: `framework.inbox.search` (above), `crm.contacts.search`, `crm.activities.list`, `google.gmail.search` (queries local inbox_items, not Gmail API). Write tools (`google.gmail.send`, `slack.post_message`) stay behind the writes-gate.
+2. Skill injection policy: agents should receive `## Available read tools` from every installed module, not just the one that owns the task. Write tools are only injected when the connector's writesGate is explicitly off (or the user approved). This is analogous to "read tweets yes, send tweet no."
+
+---
+
 ## Next things to test (queued)
 
 - Does the agent automatically extract facts from inbound emails and

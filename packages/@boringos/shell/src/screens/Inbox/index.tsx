@@ -25,11 +25,11 @@ import {
   type ReplyDraft,
 } from "./presenter.js";
 
-const STATUSES = ["unread", "read", "snoozed", "archived"] as const;
+const STATUSES = ["inbox", "snoozed", "archived"] as const;
 type Status = (typeof STATUSES)[number];
 
 export function Inbox() {
-  const [status, setStatus] = useState<Status>("unread");
+  const [status, setStatus] = useState<Status>("inbox");
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [composing, setComposing] = useState<{
     item: InboxItem;
@@ -81,17 +81,22 @@ export function Inbox() {
     queryClient.invalidateQueries({ queryKey: ["connectors-status"] });
   };
 
-  // Fetch each status independently so the tab badges show live
-  // counts. Tanstack dedupes identical query keys, and our react-query
-  // client has staleTime: 5s — so this is four fetches once per tab
-  // switch, not on every render.
   const unreadQuery = useInbox("unread");
   const readQuery = useInbox("read");
   const snoozedQuery = useInbox("snoozed");
   const archivedQuery = useInbox("archived");
-  const queriesByStatus: Record<Status, ReturnType<typeof useInbox>> = {
-    unread: unreadQuery,
-    read: readQuery,
+
+  const unreadItems = (unreadQuery.data as InboxItem[] | undefined) ?? [];
+  const readItems = (readQuery.data as InboxItem[] | undefined) ?? [];
+
+  // Unified "inbox" tab merges read+unread into one sorted list.
+  const inboxQuery = {
+    data: [...unreadItems, ...readItems],
+    isLoading: unreadQuery.isLoading || readQuery.isLoading,
+    error: unreadQuery.error ?? readQuery.error,
+  };
+  const queriesByStatus = {
+    inbox: inboxQuery,
     snoozed: snoozedQuery,
     archived: archivedQuery,
   };
@@ -130,9 +135,9 @@ export function Inbox() {
     threads.find((t) => t.latest.id === selectedId) ?? null;
   const selected = selectedThread?.latest ?? null;
 
+  const unreadCount = unreadItems.length;
   const counts: Record<Status, number> = {
-    unread: ((unreadQuery.data as InboxItem[] | undefined) ?? []).length,
-    read: ((readQuery.data as InboxItem[] | undefined) ?? []).length,
+    inbox: unreadItems.length + readItems.length,
     snoozed: ((snoozedQuery.data as InboxItem[] | undefined) ?? []).length,
     archived: ((archivedQuery.data as InboxItem[] | undefined) ?? []).length,
   };
@@ -313,16 +318,24 @@ export function Inbox() {
     }
   };
 
+  /** Keys to target for optimistic cache mutations based on current tab. */
+  const currentCacheKeys = status === "inbox" ? ["unread", "read"] : [status];
+
+  const optimisticFilter = (predicate: (i: InboxItem) => boolean) => {
+    for (const k of currentCacheKeys) {
+      queryClient.setQueriesData<InboxItem[]>({ queryKey: ["inbox", k] }, (old) =>
+        old?.filter(predicate) ?? old,
+      );
+    }
+  };
+
   /** Run an action across every bulk-selected item, then clear. */
   const runBulk = async (
     action: (item: InboxItem) => Promise<unknown>,
   ) => {
     if (bulkSelected.size === 0) return;
     setBulkBusy(true);
-    // Optimistic: drop matching rows from the current status query.
-    queryClient.setQueriesData<InboxItem[]>({ queryKey: ["inbox", status] }, (old) =>
-      old?.filter((i) => !bulkSelected.has(i.id)) ?? old,
-    );
+    optimisticFilter((i) => !bulkSelected.has(i.id));
     try {
       const targets = items.filter((i) => bulkSelected.has(i.id));
       await Promise.all(targets.map(action));
@@ -338,7 +351,7 @@ export function Inbox() {
   const handleBulkMarkUnread = () => runBulk((i) => client.updateInboxItem(i.id, { status: "unread" }));
 
   // Explicit user actions (archive / snooze / convert-to-task) DO
-  // remove the row immediately from the unread list — that's the
+  // remove the row immediately from the current list — that's the
   // user's intention. These run a full invalidate so other tabs (and
   // counts) update too.
   const handleActiveAction = async (
@@ -346,9 +359,7 @@ export function Inbox() {
     action: () => Promise<unknown>,
   ) => {
     // Optimistic remove from current list so the row vanishes immediately.
-    queryClient.setQueriesData<InboxItem[]>({ queryKey: ["inbox", status] }, (old) =>
-      old?.filter((i) => i.id !== item.id) ?? old,
-    );
+    optimisticFilter((i) => i.id !== item.id);
     try {
       await action();
     } finally {
@@ -475,7 +486,12 @@ export function Inbox() {
                 }`}
               >
                 <span className="capitalize">{s}</span>
-                {counts[s] > 0 && (
+                {s === "inbox" && unreadCount > 0 && (
+                  <span className="text-[10px] tabular-nums px-1 rounded bg-accent text-white">
+                    {unreadCount}
+                  </span>
+                )}
+                {s !== "inbox" && counts[s] > 0 && (
                   <span
                     className={`text-[10px] tabular-nums px-1 rounded ${
                       status === s
