@@ -9,6 +9,7 @@
     "typecheck": "pnpm -r typecheck",
     "test": "vitest",
     "test:run": "vitest run",
+    "check": "node scripts/daily-check.mjs",
     "db:generate": "pnpm --filter @boringos/db generate",
     "db:migrate": "pnpm --filter @boringos/db migrate",
     "pack:modules": "node scripts/pack-modules.mjs",
