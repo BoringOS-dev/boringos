@@ -32,7 +32,17 @@ describe("createWakeup — coalescing", () => {
 
   beforeAll(async () => {
     const { BoringOS } = await import("@boringos/core");
-    const dataDir = await mkdtemp(join(tmpdir(), "boringos-coalesce-"));
+    let dataDir: string | null = null;
+    for (let attempt = 0; attempt < 3; attempt++) {
+      try {
+        dataDir = await mkdtemp(join(tmpdir(), "boringos-coalesce-"));
+        break;
+      } catch (e) {
+        if (attempt === 2) throw e;
+        await new Promise((r) => setTimeout(r, 100 * (attempt + 1)));
+      }
+    }
+    if (!dataDir) throw new Error("Failed to create temp directory");
     tempDirs.push(dataDir);
 
     const randomPort = 5500 + Math.floor(Math.random() * 1000);
