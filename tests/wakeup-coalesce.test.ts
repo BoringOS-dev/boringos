@@ -11,7 +11,6 @@ import { describe, it, expect, beforeAll, afterAll, beforeEach } from "vitest";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { eq } from "drizzle-orm";
 
 // Suppress CONNECTION_ENDED errors from postgres library cleanup
 process.on("unhandledRejection", (reason: any) => {
@@ -21,38 +20,28 @@ process.on("unhandledRejection", (reason: any) => {
   throw reason;
 });
 
-let db: import("@boringos/db").Db;
-let dataDir: string;
-let tenantId: string;
-let agentId: string;
-let otherAgentId: string;
-
-async function getTestDb() {
-  const { BoringOS } = await import("@boringos/core");
-  dataDir = await mkdtemp(join(tmpdir(), "boringos-coalesce-"));
-  const randomPort = 5500 + Math.floor(Math.random() * 100);
-  const app = new BoringOS({
-    database: { embedded: true, dataDir, port: randomPort },
-    drive: { root: join(dataDir, "drive") },
-    auth: { secret: "test-secret-coalesce" },
-  });
-  const server = await app.listen(0);
-  return {
-    db: (server as unknown as { context: { db: import("@boringos/db").Db } }).context.db,
-    app,
-    server,
-  };
-}
+const tempDirs: string[] = [];
 
 describe("createWakeup — coalescing", () => {
+  let db: import("@boringos/db").Db;
   let app: import("@boringos/core").BoringOS;
-  let server: any;
+  let tenantId: string;
+  let agentId: string;
+  let otherAgentId: string;
 
   beforeAll(async () => {
-    const setup = await getTestDb();
-    app = setup.app;
-    server = setup.server;
-    db = setup.db;
+    const { BoringOS } = await import("@boringos/core");
+    const dataDir = await mkdtemp(join(tmpdir(), "boringos-coalesce-"));
+    tempDirs.push(dataDir);
+
+    const randomPort = 5500 + Math.floor(Math.random() * 1000);
+    app = new BoringOS({
+      database: { embedded: true, dataDir, port: randomPort },
+      drive: { root: join(dataDir, "drive") },
+      auth: { secret: "test-secret-coalesce" },
+    });
+    const server = await app.listen(0);
+    db = (server as unknown as { context: { db: import("@boringos/db").Db } }).context.db;
 
     const { tenants, agents } = await import("@boringos/db");
     const { generateId } = await import("@boringos/shared");
@@ -94,13 +83,22 @@ describe("createWakeup — coalescing", () => {
 
   afterAll(async () => {
     await app?.close?.();
-    await new Promise((r) => setTimeout(r, 1000));
-    try {
-      await rm(dataDir, { recursive: true, force: true });
-    } catch {
-      // Ignore cleanup errors
+    await new Promise((r) => setTimeout(r, 2000));
+    while (tempDirs.length > 0) {
+      const dir = tempDirs.pop();
+      if (!dir) continue;
+      for (let attempt = 0; attempt < 3; attempt++) {
+        try {
+          await rm(dir, { recursive: true, force: true });
+          break;
+        } catch (e) {
+          if (attempt < 2) {
+            await new Promise((r) => setTimeout(r, 500));
+          }
+        }
+      }
     }
-  }, 15000);
+  }, 20000);
 
   beforeEach(async () => {
     // Clean up wakeup requests before each test
