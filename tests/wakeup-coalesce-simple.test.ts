@@ -61,7 +61,9 @@ describe("createWakeup basic test", () => {
 
   it("creates a new wakeup", async () => {
     const { createWakeup } = await import("@boringos/agent");
-    const taskId = "task-0001";
+    const { generateId } = await import("@boringos/shared");
+
+    const taskId = generateId();
 
     const result = await createWakeup(db, {
       agentId,
@@ -77,12 +79,12 @@ describe("createWakeup basic test", () => {
   it("coalesces on second wake", async () => {
     const { createWakeup } = await import("@boringos/agent");
     const { agentWakeupRequests } = await import("@boringos/db");
-    const { eq } = await import("drizzle-orm");
+    const { generateId } = await import("@boringos/shared");
 
     // Clear any existing
     await db.delete(agentWakeupRequests);
 
-    const taskId = "task-0002";
+    const taskId = generateId();
 
     const result1 = await createWakeup(db, {
       agentId,
