@@ -24,7 +24,7 @@ describe("createWakeup basic test", () => {
   beforeAll(async () => {
     const { BoringOS } = await import("@boringos/core");
     dataDir = await mkdtemp(join(tmpdir(), "boringos-coalesce-simple-"));
-    const randomPort = 5500 + Math.floor(Math.random() * 100);
+    const randomPort = 5500 + Math.floor(Math.random() * 1000);
     app = new BoringOS({
       database: { embedded: true, dataDir, port: randomPort },
       drive: { root: join(dataDir, "drive") },
@@ -52,12 +52,21 @@ describe("createWakeup basic test", () => {
   afterAll(async () => {
     try {
       await app?.close?.();
-      await new Promise((r) => setTimeout(r, 100));
-      await rm(dataDir, { recursive: true, force: true });
+      await new Promise((r) => setTimeout(r, 2000));
+      for (let attempt = 0; attempt < 3; attempt++) {
+        try {
+          await rm(dataDir, { recursive: true, force: true });
+          break;
+        } catch (e) {
+          if (attempt < 2) {
+            await new Promise((r) => setTimeout(r, 500));
+          }
+        }
+      }
     } catch {
       // ignore
     }
-  });
+  }, 20000);
 
   it("creates a new wakeup", async () => {
     const { createWakeup } = await import("@boringos/agent");
