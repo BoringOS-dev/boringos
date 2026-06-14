@@ -6,7 +6,7 @@ import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-// Suppress CONNECTION_ENDED errors from postgres library cleanup
+// Suppress CONNECTION_ENDED errors from Postgres cleanup
 process.on("unhandledRejection", (reason: any) => {
   if (reason?.code === "CONNECTION_ENDED" || reason?.errno === "CONNECTION_ENDED") {
     return;
@@ -50,19 +50,18 @@ describe("createWakeup basic test", () => {
   }, 120000);
 
   afterAll(async () => {
-    await app?.close?.();
-    await new Promise((r) => setTimeout(r, 1000));
     try {
+      await app?.close?.();
+      await new Promise((r) => setTimeout(r, 100));
       await rm(dataDir, { recursive: true, force: true });
     } catch {
-      // Ignore cleanup errors
+      // ignore
     }
-  }, 120000);
+  });
 
   it("creates a new wakeup", async () => {
     const { createWakeup } = await import("@boringos/agent");
-    const { generateId } = await import("@boringos/shared");
-    const taskId = generateId();
+    const taskId = "task-0001";
 
     const result = await createWakeup(db, {
       agentId,
@@ -78,12 +77,12 @@ describe("createWakeup basic test", () => {
   it("coalesces on second wake", async () => {
     const { createWakeup } = await import("@boringos/agent");
     const { agentWakeupRequests } = await import("@boringos/db");
-    const { generateId } = await import("@boringos/shared");
+    const { eq } = await import("drizzle-orm");
 
     // Clear any existing
     await db.delete(agentWakeupRequests);
 
-    const taskId = generateId();
+    const taskId = "task-0002";
 
     const result1 = await createWakeup(db, {
       agentId,
