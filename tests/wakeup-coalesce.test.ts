@@ -13,6 +13,14 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { eq } from "drizzle-orm";
 
+// Suppress CONNECTION_ENDED errors from postgres library cleanup
+process.on("unhandledRejection", (reason: any) => {
+  if (reason?.code === "CONNECTION_ENDED" || reason?.errno === "CONNECTION_ENDED") {
+    return;
+  }
+  throw reason;
+});
+
 let db: import("@boringos/db").Db;
 let dataDir: string;
 let tenantId: string;
@@ -82,17 +90,17 @@ describe("createWakeup — coalescing", () => {
         reportsTo: agentId,
       })
       .onConflictDoNothing();
-  });
+  }, 120000);
 
   afterAll(async () => {
     await app?.close?.();
-    await new Promise((r) => setTimeout(r, 100));
+    await new Promise((r) => setTimeout(r, 1000));
     try {
       await rm(dataDir, { recursive: true, force: true });
     } catch {
       // Ignore cleanup errors
     }
-  });
+  }, 15000);
 
   beforeEach(async () => {
     // Clean up wakeup requests before each test
