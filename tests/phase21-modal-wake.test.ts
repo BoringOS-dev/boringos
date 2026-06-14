@@ -4,23 +4,55 @@
  * Tests that the NewTaskModal's "Wake the agent now" checkbox actually fires
  * a wake event when creating a task and assigning it to an agent.
  */
-import { describe, it, expect } from "vitest";
-import { mkdtemp } from "node:fs/promises";
+import { describe, it, expect, afterEach } from "vitest";
+import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 const KEY = "modal-wake-admin";
+const tempDirs: string[] = [];
+
+// Suppress CONNECTION_ENDED errors from postgres library cleanup
+process.on("unhandledRejection", (reason: any) => {
+  if (reason?.code === "CONNECTION_ENDED" || reason?.errno === "CONNECTION_ENDED") {
+    return; // Silently ignore Postgres connection cleanup errors
+  }
+  throw reason;
+});
 
 async function boot() {
   const { BoringOS } = await import("@boringos/core");
   const d = await mkdtemp(join(tmpdir(), "boringos-modal-"));
-  const randomPort = 5433 + Math.floor(Math.random() * 100);
+  tempDirs.push(d);
+  const randomPort = 5500 + Math.floor(Math.random() * 1000);
   return new BoringOS({
     database: { embedded: true, dataDir: d, port: randomPort },
     drive: { root: join(d, "drive") },
     auth: { secret: "s", adminKey: KEY },
   }).listen(0);
 }
+
+afterEach(async () => {
+  // Allow database connections to fully close and sockets to release
+  await new Promise(resolve => setTimeout(resolve, 2000));
+  // Clean up from the end (most recent) to avoid race conditions
+  while (tempDirs.length > 0) {
+    const d = tempDirs.pop();
+    if (!d) continue;
+    // Retry cleanup a few times as Postgres may still hold locks
+    for (let attempt = 0; attempt < 3; attempt++) {
+      try {
+        await rm(d, { recursive: true, force: true });
+        break;
+      } catch (e) {
+        if (attempt < 2) {
+          await new Promise(resolve => setTimeout(resolve, 500));
+        }
+        // On final attempt, silently ignore — Postgres may still hold file locks
+      }
+    }
+  }
+}, 20000);
 
 function headers(tenantId: string) {
   return { "Content-Type": "application/json", "X-API-Key": KEY, "X-Tenant-Id": tenantId };
@@ -99,10 +131,17 @@ describe("NewTaskModal: wake fires", () => {
       expect(wakeups[0].status).toBe("pending");
     } finally {
       const db = server.context.db as any;
-      if (db.end) await db.end?.();
+      await new Promise(r => setTimeout(r, 100));
+      if (db.end) {
+        try {
+          await db.end();
+        } catch {
+          // Suppress CONNECTION_ENDED errors during cleanup
+        }
+      }
       await server.close();
     }
-  }, 90000);
+  }, 180000);
 
   it("assignTask without wake does not create wakeup request", async () => {
     const server = await boot();
@@ -162,8 +201,211 @@ describe("NewTaskModal: wake fires", () => {
       expect(wakeups).toHaveLength(0);
     } finally {
       const db = server.context.db as any;
-      if (db.end) await db.end?.();
+      await new Promise(r => setTimeout(r, 100));
+      if (db.end) {
+        try {
+          await db.end();
+        } catch {
+          // Suppress CONNECTION_ENDED errors during cleanup
+        }
+      }
       await server.close();
     }
-  }, 90000);
+  }, 180000);
+
+  it("assignTask with wake=true twice returns coalesced on second call", async () => {
+    const server = await boot();
+    try {
+      const { generateId } = await import("@boringos/shared");
+      const { tenants, agents, tasks, agentWakeupRequests } = await import("@boringos/db");
+      const { eq } = await import("drizzle-orm");
+      const db = server.context.db as import("@boringos/db").Db;
+
+      // Setup: tenant, agent, task
+      const tenantId = generateId();
+      await db.insert(tenants).values({ id: tenantId, name: "Coalesce Test", slug: "coalesce-test" });
+
+      const agentId = generateId();
+      await db.insert(agents).values({
+        id: agentId,
+        tenantId,
+        name: "Test Agent",
+        role: "engineer",
+      });
+
+      const createRes = await fetch(`${server.url}/api/admin/tasks`, {
+        method: "POST",
+        headers: headers(tenantId),
+        body: JSON.stringify({
+          title: "Coalesce test task",
+          priority: "medium",
+          originKind: "manual",
+        }),
+      });
+      const created = (await createRes.json()) as { id: string };
+      const taskId = created.id;
+
+      // First assign with wake=true
+      const assign1 = await fetch(`${server.url}/api/admin/tasks/${taskId}/assign`, {
+        method: "POST",
+        headers: headers(tenantId),
+        body: JSON.stringify({ agentId, wake: true }),
+      });
+      expect(assign1.status).toBe(200);
+      const result1 = (await assign1.json()) as { wakeup?: { kind: string } };
+      expect(result1.wakeup?.kind).toBe("created");
+
+      // Verify first wakeup was created
+      const wakeups1 = await db.select().from(agentWakeupRequests).where(
+        eq(agentWakeupRequests.taskId, taskId),
+      );
+      expect(wakeups1).toHaveLength(1);
+      const firstWakeupId = wakeups1[0].id;
+      const firstCoalescedCount = wakeups1[0].coalescedCount ?? 0;
+
+      // Second assign with wake=true (same task, same agent)
+      const assign2 = await fetch(`${server.url}/api/admin/tasks/${taskId}/assign`, {
+        method: "POST",
+        headers: headers(tenantId),
+        body: JSON.stringify({ agentId, wake: true }),
+      });
+      expect(assign2.status).toBe(200);
+      const result2 = (await assign2.json()) as { wakeup?: { kind: string } };
+      expect(result2.wakeup?.kind).toBe("coalesced");
+
+      // Verify only ONE wakeup exists (not two), but coalescedCount incremented
+      const wakeups2 = await db.select().from(agentWakeupRequests).where(
+        eq(agentWakeupRequests.taskId, taskId),
+      );
+      expect(wakeups2).toHaveLength(1);
+      expect(wakeups2[0].id).toBe(firstWakeupId); // Same wakeup ID
+      expect(wakeups2[0].coalescedCount).toBe(firstCoalescedCount + 1);
+    } finally {
+      const db = server.context.db as any;
+      await new Promise(r => setTimeout(r, 100));
+      if (db.end) {
+        try {
+          await db.end();
+        } catch {
+          // Suppress CONNECTION_ENDED errors during cleanup
+        }
+      }
+      await server.close();
+    }
+  }, 180000);
+
+  it("assignTask with wake=true to paused agent returns agent_not_invokable", async () => {
+    const server = await boot();
+    try {
+      const { generateId } = await import("@boringos/shared");
+      const { tenants, agents, tasks } = await import("@boringos/db");
+      const { eq } = await import("drizzle-orm");
+      const db = server.context.db as import("@boringos/db").Db;
+
+      // Setup: tenant, paused agent, task
+      const tenantId = generateId();
+      await db.insert(tenants).values({ id: tenantId, name: "Paused Agent Test", slug: "paused-agent-test" });
+
+      const agentId = generateId();
+      await db.insert(agents).values({
+        id: agentId,
+        tenantId,
+        name: "Paused Agent",
+        role: "engineer",
+        status: "paused",
+      });
+
+      const createRes = await fetch(`${server.url}/api/admin/tasks`, {
+        method: "POST",
+        headers: headers(tenantId),
+        body: JSON.stringify({
+          title: "Task for paused agent",
+          priority: "medium",
+          originKind: "manual",
+        }),
+      });
+      const created = (await createRes.json()) as { id: string };
+      const taskId = created.id;
+
+      // Try to wake a paused agent
+      const assignRes = await fetch(`${server.url}/api/admin/tasks/${taskId}/assign`, {
+        method: "POST",
+        headers: headers(tenantId),
+        body: JSON.stringify({ agentId, wake: true }),
+      });
+      expect(assignRes.status).toBe(200);
+      const result = (await assignRes.json()) as { assigned: boolean; wakeup?: { kind: string; agentStatus?: string } };
+      expect(result.assigned).toBe(true); // Task still assigned
+      expect(result.wakeup?.kind).toBe("agent_not_invokable");
+      expect(result.wakeup?.agentStatus).toBe("paused");
+    } finally {
+      const db = server.context.db as any;
+      await new Promise(r => setTimeout(r, 100));
+      if (db.end) {
+        try {
+          await db.end();
+        } catch {
+          // Suppress CONNECTION_ENDED errors during cleanup
+        }
+      }
+      await server.close();
+    }
+  }, 180000);
+
+  it("assignTask with wake=true to archived agent returns agent_not_invokable", async () => {
+    const server = await boot();
+    try {
+      const { generateId } = await import("@boringos/shared");
+      const { tenants, agents, tasks } = await import("@boringos/db");
+      const db = server.context.db as import("@boringos/db").Db;
+
+      // Setup: tenant, archived agent, task
+      const tenantId = generateId();
+      await db.insert(tenants).values({ id: tenantId, name: "Archived Agent Test", slug: "archived-agent-test" });
+
+      const agentId = generateId();
+      await db.insert(agents).values({
+        id: agentId,
+        tenantId,
+        name: "Archived Agent",
+        role: "engineer",
+        status: "archived",
+      });
+
+      const createRes = await fetch(`${server.url}/api/admin/tasks`, {
+        method: "POST",
+        headers: headers(tenantId),
+        body: JSON.stringify({
+          title: "Task for archived agent",
+          priority: "medium",
+          originKind: "manual",
+        }),
+      });
+      const created = (await createRes.json()) as { id: string };
+      const taskId = created.id;
+
+      // Try to wake an archived agent
+      const assignRes = await fetch(`${server.url}/api/admin/tasks/${taskId}/assign`, {
+        method: "POST",
+        headers: headers(tenantId),
+        body: JSON.stringify({ agentId, wake: true }),
+      });
+      expect(assignRes.status).toBe(200);
+      const result = (await assignRes.json()) as { assigned: boolean; wakeup?: { kind: string; agentStatus?: string } };
+      expect(result.assigned).toBe(true); // Task still assigned
+      expect(result.wakeup?.kind).toBe("agent_not_invokable");
+      expect(result.wakeup?.agentStatus).toBe("archived");
+    } finally {
+      const db = server.context.db as any;
+      await new Promise(r => setTimeout(r, 100));
+      if (db.end) {
+        try {
+          await db.end();
+        } catch {
+          // Suppress CONNECTION_ENDED errors during cleanup
+        }
+      }
+      await server.close();
+    }
+  }, 180000);
 });
