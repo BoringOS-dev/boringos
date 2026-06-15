@@ -18,6 +18,7 @@
   "license": "AGPL-3.0-or-later",
   "dependencies": {
     "@boringos/agent": "workspace:*",
+    "@boringos/brain": "workspace:*",
     "@boringos/connector-google": "workspace:*",
     "@boringos/connector-slack": "workspace:*",
     "@boringos/db": "workspace:*",

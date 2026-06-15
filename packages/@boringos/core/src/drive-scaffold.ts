@@ -25,11 +25,23 @@ export interface ScaffoldDeps {
   drive: StorageBackend;
 }
 
+// Memory tree v2 (docs/brain.md §4.5). Numbered type folders give a
+// deterministic read priority; the daily note is the append-only
+// landing zone that the curator promotes into the durable folders.
 const SHARED_MEMORY_TEMPLATE = `# Shared memory
 
-What every agent in this tenant should converge on.
-Pointers to detail files in \`decisions/\` and \`domains/\`.
-Stale entries roll to \`archive/\`.
+Index + pointers, <200 lines. Tenant-canonical truth. Detail lives in
+the numbered folders below; this file just points at it.
+
+## Layout
+
+- \`10-domains/\`   canonical facts, one file per area — every fact ends with (src: …)
+- \`20-decisions/\` dated, who + why
+- \`30-people/\`    who does what, who to ask
+- \`40-operations/\` runbooks, how-tos
+- \`60-daily/\`     append-only landing zone (remembered facts + run checkpoints)
+- \`70-weekly/\`    weekly synthesis
+- \`99-archive/\`   superseded facts, never deleted
 
 ## Active state
 
@@ -37,12 +49,12 @@ _Tenant-wide watch items, in-flight approvals._
 
 ## Standing rules
 
-_One-liners with pointers to \`decisions/<topic>.md\`._
+_One-liners with pointers to \`20-decisions/<topic>.md\`._
 
 ## Known entities
 
 _Stable facts about customers, vendors, projects.
-Pointers to \`domains/<entity>.md\`._
+Pointers to \`10-domains/<entity>.md\`. Use [[wikilinks]] to wire the graph._
 `;
 
 function userPreferencesTemplate(displayName: string): string {
@@ -64,16 +76,22 @@ function userPreferencesTemplate(displayName: string): string {
 function userMemoryTemplate(displayName: string): string {
   return (
     `# Memory index — ${displayName}\n\n` +
-    `What I know about ${displayName}, kept brief. Pointers to detail\n` +
-    `files in \`decisions/\` and \`domains/\`. Stale entries roll out to\n` +
-    `\`archive/\`.\n\n` +
+    `Index + pointers, <200 lines. What I know about ${displayName}, kept\n` +
+    `brief. Detail lives in the numbered folders; this file points at it.\n\n` +
+    `## Layout\n\n` +
+    `- \`10-domains/\`   canonical facts, one file per area — facts end with (src: …)\n` +
+    `- \`20-decisions/\` dated, who + why\n` +
+    `- \`40-operations/\` runbooks, how-tos\n` +
+    `- \`60-daily/\`     append-only landing zone (remembered facts + run checkpoints)\n` +
+    `- \`70-weekly/\`    weekly synthesis\n` +
+    `- \`99-archive/\`   superseded facts, never deleted\n\n` +
     `## Active state\n\n` +
     `_Watch items, current blockers, in-flight approvals._\n\n` +
     `## Standing rules\n\n` +
-    `_One-liners with pointers to \`decisions/<topic>.md\`._\n\n` +
+    `_One-liners with pointers to \`20-decisions/<topic>.md\`._\n\n` +
     `## Known entities\n\n` +
     `_Stable facts about people, companies, projects.\n` +
-    `Pointers to \`domains/<entity>.md\`._\n`
+    `Pointers to \`10-domains/<entity>.md\`. Use [[wikilinks]] to wire the graph._\n`
   );
 }
 

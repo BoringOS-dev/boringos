@@ -33,7 +33,29 @@ import { eq, and, sql } from "drizzle-orm";
 import type { Db } from "@boringos/db";
 import { agentRuns, driveFiles } from "@boringos/db";
 import type { StorageBackend } from "@boringos/drive";
+import {
+  dailyDateStamp,
+  dailyNoteHeader,
+  isDailyNotePath,
+  renderFragmentBlock,
+} from "@boringos/brain";
 import type { AfterRunEvent, RunErrorEvent } from "./types.js";
+
+/**
+ * Structural brain-indexer surface (docs/brain.md §4.4). The brain is
+ * the ONE drive→Postgres path; injecting it here (rather than depending
+ * on @boringos/brain from the agent package) keeps this package's deps
+ * clean. The host wires the real `createIndexer(...)` result in.
+ */
+export interface BrainFileIndexer {
+  indexMemoryFile(input: {
+    tenantId: string;
+    path: string;
+    content: string;
+    scope?: "tenant" | "user";
+    ownerUserId?: string;
+  }): Promise<unknown>;
+}
 
 export interface MemoryCheckpointDeps {
   drive: StorageBackend;
@@ -44,6 +66,16 @@ export interface MemoryCheckpointDeps {
    * scanning the memory tree.
    */
   db: Db;
+  /**
+   * Optional brain indexer (docs/brain.md §4.4). When wired, every
+   * memory-tree markdown file the run touched is mirrored into the
+   * brain (chunk + embed + FTS + graph) in the SAME pass that updates
+   * the driveFiles index — the single, bounded drive→brain path that
+   * covers native-FS writes and drive.write tool writes alike.
+   * Replace-on-reindex (keyed on source_ref=path) makes re-indexing a
+   * file the brain provider already wrote on remember() a no-op.
+   */
+  brainIndexer?: BrainFileIndexer;
 }
 
 export interface MemoryCheckpoint {
@@ -54,7 +86,7 @@ export interface MemoryCheckpoint {
 export function createMemoryCheckpoint(
   deps: MemoryCheckpointDeps,
 ): MemoryCheckpoint {
-  const { drive, db } = deps;
+  const { drive, db, brainIndexer } = deps;
 
   async function appendEntry(
     tenantId: string,
@@ -82,7 +114,12 @@ export function createMemoryCheckpoint(
     sessionId?: string;
   }): string | null {
     if (opts.ownerUserId && opts.sessionId) {
-      return `users/${opts.ownerUserId}/sessions/${opts.sessionId}.md`;
+      // Memory tree v2 (docs/brain.md §4.5): per-session checkpoint files
+      // die — the session run appends to the owner's append-only daily
+      // note instead, so "what happened" is one readable file, not N
+      // session files. (Task-bound runs still keep their tasks/<id>/log.md
+      // working log below.)
+      return `users/${opts.ownerUserId}/memory/60-daily/${dailyDateStamp(new Date())}.md`;
     }
     if (opts.taskId) {
       return `tasks/${opts.taskId}/log.md`;
@@ -204,6 +241,30 @@ export function createMemoryCheckpoint(
           } catch {
             /* per-file failure is best-effort; reindex continues */
           }
+
+          // Brain mirror (docs/brain.md §4.4): index markdown memory
+          // files into Postgres so brain.search / brain.graph see what
+          // the agent wrote natively this run. Scope is derived from
+          // the path: users/<owner>/... is user-scope, everything else
+          // tenant-scope. Best-effort — never masks the run outcome.
+          if (brainIndexer && ext === "md") {
+            try {
+              const content = await drive.readText(file.path);
+              const isUser = relPath.startsWith("users/");
+              const ownerUserId = isUser ? relPath.split("/")[1] : undefined;
+              // indexMemoryFile fragment-indexes daily notes (§4.5) and
+              // whole-file-indexes everything else.
+              await brainIndexer.indexMemoryFile({
+                tenantId: opts.tenantId,
+                path: relPath,
+                content,
+                scope: isUser ? "user" : "tenant",
+                ownerUserId,
+              });
+            } catch {
+              /* brain indexing is best-effort */
+            }
+          }
         }
       }
     } catch {
@@ -251,13 +312,22 @@ export function createMemoryCheckpoint(
         body = `Exit code ${event.result.exitCode}.`;
       }
 
-      const entry = renderEntry({
-        timestamp: new Date(),
-        runId: event.runId,
-        agentId: event.agentId,
-        outcome,
-        body,
-      });
+      const entry = isDailyNotePath(dest)
+        ? renderDailyRunFragment({
+            timestamp: new Date(),
+            runId: event.runId,
+            agentId: event.agentId,
+            outcome,
+            body,
+            taskId: event.taskId,
+          })
+        : renderEntry({
+            timestamp: new Date(),
+            runId: event.runId,
+            agentId: event.agentId,
+            outcome,
+            body,
+          });
       await appendEntry(event.tenantId, dest, entry);
 
       // Reindex AFTER the log write so the new log file itself
@@ -286,13 +356,22 @@ export function createMemoryCheckpoint(
         ? `${event.error.message}\n\n— last agent message —\n${replyText.slice(0, 2000)}`
         : event.error.message;
 
-      const entry = renderEntry({
-        timestamp: new Date(),
-        runId: event.runId,
-        agentId: event.agentId,
-        outcome: "error",
-        body,
-      });
+      const entry = isDailyNotePath(dest)
+        ? renderDailyRunFragment({
+            timestamp: new Date(),
+            runId: event.runId,
+            agentId: event.agentId,
+            outcome: "error",
+            body,
+            taskId: event.taskId,
+          })
+        : renderEntry({
+            timestamp: new Date(),
+            runId: event.runId,
+            agentId: event.agentId,
+            outcome: "error",
+            body,
+          });
       await appendEntry(event.tenantId, dest, entry);
     },
   };
@@ -357,7 +436,38 @@ function renderEntry(fields: {
   ].join("\n");
 }
 
+/**
+ * Render a run checkpoint as a v2 daily-note fragment (docs/brain.md
+ * §4.5). The invisible `<!-- frag run … -->` marker lets the brain
+ * index this run as its own row (`<dailyPath>#<runId>`) and the curator
+ * promote/archive it, while the `## HH:MM run <id8>` header keeps the
+ * file grep-friendly.
+ */
+function renderDailyRunFragment(fields: {
+  timestamp: Date;
+  runId: string;
+  agentId: string;
+  outcome: "success" | "failed" | "error";
+  body: string;
+  taskId?: string;
+}): string {
+  const iso = fields.timestamp.toISOString();
+  const hhmm = iso.slice(11, 16);
+  const id8 = fields.runId.slice(0, 8);
+  const ctx = fields.taskId ? `task ${fields.taskId.slice(0, 8)}` : "session";
+  return renderFragmentBlock({
+    kind: "run",
+    subid: fields.runId,
+    ts: iso,
+    header: `## ${hhmm} run ${id8} (${ctx})`,
+    body: `agent: ${fields.agentId} — ${fields.outcome}\n\n${fields.body.trim()}`,
+  });
+}
+
 function headerFor(destPath: string): string {
+  if (isDailyNotePath(destPath)) {
+    return dailyNoteHeader(destPath.split("/").pop()?.replace(/\.md$/, "") ?? "");
+  }
   if (destPath.startsWith("users/")) {
     return (
       "# Session log\n\n" +

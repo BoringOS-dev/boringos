@@ -469,15 +469,21 @@ export class BoringOS {
     const driveRoot = this.config.drive?.root ?? "./.data/drive";
     const drive = this.config.drive?.backend ?? createLocalStorage({ root: driveRoot });
 
-    // task_24 — Drive-backed memory is the default when no external
-    // memory provider was wired via app.memory(...). Installs without
-    // Hebbs (or any other backend) are no longer amnesiac: every
-    // tenant gets a file-based memory under their Drive namespace,
-    // routed by wake-owner (user vs tenant scope). External
-    // providers continue to take precedence if explicitly set.
+    // The Brain pgvector provider is the default when no external
+    // memory provider was wired via app.memory(...) (docs/brain.md
+    // decision #5 — the old Hebbs/drive-memory default is retired).
+    // Files stay the system of record (remember() still writes the
+    // markdown tree under the tenant's Drive namespace), but every
+    // write is ALSO chunked, embedded (when pgvector is present),
+    // FTS-indexed, and graph-wired into Postgres — so recall is
+    // hybrid retrieval and the typed graph fills itself. Without
+    // pgvector (embedded Postgres) it degrades to the FTS floor;
+    // without EMBEDDING_API_KEY the semantic tier stays FTS-only.
+    // Boot never depends on either. External providers still win if
+    // explicitly set.
     if (this.memoryProvider === nullMemory) {
-      const { createDriveMemory } = await import("@boringos/memory");
-      this.memoryProvider = createDriveMemory({ drive });
+      const { createBrainMemory } = await import("@boringos/brain");
+      this.memoryProvider = createBrainMemory({ drive, db: dbConn.db });
     }
 
     // 4. Build runtime registry
@@ -1115,9 +1121,26 @@ export class BoringOS {
     // users/<owner>/sessions/<sid>.md for copilot sessions). Logs
     // accumulate even when the agent forgets to remember.
     const { createMemoryCheckpoint } = await import("@boringos/agent");
+    // Brain indexer (docs/brain.md §4.4) — the single drive→Postgres
+    // path. Wired into the post-run reindex so memory files the agent
+    // wrote natively (or via drive.write) get mirrored into the brain.
+    // Resolved once: probe capabilities + the configured embedder.
+    let brainIndexer: import("@boringos/brain").BrainIndexer | undefined;
+    try {
+      const { createIndexer, resolveEmbedder, probeCapabilities } = await import("@boringos/brain");
+      const brainCaps = await probeCapabilities(dbConn.db);
+      brainIndexer = createIndexer({
+        db: dbConn.db,
+        embedder: resolveEmbedder(),
+        hasVector: brainCaps.hasVector,
+      });
+    } catch (err) {
+      console.warn("[boringos] brain indexer unavailable — drive→brain mirror disabled:", err);
+    }
     const memoryCheckpoint = createMemoryCheckpoint({
       drive,
       db: dbConn.db,
+      brainIndexer,
     });
     agentEngine.afterRun.use(memoryCheckpoint.onRunFinished);
     agentEngine.onError.use(memoryCheckpoint.onRunFailed);
@@ -1645,7 +1668,12 @@ export class BoringOS {
       context,
       async close() {
         scheduler.stop();
-        server.close();
+        // Wait for the server to fully close (stop accepting connections
+        // and drain existing ones) before closing the DB pool, so in-flight
+        // queries don't hit a closed connection.
+        await new Promise<void>((resolve) => {
+          server.close(() => resolve());
+        });
         // Drain in-flight agent runs (bounded) before tearing down the DB
         // pool, so a run that finalizes during shutdown doesn't query a
         // closed connection (CONNECTION_ENDED unhandled rejection).

@@ -5,7 +5,6 @@ import type { StorageBackend } from "./types.js";
 export interface DriveManagerDeps {
   storage: StorageBackend;
   db: unknown;
-  memory?: { remember(content: string, meta?: { entityId?: string; tags?: string[] }): Promise<string> } | null;
   tenantId: string;
 }
 
@@ -49,8 +48,6 @@ export function createDriveManager(deps: DriveManagerDeps): DriveManager {
     return ext ? ext.slice(1) : null;
   }
 
-  const TEXT_FORMATS = new Set(["md", "txt", "json", "yaml", "yml", "csv", "xml", "html"]);
-
   return {
     async write(path: string, content: string | Uint8Array): Promise<DriveFileRecord> {
       const tenantPath = `${tenantId}/${path}`;
@@ -74,19 +71,16 @@ export function createDriveManager(deps: DriveManagerDeps): DriveManager {
         await db.insert(driveFiles).values({ id: generateId(), tenantId, path, filename, format, size, hash });
       }
 
-      // Sync to memory if text-based
-      let syncedToMemory = false;
-      if (deps.memory && format && TEXT_FORMATS.has(format) && typeof content === "string") {
-        try {
-          await deps.memory.remember(content.slice(0, 2000), { entityId: tenantId, tags: ["drive", path] });
-          syncedToMemory = true;
-          if (existing[0]) {
-            await db.update(driveFiles).set({ syncedToMemory: true }).where(eq(driveFiles.id, existing[0].id));
-          }
-        } catch { /* memory sync failure is non-fatal */ }
-      }
-
-      return { path, filename, format, size, hash, syncedToMemory };
+      // NOTE (docs/brain.md decision #5 / §4.4): the old
+      // `memory.remember(content.slice(0, 2000))` auto-sync that lived
+      // here is GONE. The brain indexer is now the only drive→memory
+      // path — naive truncation double-ingested every file once the
+      // brain also indexes on write. Memory-tree files are mirrored
+      // into the brain by the post-run reindex hook (memory-checkpoint)
+      // and by the brain MemoryProvider's remember(), with proper
+      // heading-aware chunking. `syncedToMemory` stays in the record
+      // shape for back-compat but is always false here.
+      return { path, filename, format, size, hash, syncedToMemory: false };
     },
 
     async read(path: string): Promise<string> {

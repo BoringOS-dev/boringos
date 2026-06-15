@@ -20,6 +20,7 @@
     "@boringos/runtime": "workspace:*",
     "@boringos/memory": "workspace:*",
     "@boringos/db": "workspace:*",
+    "@boringos/brain": "workspace:*",
     "@boringos/drive": "workspace:*",
     "@boringos/pipeline": "workspace:*",
     "@boringos/module-sdk": "workspace:*"

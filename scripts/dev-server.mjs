@@ -12,6 +12,7 @@ import {
   BoringOS,
   createFrameworkModule,
   createMemoryModule,
+  createBrainModule,
   createDriveModule,
   createInboxModule,
   createWorkflowModule,
@@ -65,6 +66,11 @@ const app = new BoringOS({
 // do NOT appear in this static list.
 app.module(createFrameworkModule);
 app.module(createMemoryModule);
+// Brain — the foundation-brain tool surface (brain.ask / search /
+// query / graph / remember). The brain pgvector MemoryProvider is the
+// host default (wired in boringos.ts); this module adds the read-side
+// tools the bare MemoryProvider interface doesn't expose.
+app.module(createBrainModule);
 app.module(createDriveModule);
 app.module(createInboxModule);
 app.module(createWorkflowModule);

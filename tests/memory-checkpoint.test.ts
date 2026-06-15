@@ -47,7 +47,7 @@ describe("createMemoryCheckpoint", () => {
     expect(body).toContain(`agent: ${A}`);
   });
 
-  it("routes to users/<owner>/sessions/<sid>.md when both are set", async () => {
+  it("routes session runs to the owner's 60-daily note (memory tree v2)", async () => {
     const event: AfterRunEvent = {
       agentId: A,
       tenantId: T,
@@ -59,14 +59,19 @@ describe("createMemoryCheckpoint", () => {
     };
     await checkpoint.onRunFinished(event);
 
-    // Session log got the entry.
-    const sessionLog = await drive.readText(
-      `${T}/users/user-U/sessions/sess-9.md`,
+    // The append-only daily note got the run as a fragment.
+    const date = new Date().toISOString().slice(0, 10);
+    const daily = await drive.readText(
+      `${T}/users/user-U/memory/60-daily/${date}.md`,
     );
-    expect(sessionLog).toContain("# Session log");
-    expect(sessionLog).toContain("run run-2");
+    expect(daily).toContain(`# ${date}`); // daily header
+    expect(daily).toContain("<!-- frag run run-2"); // machine marker
+    expect(daily).toContain("run run-2"); // readable header (id8)
+    expect(daily).toContain(`agent: ${A}`);
 
-    // Task log did NOT get the entry — session log wins.
+    // Per-session checkpoint files die — no sessions/<sid>.md.
+    expect(await drive.exists(`${T}/users/user-U/sessions/sess-9.md`)).toBe(false);
+    // Task log did NOT get the entry — the daily note wins.
     expect(await drive.exists(`${T}/tasks/task-2/log.md`)).toBe(false);
   });
 

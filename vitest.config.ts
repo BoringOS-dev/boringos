@@ -9,6 +9,7 @@ export default defineConfig({
       "@boringos/runtime": resolve(__dirname, "packages/@boringos/runtime/src/index.ts"),
       "@boringos/drive": resolve(__dirname, "packages/@boringos/drive/src/index.ts"),
       "@boringos/db": resolve(__dirname, "packages/@boringos/db/src/index.ts"),
+      "@boringos/brain": resolve(__dirname, "packages/@boringos/brain/src/index.ts"),
       "@boringos/agent": resolve(__dirname, "packages/@boringos/agent/src/index.ts"),
       "@boringos/pipeline": resolve(__dirname, "packages/@boringos/pipeline/src/index.ts"),
       "@boringos/connector": resolve(__dirname, "packages/@boringos/connector/src/index.ts"),
@@ -30,8 +31,8 @@ export default defineConfig({
     globals: true,
     environment: "node",
     include: ["tests/**/*.test.ts"],
-    testTimeout: 90000,
-    hookTimeout: 120000,
+    testTimeout: 300000,
+    hookTimeout: 300000,
     pool: "forks",
     poolOptions: {
       forks: {

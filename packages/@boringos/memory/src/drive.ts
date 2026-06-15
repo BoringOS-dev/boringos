@@ -57,24 +57,24 @@ export interface DriveMemoryConfig {
 }
 
 const MEMORY_SKILL_PLACEHOLDER = `Memory lives under \`./drive/users/<owner>/memory/\` (user-scope) and
-\`./drive/shared/memory/\` (tenant-shared). The same four-folder shape
-applies at each scope:
+\`./drive/shared/memory/\` (tenant-shared). Numbered type folders give a
+deterministic read priority at each scope:
 
-  MEMORY.md     — index + active state, kept concise (pointers,
-                  not warehouses).
-  decisions/    — standing rules, settled tradeoffs.
-  domains/      — stable facts about entities you work with.
-  notes/        — quick captures from \`memory.remember\` and ad-hoc
-                  observations.
-  archive/      — historical detail rolled out of MEMORY.md.
+  MEMORY.md     — index + pointers, <200 lines (not a warehouse).
+  10-domains/   — stable facts about entities you work with.
+  20-decisions/ — standing rules, settled tradeoffs (dated, who+why).
+  30-people/ 40-operations/
+  60-daily/YYYY-MM-DD.md — append-only landing zone for \`memory.remember\`
+                  captures + run checkpoints.
+  70-weekly/    — weekly synthesis.   99-archive/ — superseded detail.
 
 Read order on wake:
   1. ./drive/users/<owner>/preferences.md  (if a user owns this wake)
   2. ./drive/users/<owner>/memory/MEMORY.md
   3. ./drive/shared/memory/MEMORY.md
-  4. The current work's log (./drive/tasks/<id>/log.md or
-     ./drive/users/<owner>/sessions/<id>.md) — last N entries
-  5. Targeted \`grep\` into decisions/ and domains/ when a topic
+  4. Today's + yesterday's ./drive/.../memory/60-daily/ notes; current
+     70-weekly/; the task log (./drive/tasks/<id>/log.md) if task-bound.
+  5. Targeted \`grep\` into 10-domains/ and 20-decisions/ when a topic
      comes up.
 
 Write conventions: one canonical home per fact (anti-duplication).

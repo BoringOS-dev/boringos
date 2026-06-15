@@ -8,12 +8,7 @@
   "include": ["src"],
   "references": [
     { "path": "../shared" },
-    { "path": "../runtime" },
     { "path": "../memory" },
-    { "path": "../db" },
-    { "path": "../brain" },
-    { "path": "../drive" },
-    { "path": "../pipeline" },
-    { "path": "../module-sdk" }
+    { "path": "../db" }
   ]
 }

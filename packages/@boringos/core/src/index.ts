@@ -23,6 +23,7 @@ export { BoringOS } from "./boringos.js";
 // Register them via `app.module(createFrameworkModule)`.
 export { createFrameworkModule } from "./modules/framework.js";
 export { createMemoryModule } from "./modules/memory.js";
+export { createBrainModule } from "./modules/brain.js";
 export { createDriveModule } from "./modules/drive.js";
 export { createWorkflowModule } from "./modules/workflow.js";
 export { createInboxModule } from "./modules/inbox.js";
@@ -66,6 +67,10 @@ export type { NotificationService, NotificationConfig } from "./notifications.js
 
 export { nullMemory } from "@boringos/memory";
 export { createHebbsMemory } from "@boringos/memory";
+// The brain pgvector MemoryProvider — the framework default (boringos.ts
+// wires it when no external provider is set). Exported so hosts can pass
+// it explicitly or construct it for tests.
+export { createBrainMemory } from "@boringos/brain";
 
 export {
   verifyModuleSignature,

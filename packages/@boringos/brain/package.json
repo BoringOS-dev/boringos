@@ -1,0 +1,50 @@
+{
+  "name": "@boringos/brain",
+  "version": "0.1.0",
+  "type": "module",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "scripts": {
+    "build": "tsc",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run"
+  },
+  "license": "AGPL-3.0-or-later",
+  "dependencies": {
+    "@boringos/db": "workspace:*",
+    "@boringos/memory": "workspace:*",
+    "@boringos/shared": "workspace:*",
+    "drizzle-orm": "^0.41.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "typescript": "^5.7.3",
+    "vitest": "^3.0.5"
+  },
+  "description": "BoringOS Brain — owned Postgres-native foundation-brain engine: embedder ladder, hybrid retrieval, typed graph, distillation, files-as-system-of-record mirror.",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/hebbs-ai/boringos.git"
+  },
+  "homepage": "https://hebbs.ai",
+  "author": "Hebbs Contributors",
+  "files": [
+    "dist",
+    "README.md"
+  ],
+  "keywords": [
+    "boringos",
+    "hebbs",
+    "brain",
+    "pgvector",
+    "retrieval",
+    "rag",
+    "agentic"
+  ]
+}

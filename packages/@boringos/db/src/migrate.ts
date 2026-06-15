@@ -11,6 +11,12 @@ export function createMigrationManager(db: Db): MigrationManager {
 
     async apply(): Promise<MigrationResult> {
       await ensureSchema(db);
+      // Brain vector tier is applied separately + defensively: the
+      // embedded Postgres distro ships pg_trgm but NOT pgvector
+      // (decision #2 in docs/brain.md). A failed `CREATE EXTENSION
+      // vector` must not abort the whole migration, so it runs in
+      // its own execute() outside the big multi-statement block.
+      await ensureBrainVectorTier(db);
       return { applied: [...FRAMEWORK_TABLES], skipped: [] };
     },
 
@@ -890,5 +896,182 @@ async function _applySchema(db: Db): Promise<void> {
       ON __seed_meta(tenant_id, module_id, kind, seed_id);
     CREATE INDEX IF NOT EXISTS __seed_meta_target_idx
       ON __seed_meta(target_id);
+
+    -- ════════════════════════════════════════════════════════════════
+    -- BRAIN — foundation-brain retrieval substrate (docs/brain.md §6).
+    --
+    -- These cross-cutting brain__* tables ship in the GLOBAL migrator
+    -- (decision #7), applied once per host — NOT via Module.schema
+    -- (which runs per-tenant and would re-run the DDL for every
+    -- install). Every row carries tenant_id from day one so the RLS
+    -- deferral (decision #9) never becomes a migration.
+    --
+    -- The embedding vector(768) column + its HNSW index are NOT
+    -- created here: the embedded Postgres distro has no pgvector, so
+    -- the vector type doesn't exist at this point. They're added
+    -- defensively in ensureBrainVectorTier() AFTER a successful
+    -- CREATE EXTENSION vector. Without pgvector the brain runs on
+    -- the FTS floor (decision #2) — these tables + the tsvector
+    -- column are all it needs to answer.
+    -- ════════════════════════════════════════════════════════════════
+
+    -- semantic + files tiers (§4.2, §4.4)
+    CREATE TABLE IF NOT EXISTS brain__memories (
+      id           UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+      tenant_id    UUID NOT NULL REFERENCES tenants(id),
+      entity_id    TEXT,                       -- optional subject (agent, contact, deal)
+      source_kind  TEXT NOT NULL,              -- 'file'|'row'|'comment'|'run'|'manual'|'distilled'
+      source_ref   TEXT,                       -- drive path / '<table>:<id>' pointer / run id
+      chunk_index  INTEGER NOT NULL DEFAULT 0, -- ordering within a chunked source (§4.2)
+      kind         TEXT NOT NULL DEFAULT 'note',
+      content      TEXT NOT NULL,
+      embed_model  TEXT,                       -- model id per row; drift -> lazy re-embed (same dim)
+      fts          tsvector GENERATED ALWAYS AS (to_tsvector('english', content)) STORED,
+      importance   REAL NOT NULL DEFAULT 0.5,
+      access_count INTEGER NOT NULL DEFAULT 0, -- recall hits + distillation dedup (§4.2)
+      scope        TEXT NOT NULL DEFAULT 'tenant', -- 'tenant' | 'user'
+      owner_user_id TEXT,                       -- set when scope='user'
+      created_at   TIMESTAMPTZ NOT NULL DEFAULT now(),
+      updated_at   TIMESTAMPTZ NOT NULL DEFAULT now(),
+      deleted_at   TIMESTAMPTZ                 -- soft-delete; file deletes land here
+    );
+    CREATE INDEX IF NOT EXISTS brain__memories_fts_idx
+      ON brain__memories USING gin (fts);
+    CREATE INDEX IF NOT EXISTS brain__memories_tenant_idx
+      ON brain__memories (tenant_id, deleted_at);
+    CREATE INDEX IF NOT EXISTS brain__memories_source_idx
+      ON brain__memories (tenant_id, source_ref); -- replace-on-reindex
+
+    -- graph tier — typed, directed, provenance-tracked, upsert-keyed (§4.3)
+    CREATE TABLE IF NOT EXISTS brain__edges (
+      id         UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+      tenant_id  UUID NOT NULL REFERENCES tenants(id),
+      src_type   TEXT NOT NULL,
+      src_id     TEXT NOT NULL,
+      edge_type  TEXT NOT NULL,                -- 'works_at','invested_in','owns_deal','mentions',...
+      dst_type   TEXT NOT NULL,
+      dst_id     TEXT NOT NULL,
+      weight     REAL NOT NULL DEFAULT 1.0,
+      source_ref TEXT,                         -- memory/file that asserted this edge
+      created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+      updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+      deleted_at TIMESTAMPTZ                   -- lifecycle follows the asserting source (§4.3)
+    );
+    CREATE UNIQUE INDEX IF NOT EXISTS brain__edges_key ON brain__edges
+      (tenant_id, src_type, src_id, edge_type, dst_type, dst_id);
+    CREATE INDEX IF NOT EXISTS brain__edges_dst_idx
+      ON brain__edges (tenant_id, dst_type, dst_id);   -- reverse lookup
+    CREATE INDEX IF NOT EXISTS brain__edges_type_idx
+      ON brain__edges (tenant_id, edge_type);
+
+    -- entity name registry — mention-matching runs against this (§4.3)
+    CREATE TABLE IF NOT EXISTS brain__entities (
+      id          UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+      tenant_id   UUID NOT NULL REFERENCES tenants(id),
+      entity_type TEXT NOT NULL,
+      entity_id   TEXT NOT NULL,
+      name        TEXT NOT NULL,
+      aliases     TEXT[] NOT NULL DEFAULT '{}',
+      created_at  TIMESTAMPTZ NOT NULL DEFAULT now(),
+      UNIQUE (tenant_id, entity_type, entity_id)
+    );
+    -- NOTE: the gin_trgm_ops name index needs pg_trgm installed FIRST,
+    -- so it's created in ensureBrainVectorTier() (defensive) — not here.
+    -- A plain btree fallback keeps exact-name lookups fast meanwhile.
+    CREATE INDEX IF NOT EXISTS brain__entities_name_btree_idx
+      ON brain__entities (tenant_id, name);
+
+    -- access tokens (controls — §8)
+    CREATE TABLE IF NOT EXISTS brain__access_tokens (
+      id          UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+      tenant_id   UUID NOT NULL REFERENCES tenants(id),
+      name        TEXT NOT NULL,
+      token_hash  TEXT NOT NULL,               -- store hash, never the token
+      profile     JSONB NOT NULL,              -- connection profile (allowlist, scopes, gates, budget)
+      expires_at  TIMESTAMPTZ,
+      revoked_at  TIMESTAMPTZ,
+      created_at  TIMESTAMPTZ NOT NULL DEFAULT now()
+    );
+    CREATE INDEX IF NOT EXISTS brain__access_tokens_tenant_idx
+      ON brain__access_tokens (tenant_id);
   `);
+}
+
+/**
+ * Brain vector tier (docs/brain.md §2, §9). Applied AFTER the main
+ * schema, in its own execute() calls so a failure degrades to the
+ * FTS floor instead of aborting the whole migration.
+ *
+ * Order of operations:
+ *   1. pg_trgm — needed for the brain__entities name index (gin_trgm_ops).
+ *      Embedded Postgres ships this, so it should always succeed; we
+ *      still guard it so an exotic distro without it degrades cleanly.
+ *   2. vector — embedded Postgres does NOT ship pgvector. If the
+ *      extension installs (external Postgres with pgvector, or a host
+ *      that pre-staged the artifact per decision #2), we add the
+ *      `embedding vector(768)` column + an HNSW index so the semantic
+ *      tier lights up. If it doesn't, we skip silently — the engine
+ *      probes for the column at runtime and falls back to FTS-only.
+ *
+ * Idempotent: re-running is a no-op (IF NOT EXISTS everywhere, and we
+ * re-check `vector` availability each boot so adding pgvector later
+ * upgrades an existing install on the next restart).
+ */
+async function ensureBrainVectorTier(db: Db): Promise<void> {
+  // 1. pg_trgm — best-effort. The brain__entities GIN index already
+  // assumes it; if this fails the index create above would have too,
+  // so this is mostly belt-and-suspenders for external Postgres.
+  try {
+    await db.execute(sql`CREATE EXTENSION IF NOT EXISTS pg_trgm`);
+    // Now that pg_trgm exists, the fuzzy entity-name index can be built.
+    // Idempotent; coexists with the btree fallback created in the main
+    // block (the planner picks whichever a query needs).
+    await db.execute(sql`
+      CREATE INDEX IF NOT EXISTS brain__entities_name_idx
+        ON brain__entities USING gin (name gin_trgm_ops)
+    `);
+  } catch (err) {
+    console.warn(
+      "[brain-migrate] pg_trgm extension/index unavailable — entity fuzzy-name matching degrades:",
+      err instanceof Error ? err.message : err,
+    );
+  }
+
+  // 2. pgvector — the semantic tier. Embedded Postgres has no
+  // vector.control, so this throws there; that's expected and fine.
+  let hasVector = false;
+  try {
+    await db.execute(sql`CREATE EXTENSION IF NOT EXISTS vector`);
+    hasVector = true;
+  } catch {
+    hasVector = false;
+  }
+
+  if (!hasVector) {
+    console.warn(
+      "[brain-migrate] pgvector not available — brain runs on the Postgres FTS floor " +
+        "(decision #2). Set DATABASE_URL to a Postgres with pgvector, or stage the " +
+        "embedded artifact, to enable the semantic (vector) tier.",
+    );
+    return;
+  }
+
+  // pgvector is present — add the embedding column + HNSW index.
+  // Separate execute() calls so a partial failure (e.g. column adds
+  // but index create races) still leaves a usable column.
+  try {
+    await db.execute(
+      sql`ALTER TABLE brain__memories ADD COLUMN IF NOT EXISTS embedding vector(768)`,
+    );
+    await db.execute(sql`
+      CREATE INDEX IF NOT EXISTS brain__memories_vec_idx
+        ON brain__memories USING hnsw (embedding vector_cosine_ops)
+    `);
+    console.log("[brain-migrate] pgvector enabled — semantic tier active (768-dim).");
+  } catch (err) {
+    console.warn(
+      "[brain-migrate] pgvector present but column/index setup failed — FTS floor:",
+      err instanceof Error ? err.message : err,
+    );
+  }
 }

@@ -7,6 +7,7 @@
     { "path": "./packages/@boringos/runtime" },
     { "path": "./packages/@boringos/drive" },
     { "path": "./packages/@boringos/db" },
+    { "path": "./packages/@boringos/brain" },
     { "path": "./packages/@boringos/agent" },
     { "path": "./packages/@boringos/pipeline" },
     { "path": "./packages/@boringos/core" }
