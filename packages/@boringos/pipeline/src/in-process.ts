@@ -11,10 +11,16 @@ export interface InProcessQueueOptions {
    * Default is 1 (serial) to preserve legacy behavior.
    */
   concurrency?: number;
+  /**
+   * Maximum time (ms) to wait for in-flight jobs to complete during shutdown.
+   * Default is 30000ms (30s) to allow agent execution to finish gracefully.
+   */
+  drainTimeoutMs?: number;
 }
 
 export function createInProcessQueue<T>(options: InProcessQueueOptions = {}): QueueAdapter<T> {
   const concurrency = Math.max(1, Math.floor(options.concurrency ?? 1));
+  const drainTimeoutMs = Math.max(1000, Math.floor(options.drainTimeoutMs ?? 30000));
   const jobs: T[] = [];
   let handler: ((job: T) => Promise<void>) | null = null;
   let running = 0;
@@ -69,7 +75,7 @@ export function createInProcessQueue<T>(options: InProcessQueueOptions = {}): Qu
       // closing connection → CONNECTION_ENDED. Bounded so a stuck job
       // can't hang shutdown forever.
       closed = true;
-      const deadline = Date.now() + 5000;
+      const deadline = Date.now() + drainTimeoutMs;
       while (running > 0 && Date.now() < deadline) {
         await new Promise((r) => setTimeout(r, 25));
       }

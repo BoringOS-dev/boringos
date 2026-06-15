@@ -1051,6 +1051,7 @@ export function createAdminRoutes(
     const body = await c.req.json() as Record<string, unknown>;
     const agentId = body.agentId as string;
     const taskId = c.req.param("id");
+    const tenantId = c.get("tenantId");
 
     await db.update(tasks).set({
       assigneeAgentId: agentId,
@@ -1061,7 +1062,7 @@ export function createAdminRoutes(
     if (body.wake) {
       const outcome = await engine.wake({
         agentId,
-        tenantId: c.get("tenantId"),
+        tenantId,
         reason: "manual_request",
         taskId,
       });
