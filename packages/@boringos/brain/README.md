@@ -85,7 +85,7 @@ Grouped by what closing them requires. Nothing here is hidden behind "it works o
 
 ### B. Built but inactive / not wired
 - **Access-plane controls** — `brain__access_tokens` table exists but **nothing mints, verifies, or enforces** connection profiles (tool allowlist, tier/namespace scope, approval gates, budget, revocation). *(Plan §8.)*
-- **Operational-row ingestion** — `indexRowPointer()` exists but is **never called**; `inbox_items`, `task_comments`, `tasks`, `agent_runs` are **not** indexed into the semantic tier as pointers yet. *(Plan decision #11.)*
+- ~~**Operational-row ingestion**~~ — **DONE.** `brain.ingest_rows` + an hourly routine index `inbox_items`/`tasks`/`task_comments`/`agent_runs` + every `<module>__*` table as by-reference row pointers (snippet only); `brain.search`/`brain.ask` now reach live data. *(Decision #11.)*
 - **Lazy re-embed / model-drift job** — referenced in comments, **not built**. Mixed-`embed_model` rows won't self-heal. *(Plan §13 — "ship with v1".)*
 - **Voyage / Gemini embedders** — resolver stubs them and falls back to the floor; only OpenAI is implemented. *(Plan §9.)*
 
@@ -98,7 +98,7 @@ Grouped by what closing them requires. Nothing here is hidden behind "it works o
 - **Slugged drive paths** — `tasks/<id8>-<slug>/` / `projects/<id8>-<slug>/`. Still `tasks/<uuid>/`. *(Plan §4.4.)*
 - **Persona-bundle Memory & Drive guidance** — only the copilot persona is taught; the other 14 bundles have **no** Memory/Drive section. *(Plan decision #10.)*
 - **Code-level module interop** — `ctx.callTool('<module>.<tool>')` on the SDK `ToolContext` is **not added**; modules still can't call each other's tools in-process. *(Plan decision #12.)*
-- **Core-schema SKILL** — no dedicated SKILL teaching the synthesizer the operational tables. *(Plan §4.1, decision #11.)*
+- ~~**Core-schema SKILL**~~ — **DONE** (as OKF, better than a SKILL): `brain.sync_schema` emits OKF `type: table` docs (live columns) for core + `<module>__*` tables into `50-schema/`, indexed + findable; `Module.dataSchema` lets modules enrich descriptions. *(§4.1, decisions #11/#12.)*
 - **Edge-type registry + module-registered entities** — `registerEntity()` exists but no module (CRM, ledger) registers names; no module-declared edge types. *(Plan §4.3.)*
 - **Reranker** — the hybrid ladder has no rerank stage. *(Plan §4.2, §9.)*
 - **Structured citation enforcement** — `brain.ask` *instructs* the agent (via SKILL/protocol) to cite every claim and state gaps, but there's **no structural enforcement** and the `work_products.record(kind:'citation')` hook isn't wired. Quality depends on the agent following the protocol. *(Plan §5.)*

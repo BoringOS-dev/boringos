@@ -32,6 +32,18 @@ plus any module's `<module>__*` tables (e.g. `ledger__transactions`,
 `crm__deals`). Always filter by `tenant_id` — the brain does not rewrite
 your SQL to scope it.
 
+**Know the columns first.** The `type: table` docs under
+`./drive/shared/memory/50-schema/` are the column-level catalog (one per
+table, regenerated from the live DB by `brain.sync_schema`). Read the
+relevant one — or `brain.search "<table> schema"` — to get exact column
+names before writing SQL.
+
+**Finding live data.** Rows are mirrored into the brain as *pointers*
+(`brain.ingest_rows`, run hourly): a `brain.search` hit with
+`sourceKind: "row"` and `sourceRef: "<table>:<id>"` points at a live row —
+join to it with `brain.query` for the authoritative content, and cite the
+row. Nothing is copied; the live table stays the source of truth.
+
 ## brain.ask — the synthesis contract
 
 `brain.ask` returns a cited answer + a gap analysis. When YOU are the agent

@@ -1,5 +1,7 @@
 # BoringOS Brain — OKF Compatibility Plan
 
+> **Extension (shipped, working tree): operational data as OKF.** `brain.sync_schema` emits OKF `type: table` schema docs (live columns) for the core operational + `<module>__*` tables into `50-schema/` (enriched by `Module.dataSchema`); `brain.ingest_rows` indexes operational/module rows as by-reference pointers; `brain.ask` grounds on both. Closes decisions #11/#12 (core-schema + row ingestion). Verified by a live emails+`demo__widgets` E2E. See `brain-implementation.md`.
+>
 > **Status: SHIPPED** (working tree, pending commit). All five units (U-OKF-1…5 / issues #68–#72, epic #73) are implemented and verified — unit + integration + a live faked-email end-to-end: 5 emails → facts citing `(src: inbox_items:<id>)` → distill → curate → `brain.export_okf` returns an OKF-§9-conformant bundle (0 violations, `okf_version 0.1`), the emailed facts are retrievable via `brain.search`, and 10 `cites` edges chain provenance back to the email rows. 53 brain + 36 adjacent tests green; zero regressions.
 
 > Make the Brain's **files tier** (docs/brain.md §4.4–§4.5, the markdown memory tree) a **superset of [OKF](https://github.com/GoogleCloudPlatform/knowledge-catalog/blob/main/okf/SPEC.md)** — Google's Open Knowledge Format (v0.1). We keep everything that makes the Brain a *system* (Postgres retrieval, typed graph, distillation, curator, synthesis, MCP, multi-tenancy) and adopt OKF's *format* discipline so a tenant's memory tree is also a portable, vendor-neutral, OKF-conformant knowledge bundle.

@@ -159,8 +159,9 @@ describe("brain — OKF integration", () => {
     ];
     for (const [, f] of facts) await memory.remember(f, { tenantId: TENANT, scope: "tenant" });
 
-    // 3. Distill → 4. Curate → 5. Export.
-    const now = new Date("2026-06-15T18:00:00Z");
+    // 3. Distill → 4. Curate → 5. Export. Use the REAL clock: remember()
+    // stamps today's daily note, so distill's window must include today.
+    const now = new Date();
     await distill({ db, drive, indexer }, { tenantId: TENANT, scope: "tenant", now, windowDays: 30 });
     await curate({ db, drive, indexer }, { tenantId: TENANT, scope: "tenant", now });
     const exp = await exportOkf({ db, drive, indexer }, { tenantId: TENANT, scope: "tenant", now });

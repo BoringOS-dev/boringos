@@ -81,7 +81,7 @@ export interface CurateReport {
 
 // Durable folders the curator lints (NOT 60-daily — that's the raw
 // landing zone owned by remember/distillation).
-const DURABLE_DIRS = ["10-domains", "20-decisions", "30-people", "40-operations", "70-weekly"];
+const DURABLE_DIRS = ["10-domains", "20-decisions", "30-people", "40-operations", "50-schema", "70-weekly"];
 
 export async function curate(deps: CurateDeps, opts: CurateOptions): Promise<CurateReport> {
   const { db, drive } = deps;
@@ -457,6 +457,7 @@ function folderType(rel: string): string {
   if (rel.includes("/20-decisions/")) return "decision";
   if (rel.includes("/30-people/")) return "person";
   if (rel.includes("/40-operations/")) return "operation";
+  if (rel.includes("/50-schema/")) return "table";
   if (rel.includes("/70-weekly/")) return "weekly";
   return "note";
 }

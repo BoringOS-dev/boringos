@@ -628,6 +628,16 @@ export interface Module {
   oauth?: OAuthConfig;
   /** DDL the Module owns. Tables MUST be prefixed `<id>__`. */
   schema?: Migration[];
+  /**
+   * Declarative table schema for the Brain's OKF schema catalog
+   * (docs/brain-okf-compat.md). The Brain auto-discovers a module's
+   * `<id>__*` tables + columns from the live DB; this OPTIONAL field
+   * enriches those docs with human descriptions so the synthesis agent
+   * writes correct, column-aware `brain.query` SQL. Modules that omit it
+   * still get columns-only schema docs. This is the "schema-as-SKILL"
+   * contract — a module's data becomes brain-queryable knowledge.
+   */
+  dataSchema?: ModuleTableSchema[];
   /** Browser-facing surface registered with the shell. */
   ui?: ModuleUI;
   /** Install / uninstall / tenant-create hooks. */
@@ -669,6 +679,17 @@ export interface Module {
   connectors?: Record<string, {
     services: ServiceDefinition[];
   }>;
+}
+
+/**
+ * One table's declarative schema for the Brain's OKF catalog. Columns
+ * are auto-discovered from the live DB; these descriptions enrich them.
+ */
+export interface ModuleTableSchema {
+  /** Table name (typically `<module-id>__<name>`). */
+  table: string;
+  description?: string;
+  columns?: Array<{ name: string; description?: string }>;
 }
 
 export type SkillFileRef =

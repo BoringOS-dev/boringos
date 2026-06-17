@@ -48,6 +48,15 @@ export { exportOkf } from "./okf.js";
 export type { OkfExportResult } from "./okf.js";
 
 export {
+  materializeSchemaDocs,
+  ingestRows,
+  discoverTables,
+  introspectColumns,
+  CORE_OPERATIONAL_SCHEMA,
+} from "./schema.js";
+export type { SchemaDeps, TableSchemaDecl, MaterializeResult, IngestResult } from "./schema.js";
+
+export {
   renderFrontmatter,
   parseFrontmatter,
   hasConformantFrontmatter,

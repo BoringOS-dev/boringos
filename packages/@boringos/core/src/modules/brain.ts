@@ -37,6 +37,9 @@ import {
   distill,
   curate,
   exportOkf,
+  materializeSchemaDocs,
+  ingestRows,
+  CORE_OPERATIONAL_SCHEMA,
   probeCapabilities,
   resolveEmbedder,
 } from "@boringos/brain";
@@ -78,6 +81,8 @@ const DISTILL_WORKFLOW_NAME = "Brain weekly distillation";
 const DISTILL_ROUTINE_TITLE = "Weekly memory distillation";
 const CURATE_WORKFLOW_NAME = "Brain daily curation";
 const CURATE_ROUTINE_TITLE = "Daily memory curation";
+const INGEST_WORKFLOW_NAME = "Brain operational ingest";
+const INGEST_ROUTINE_TITLE = "Hourly operational ingest";
 
 export const createBrainModule: ModuleFactory = (deps) => {
   const db = deps.db as Db;
@@ -358,6 +363,15 @@ export const createBrainModule: ModuleFactory = (deps) => {
         `## Your job`,
         `Answer the question by orchestrating brain.query (exact SQL for numbers),`,
         `brain.search (more semantic context), and brain.graph (relationships).`,
+        ``,
+        `Live operational data: the \`type: table\` docs under \`50-schema/\` are the`,
+        `column-level catalog — read the relevant one (it's in the grounding or via`,
+        `brain.search "<table> schema") to learn exact column names, THEN write`,
+        `column-accurate brain.query SQL (always filter by tenant_id). Grounding`,
+        `hits with sourceKind 'row' are pointers to live rows (ref '<table>:<id>',`,
+        `e.g. inbox_items:<id>) — join to the row via brain.query for authoritative`,
+        `content and cite that row.`,
+        ``,
         `MANDATORY: cite every claim to a row/memory/file/edge; route all numbers`,
         `to brain.query (never a vector); and END with a "Gaps:" section stating`,
         `what you could not find. Propose actions as agent_action tasks — never`,
@@ -603,6 +617,43 @@ export const createBrainModule: ModuleFactory = (deps) => {
     },
   };
 
+  // ── brain.sync_schema ─────────────────────────────────────────────
+  const syncSchemaTool: Tool = {
+    name: "sync_schema",
+    description:
+      "Materialize the OKF schema catalog (docs/brain-okf-compat.md): one `type: table` concept doc per operational + module table — columns read from the LIVE database, written into 50-schema/ and indexed — so brain.search/brain.ask know your tables and brain.query can be column-accurate. Idempotent.",
+    inputs: z.object({ scope: z.enum(["tenant", "user"]).optional() }),
+    async handler(input: { scope?: "tenant" | "user" }, ctx: ToolContext): Promise<ToolResult> {
+      if (!drive) return notConfigured();
+      const scope = input.scope ?? "tenant";
+      const ownerUserId = scope === "user" ? ctx.wakeOwnerUserId : undefined;
+      if (scope === "user" && !ownerUserId) {
+        return { ok: false, error: { code: "invalid_input", message: "user-scope requires a wake owner", retryable: false } };
+      }
+      const caps = await probeCapabilities(db);
+      const indexer = createIndexer({ db, embedder, hasVector: caps.hasVector });
+      const enrich: Record<string, { table: string; description?: string; columns?: Array<{ name: string; description?: string }> }> = {};
+      for (const t of CORE_OPERATIONAL_SCHEMA) enrich[t.table] = t;
+      const result = await materializeSchemaDocs({ db, drive, indexer }, { tenantId: ctx.tenantId, scope, ownerUserId, now: new Date(), enrich });
+      return { ok: true, result };
+    },
+  };
+
+  // ── brain.ingest_rows ─────────────────────────────────────────────
+  const ingestRowsTool: Tool = {
+    name: "ingest_rows",
+    description:
+      "Index recent rows of operational + module tables (inbox emails, tasks, comments, runs, <module>__* tables) as brain ROW POINTERS — snippet-only, by reference, never a copy (decision #11) — so brain.search/brain.ask can find live data and cite it back to the row. Idempotent; tenant-scoped.",
+    inputs: z.object({ limit: z.number().int().positive().max(2000).optional() }),
+    async handler(input: { limit?: number }, ctx: ToolContext): Promise<ToolResult> {
+      if (!drive) return notConfigured();
+      const caps = await probeCapabilities(db);
+      const indexer = createIndexer({ db, embedder, hasVector: caps.hasVector });
+      const result = await ingestRows({ db, drive, indexer }, { tenantId: ctx.tenantId, now: new Date(), limit: input.limit });
+      return { ok: true, result };
+    },
+  };
+
   const module: Module = {
     id: "brain",
     name: "Brain",
@@ -629,6 +680,8 @@ export const createBrainModule: ModuleFactory = (deps) => {
       distillTool,
       curateTool,
       exportOkfTool,
+      syncSchemaTool,
+      ingestRowsTool,
     ],
     lifecycle: buildBrainLifecycle(db),
   };
@@ -694,6 +747,13 @@ function buildBrainLifecycle(db: Db): ModuleLifecycle {
       tool: "brain.curate",
       cron: "30 3 * * *",
       description: "Lint the memory tree: split oversized files, surface conflicts, fix pointers, flag stale content.",
+    });
+    await seedSmartRoutine(ctx.tenantId, {
+      wfName: INGEST_WORKFLOW_NAME,
+      routineTitle: INGEST_ROUTINE_TITLE,
+      tool: "brain.ingest_rows",
+      cron: "15 * * * *",
+      description: "Index recent operational + module rows as brain row-pointers so brain.search/ask see live data.",
     });
   }
 

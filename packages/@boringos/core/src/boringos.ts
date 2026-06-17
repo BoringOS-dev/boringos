@@ -957,6 +957,38 @@ export class BoringOS {
     // shared-memory scaffold so `shared/memory/MEMORY.md` exists on
     // disk + in the driveFiles index from the moment a tenant is
     // born (see drive_issues #1).
+    // Brain OKF schema catalog (docs/brain-okf-compat.md). Materialize one
+    // `type: table` concept doc per operational/module table for a tenant,
+    // enriched with each installed module's declared `dataSchema`. The
+    // table list + columns are auto-discovered from the live DB; modules
+    // contribute descriptions. Idempotent + best-effort; lazy indexer.
+    let _schemaIndexer: import("@boringos/brain").BrainIndexer | undefined;
+    const syncBrainSchemaDocs = async (tenantId: string): Promise<void> => {
+      try {
+        const brain = await import("@boringos/brain");
+        if (!_schemaIndexer) {
+          const caps = await brain.probeCapabilities(dbConn.db);
+          _schemaIndexer = brain.createIndexer({
+            db: dbConn.db,
+            embedder: brain.resolveEmbedder(),
+            hasVector: caps.hasVector,
+          });
+        }
+        const enrich: Record<
+          string,
+          { table: string; description?: string; columns?: Array<{ name: string; description?: string }> }
+        > = {};
+        for (const t of brain.CORE_OPERATIONAL_SCHEMA) enrich[t.table] = t;
+        for (const m of boundModules) for (const t of m.dataSchema ?? []) enrich[t.table] = t;
+        await brain.materializeSchemaDocs(
+          { db: dbConn.db, drive, indexer: _schemaIndexer },
+          { tenantId, scope: "tenant", now: new Date(), enrich },
+        );
+      } catch (err) {
+        console.warn("[boringos] brain schema-doc sync failed for tenant", tenantId, err);
+      }
+    };
+
     const userHook = this.tenantProvisionedHook;
     const composedTenantHook = async (db: Db, tenantId: string) => {
       if (userHook) await userHook(db, tenantId);
@@ -974,6 +1006,8 @@ export class BoringOS {
       // Seed the tenant-wide brain scaffold. Idempotent + best-effort
       // inside the helper — never blocks signup.
       await scaffoldTenantSharedMemory({ db: dbConn.db, drive }, tenantId);
+      // Materialize the brain's OKF schema catalog for the new tenant.
+      await syncBrainSchemaDocs(tenantId);
     };
 
     // Auth routes (login, signup, session). Drive passed so signup
@@ -1025,6 +1059,8 @@ export class BoringOS {
               { db: dbConn.db, drive },
               row.id,
             );
+            // Materialize the brain's OKF schema catalog for each tenant.
+            await syncBrainSchemaDocs(row.id);
           }
         } catch (e) {
           // eslint-disable-next-line no-console
