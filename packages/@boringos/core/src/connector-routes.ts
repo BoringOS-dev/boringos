@@ -37,6 +37,7 @@ interface ProviderEntry {
 const PROVIDER_DISPLAY: Record<string, { name: string; description: string }> = {
   google: { name: "Google Workspace", description: "Gmail + Calendar" },
   slack: { name: "Slack", description: "Channels, threads, reactions" },
+  microsoft: { name: "Microsoft 365", description: "Outlook Mail + Calendar" },
 };
 
 function listProviders(authManager?: AuthManager): ProviderEntry[] {

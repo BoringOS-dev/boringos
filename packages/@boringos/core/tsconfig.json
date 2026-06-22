@@ -16,6 +16,7 @@
     { "path": "../module-sdk" },
     { "path": "../pipeline" },
     { "path": "../connector-google" },
+    { "path": "../connector-microsoft" },
     { "path": "../connector-slack" }
   ]
 }

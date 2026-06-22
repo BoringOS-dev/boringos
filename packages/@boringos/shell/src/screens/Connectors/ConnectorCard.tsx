@@ -4,6 +4,7 @@
 // no fetches, no client awareness. Parent owns the API + actions.
 
 import type { ConnectorViewModel, NormalizedStatus } from "./connectorsPresenter.js";
+import { ConnectorIcon } from "./ConnectorIcon.js";
 
 const STATUS_BADGE: Record<NormalizedStatus, string> = {
   connected: "bg-emerald-50 text-emerald-700 ring-emerald-200",
@@ -34,9 +35,7 @@ export function ConnectorCard({
       data-status={vm.status}
       className="rounded-lg border border-border bg-white p-4 flex items-start gap-4"
     >
-      <div className="w-10 h-10 rounded-md bg-bg-warm text-muted-strong flex items-center justify-center text-sm font-semibold shrink-0">
-        {vm.name.charAt(0).toUpperCase()}
-      </div>
+      <ConnectorIcon kind={vm.kind} name={vm.name} />
 
       <div className="min-w-0 flex-1">
         <div className="flex items-center gap-2">
